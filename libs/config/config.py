@@ -77,7 +77,16 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
-    # Binance
+    # Data Provider (supports multiple: coinbase, kraken, cryptocompare, binance)
+    data_provider: str = Field(
+        default="coinbase",
+        description="Data provider: coinbase, kraken, cryptocompare, binance"
+    )
+    data_provider_api_key: str = ""
+    data_provider_api_secret: str = ""
+    data_provider_api_passphrase: str = ""  # For Coinbase
+    
+    # Legacy Binance support (for backward compatibility)
     binance_api_key: str = ""
     binance_api_secret: str = ""
 
