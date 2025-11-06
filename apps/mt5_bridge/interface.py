@@ -1,4 +1,5 @@
 """Abstract interface for MT5/FTMO bridge with mock implementation."""
+
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -14,9 +15,7 @@ class MT5BridgeInterface(ABC):
         pass
 
     @abstractmethod
-    def get_historical_data(
-        self, symbol: str, timeframe: str, bars: int
-    ) -> list[dict[str, Any]]:
+    def get_historical_data(self, symbol: str, timeframe: str, bars: int) -> list[dict[str, Any]]:
         """Get historical OHLCV data."""
         pass
 
@@ -39,9 +38,7 @@ class MockMT5Bridge(MT5BridgeInterface):
         logger.info(f"Mock: Connecting to {server} as {login}")
         return True
 
-    def get_historical_data(
-        self, symbol: str, timeframe: str, bars: int
-    ) -> list[dict[str, Any]]:
+    def get_historical_data(self, symbol: str, timeframe: str, bars: int) -> list[dict[str, Any]]:
         """Return empty mock data."""
         logger.info(f"Mock: Getting {bars} bars of {symbol} {timeframe}")
         return []
@@ -57,4 +54,3 @@ class MockMT5Bridge(MT5BridgeInterface):
 
 # Default bridge instance (will be replaced with real implementation in Phase 2)
 bridge: MT5BridgeInterface = MockMT5Bridge()
-

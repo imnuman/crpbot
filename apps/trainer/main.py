@@ -1,4 +1,5 @@
 """Training entry point for LSTM, Transformer, GAN, and RL models."""
+
 import argparse
 
 from loguru import logger
@@ -20,9 +21,7 @@ def train_transformer(epochs: int):
 
 def train_gan(epochs: int, max_ratio: float):
     """Train GAN for synthetic data generation."""
-    logger.info(
-        f"Training GAN for {epochs} epochs (max synth ratio {max_ratio}) (stub)."
-    )
+    logger.info(f"Training GAN for {epochs} epochs (max synth ratio {max_ratio}) (stub).")
     # TODO: Implement GAN training
     pass
 
@@ -40,7 +39,9 @@ if __name__ == "__main__":
     parser.add_argument("--coin", default="BTC", help="Coin symbol (for LSTM)")
     parser.add_argument("--epochs", type=int, default=1, help="Training epochs")
     parser.add_argument("--steps", type=int, default=1000, help="RL training steps")
-    parser.add_argument("--max_synth_ratio", type=float, default=0.2, help="Max synthetic data ratio")
+    parser.add_argument(
+        "--max_synth_ratio", type=float, default=0.2, help="Max synthetic data ratio"
+    )
     parser.add_argument("--exec", dest="exec_model", default="ftmo", help="Execution model")
 
     args = parser.parse_args()
@@ -53,4 +54,3 @@ if __name__ == "__main__":
         train_gan(args.epochs, args.max_synth_ratio)
     elif args.task == "ppo":
         train_ppo(args.steps, args.exec_model)
-

@@ -1,4 +1,5 @@
 """Tests for configuration system."""
+
 import pytest
 
 from libs.config.config import EnsembleWeights, Settings
@@ -24,9 +25,7 @@ def test_ensemble_weights_fallback():
 def test_settings_validation():
     """Test settings validation."""
     settings = Settings(
-        confidence_threshold=0.75,
-        max_signals_per_hour=10,
-        max_signals_per_hour_high=5
+        confidence_threshold=0.75, max_signals_per_hour=10, max_signals_per_hour_high=5
     )
     settings.validate()  # Should not raise
 
@@ -36,8 +35,7 @@ def test_settings_validation_fails():
     settings = Settings(
         confidence_threshold=0.3,  # Too low
         max_signals_per_hour=10,
-        max_signals_per_hour_high=5
+        max_signals_per_hour_high=5,
     )
     with pytest.raises(ValueError):
         settings.validate()
-

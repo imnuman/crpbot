@@ -14,4 +14,3 @@ def test_backtest_winrate_floor():
     # This is a placeholder
     win_rate = 0.70  # Placeholder
     assert win_rate >= 0.65
-
