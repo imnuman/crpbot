@@ -87,7 +87,8 @@ See `WORK_PLAN.md` for detailed deployment instructions and timeline.
 ## 📚 Documentation
 
 - `WORK_PLAN.md` - Complete development plan and timeline
-- `plan.md` - Original project blueprint
+- `docs/GITHUB_TOKEN_SETUP.md` - Guide for setting up GitHub tokens and secrets
+- `docs/PHASE1_TESTING.md` - Phase 1 testing checklist
 
 ## ⚠️ Safety Features
 

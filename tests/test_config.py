@@ -1,6 +1,7 @@
 """Tests for configuration system."""
 import pytest
-from libs.config.config import Settings, EnsembleWeights
+
+from libs.config.config import EnsembleWeights, Settings
 
 
 def test_ensemble_weights_normalization():

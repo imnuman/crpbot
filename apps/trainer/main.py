@@ -1,5 +1,6 @@
 """Training entry point for LSTM, Transformer, GAN, and RL models."""
 import argparse
+
 from loguru import logger
 
 
@@ -41,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument("--steps", type=int, default=1000, help="RL training steps")
     parser.add_argument("--max_synth_ratio", type=float, default=0.2, help="Max synthetic data ratio")
     parser.add_argument("--exec", dest="exec_model", default="ftmo", help="Execution model")
-    
+
     args = parser.parse_args()
 
     if args.task == "lstm":

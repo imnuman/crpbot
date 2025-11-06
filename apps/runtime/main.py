@@ -1,6 +1,7 @@
 """Runtime loop: scanning + signals + auto-learning."""
 import os
 import time
+
 from loguru import logger
 
 # Import runtime modules (will be created in Phase 4)
@@ -30,11 +31,11 @@ if __name__ == "__main__":
     logger.info("Runtime starting (stub).")
     logger.info(f"Confidence threshold: {THRESHOLD}")
     logger.info(f"Kill-switch: {'ACTIVE' if KILL_SWITCH else 'INACTIVE'}")
-    
+
     # Short run for smoke testing
-    for i in range(3):
+    for _ in range(3):
         loop_once()
         time.sleep(1)
-    
+
     logger.info("Runtime exiting (stub).")
 

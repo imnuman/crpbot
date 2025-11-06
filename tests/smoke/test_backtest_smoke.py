@@ -1,5 +1,4 @@
 """Smoke test: 5-minute backtest simulation."""
-import pytest
 
 
 def test_smoke_backtest():
