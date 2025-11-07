@@ -87,6 +87,7 @@ See `WORK_PLAN.md` for detailed deployment instructions and timeline.
 ## 📚 Documentation
 
 - `WORK_PLAN.md` - Complete development plan and timeline
+- `docs/WORKFLOW_SYNC_SETUP.md` - **Workflow sync setup (Cursor IDE, Claude AI, GitHub)**
 - `docs/GITHUB_TOKEN_SETUP.md` - Guide for setting up GitHub tokens and secrets
 - `docs/PHASE1_TESTING.md` - Phase 1 testing checklist
 
