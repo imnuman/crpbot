@@ -51,7 +51,7 @@ class CoinbaseDataProvider(DataProviderInterface):
             )
         except Exception as e:
             logger.error(f"Failed to load private key: {e}")
-            logger.error(f"Private key first 100 chars: {private_key[:100]}")
+            logger.error(f"Private key format check: starts_with_header={private_key.strip().startswith('-----BEGIN')}, length={len(private_key)} chars")
             logger.error(
                 "Troubleshooting:\n"
                 "1. Private key should be PEM format (starts with -----BEGIN EC PRIVATE KEY-----\n"
