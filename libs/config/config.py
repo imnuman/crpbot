@@ -86,9 +86,65 @@ class Settings(BaseSettings):
     data_provider_api_secret: str = ""
     data_provider_api_passphrase: str = ""  # For Coinbase
     
+    # Provider-specific env vars (also supported for convenience)
+    # Coinbase Advanced Trade API uses JWT authentication
+    coinbase_api_key_name: str = ""  # Full path: organizations/.../apiKeys/...
+    coinbase_api_private_key: str = ""  # PEM-encoded EC private key
+    # Legacy fields (for backward compatibility, but not used with JWT)
+    coinbase_api_key: str = ""
+    coinbase_api_secret: str = ""
+    coinbase_api_passphrase: str = ""
+    kraken_api_key: str = ""
+    kraken_api_secret: str = ""
+    cryptocompare_api_key: str = ""
+    
     # Legacy Binance support (for backward compatibility)
     binance_api_key: str = ""
     binance_api_secret: str = ""
+    
+    @property
+    def effective_api_key(self) -> str:
+        """Get API key from provider-specific or generic field."""
+        # For Coinbase Advanced Trade, use the full API key name path
+        if self.data_provider == "coinbase" and self.coinbase_api_key_name:
+            return self.coinbase_api_key_name
+        if self.data_provider_api_key:
+            return self.data_provider_api_key
+        if self.data_provider == "coinbase" and self.coinbase_api_key:
+            return self.coinbase_api_key  # Legacy fallback
+        if self.data_provider == "kraken" and self.kraken_api_key:
+            return self.kraken_api_key
+        if self.data_provider == "cryptocompare" and self.cryptocompare_api_key:
+            return self.cryptocompare_api_key
+        if self.binance_api_key:  # Legacy support
+            return self.binance_api_key
+        return ""
+    
+    @property
+    def effective_api_secret(self) -> str:
+        """Get API secret from provider-specific or generic field."""
+        # For Coinbase Advanced Trade, use the private key (PEM)
+        if self.data_provider == "coinbase" and self.coinbase_api_private_key:
+            return self.coinbase_api_private_key
+        if self.data_provider_api_secret:
+            return self.data_provider_api_secret
+        if self.data_provider == "coinbase" and self.coinbase_api_secret:
+            return self.coinbase_api_secret  # Legacy fallback
+        if self.data_provider == "kraken" and self.kraken_api_secret:
+            return self.kraken_api_secret
+        if self.binance_api_secret:  # Legacy support
+            return self.binance_api_secret
+        return ""
+    
+    @property
+    def effective_api_passphrase(self) -> str:
+        """Get API passphrase (not used for Coinbase Advanced Trade JWT)."""
+        # Not used with JWT authentication, but kept for backward compatibility
+        if self.data_provider_api_passphrase:
+            return self.data_provider_api_passphrase
+        if self.data_provider == "coinbase" and self.coinbase_api_passphrase:
+            return self.coinbase_api_passphrase
+        return ""
 
     # Telegram
     telegram_token: str = ""

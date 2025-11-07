@@ -7,6 +7,35 @@ import pandas as pd
 from loguru import logger
 
 
+def create_data_provider(provider: str, **kwargs) -> "DataProviderInterface":
+    """
+    Factory function to create data provider instance.
+
+    Args:
+        provider: Provider name ('coinbase', 'kraken', 'cryptocompare', 'binance', 'mock')
+        **kwargs: Provider-specific credentials
+
+    Returns:
+        DataProviderInterface instance
+    """
+    if provider == "coinbase":
+        from libs.data.coinbase import CoinbaseDataProvider
+
+        # Coinbase Advanced Trade uses JWT with API key name and private key
+        api_key_name = kwargs.get("api_key_name") or kwargs.get("api_key", "")
+        private_key = kwargs.get("private_key") or kwargs.get("api_secret", "")
+        
+        return CoinbaseDataProvider(
+            api_key_name=api_key_name,
+            private_key=private_key,
+        )
+    elif provider == "mock":
+        return MockDataProvider()
+    else:
+        logger.warning(f"Provider {provider} not implemented, using mock")
+        return MockDataProvider()
+
+
 class DataProviderInterface(ABC):
     """Abstract interface for cryptocurrency data providers."""
 

@@ -2,9 +2,199 @@
 
 ## Executive Summary
 
-This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibration, with runtime/Telegram integrated early for iterative feedback. GAN and RL are optional enhancements that can be added after go-live.
+This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibration, with runtime/Telegram integrated early for iterative feedback. V2 features (multi-timeframe, sentiment, Kafka) can be integrated pre-go-live (Option A) or post-go-live (Option B). GAN and RL are optional enhancements that can be added after go-live.
 
-**Timeline**: ~11.5-13.5 days for V1 (includes +2 day buffer for data/API friction + Phase 3 buffer + Phase 8 extension), +2-4 days optional for GAN/RL
+**V2 Integration Strategy (Recommended: Option A)**:
+- **Option A**: Full integration pre-go-live (faster unified system)
+  - P3.5: Multi-TF features + retrain models
+  - P4-P6: Runtime, Confidence, Tests with V2 features
+  - P6.5: Silent Observation (monitor V2 features)
+  - P7-P8: Micro-lot + Go-Live (V2 features proven)
+- **Option B**: V1 go-live first, add V2 later (safer, incremental)
+  - P4-P8: V1 only (no multi-TF, no sentiment, no Kafka)
+  - P8: Go-Live V1
+  - P9: Add V2 features incrementally after validation
+
+**Timeline**: 
+- **V1 Only**: ~14.5-18.5 days (includes +2 day buffer + Phase 3 buffer + Phase 8 extension + 3-5 day silent observation period)
+- **V1 + V2 (Option A)**: ~27.5-41.5 days (V1 + ~13-23 days for V2 features)
+- **Optional**: +2-4 days for GAN/RL
+
+---
+
+## Infrastructure & Resource Requirements
+
+### GPU Training Execution Details
+
+**Training Strategy**:
+- **Option 1: Cloud GPU Rental (Recommended)**
+  - **Provider**: RunPod, Vast.ai, or Lambda Labs (cost-effective)
+  - **GPU Type**: NVIDIA RTX 4090 or A100 (for Transformer training)
+  - **Cost**: ~$0.50-2.00/hour (RTX 4090) or ~$1.50-4.00/hour (A100)
+  - **Estimated Training Time**: 
+    - LSTM: 2-4 hours per coin (BTC/ETH/BNB) = 6-12 hours total
+    - Transformer: 4-8 hours (multi-coin) = 4-8 hours total
+    - **Total GPU Cost**: ~$15-40 (one-time for initial training)
+  - **Setup**: Pre-configured PyTorch Docker images available
+  - **Data Transfer**: Upload data/features to cloud storage (S3/GCS) or use cloud storage directly
+
+- **Option 2: Local GPU (if available)**
+  - **Requirements**: NVIDIA GPU with 8GB+ VRAM (RTX 3060/3070 or better)
+  - **Cost**: $0 (one-time hardware purchase)
+  - **Setup**: Install CUDA, PyTorch with CUDA support
+
+- **Option 3: CPU Training (Fallback)**
+  - **Performance**: 5-10x slower than GPU
+  - **Use Case**: Only for small models or testing
+  - **Not recommended for production training**
+
+**Parallel Processing**:
+- **Data Fetching**: Parallel API calls for multiple symbols (BTC/ETH/BNB) using `asyncio` or `concurrent.futures`
+- **Feature Engineering**: Parallel processing per symbol using `multiprocessing` (I/O bound, benefits from parallelization)
+- **Model Training**: Sequential per model (LSTM → Transformer → RL) due to GPU memory constraints
+- **Backtesting**: Parallel evaluation across multiple time periods using `multiprocessing`
+- **Hyperparameter Search**: Optional parallel trials using Ray Tune or Optuna
+
+**GPU Memory Management**:
+- Batch size tuning to fit GPU memory
+- Gradient accumulation for large effective batch sizes
+- Mixed precision training (FP16) to reduce memory usage
+- Model checkpointing to resume training if interrupted
+
+### VPS Specifications
+
+**Minimum Requirements**:
+- **CPU**: 2+ cores (4+ recommended)
+- **RAM**: 4GB minimum (8GB recommended)
+- **Storage**: 20GB SSD minimum (50GB recommended for data/models)
+- **Network**: Stable connection with low latency to exchanges
+- **OS**: Ubuntu 22.04 LTS (recommended)
+
+**Recommended Specifications**:
+- **CPU**: 4 cores (Intel/AMD x86_64)
+- **RAM**: 8GB (16GB for larger datasets)
+- **Storage**: 50GB SSD (for data, models, logs)
+- **Network**: 100Mbps+ with <50ms latency to Coinbase/FTMO
+- **Uptime**: 99.9% SLA (consider managed VPS)
+
+**VPS Providers** (Cost-Effective Options):
+- **DigitalOcean**: $12-24/month (4GB RAM, 2 vCPU)
+- **Linode**: $12-24/month (4GB RAM, 2 vCPU)
+- **Hetzner**: €8-16/month (4-8GB RAM, 2-4 vCPU) - Best value
+- **AWS Lightsail**: $10-20/month (2GB RAM, 1 vCPU) - Basic tier
+
+**Setup Requirements**:
+- Python 3.10+ installed
+- Systemd for service management
+- Cron for scheduled jobs (nightly metrics, backups)
+- Log rotation configured (logrotate)
+- Firewall configured (UFW)
+- Monitoring: Basic health checks (systemd, `/healthz` endpoint)
+
+### FTMO Account Purchase Timing
+
+**Recommended Timeline**:
+- **Purchase Timing**: **After Phase 2.3 (Execution Model)** and **Before Phase 7 (Micro-Lot Testing)**
+- **Rationale**: 
+  - Need execution model ready to measure real spreads/slippage
+  - Want to measure real FTMO execution before micro-lot testing
+  - Allows time for account verification and setup (1-2 days)
+  - Can start with demo account for Phase 2.3, upgrade to live for Phase 7
+
+**Account Options**:
+- **Demo Account**: Free (for Phase 2.3 execution metrics)
+- **Challenge Account**: $155-500 (depending on account size: 10K, 25K, 50K, 100K)
+- **Recommendation**: Start with 10K demo for testing, purchase 10K challenge for micro-lot phase
+
+**Account Setup Checklist**:
+- [ ] Create FTMO account
+- [ ] Complete verification (KYC)
+- [ ] Purchase challenge (Phase 7 timing)
+- [ ] Configure MT5 credentials
+- [ ] Test connection (Phase 4 MT5 bridge)
+- [ ] Set up read-only credentials for execution metrics (Phase 2.3)
+
+### Silent Observation Period
+
+**Timing**: **After Phase 4 (Runtime + Telegram) setup, before Phase 7 (Micro-Lot Testing)**
+
+**Duration**: 3-5 days of silent observation
+
+**Purpose**:
+- Monitor system stability without risk
+- Verify signal generation quality
+- Check FTMO rule enforcement
+- Validate Telegram notifications
+- Ensure no unexpected errors or crashes
+- Confirm data pipeline reliability
+- Validate execution model accuracy
+
+**Activities During Observation**:
+- [ ] Run runtime in dry-run mode (no actual trades)
+- [ ] Log all signals that would be generated
+- [ ] Track confidence scores and tier assignments
+- [ ] Monitor FTMO rule checks (daily/total loss limits)
+- [ ] Verify Telegram bot responsiveness
+- [ ] Check structured logging output
+- [ ] Validate execution cost calculations
+- [ ] Monitor system resource usage (CPU, memory, disk)
+- [ ] Review logs for any errors or warnings
+
+**Success Criteria**:
+- ✅ Zero crashes or unexpected errors
+- ✅ All signals properly formatted and logged
+- ✅ FTMO rules correctly enforced
+- ✅ Telegram bot responsive and accurate
+- ✅ System stable over 3-5 day period
+- ✅ Ready to proceed to micro-lot testing
+
+**Integration Point**:
+- **MUST** happen after Phase 6 (Testing & Validation) completion
+- **MUST** happen before Phase 7 (Micro-Lot Testing) starts
+- Sequence: **P6 → P6.5 (3-5 days) → P7**
+- No code changes needed (just monitoring)
+- Allows confidence building before risking real capital
+
+### Budget Summary
+
+**One-Time Costs**:
+- **FTMO Challenge**: $155-500 (10K-100K account size)
+  - Recommendation: Start with 10K ($155) for micro-lot testing
+- **GPU Training**: $15-40 (cloud rental, one-time for initial training)
+  - Alternative: $0 if using local GPU
+- **Development Tools**: $0 (open source stack)
+- **Total One-Time**: **$170-540**
+
+**Monthly Recurring Costs**:
+- **VPS**: $12-24/month (recommended: Hetzner €8-16 or DigitalOcean $12)
+- **Database**: $0 (SQLite for Phase 2-5, PostgreSQL optional later)
+- **Cloud Storage**: $0-5/month (optional: S3 for backups, DVC)
+- **Monitoring**: $0 (self-hosted logs, Telegram for alerts)
+- **Total Monthly**: **$12-29/month**
+
+**Optional Costs** (Phase 9+):
+- **Additional GPU Training**: $15-40 per retraining cycle (weekly/monthly)
+- **PostgreSQL Database**: $0-10/month (if migrating from SQLite)
+- **Cloud Monitoring**: $0-20/month (optional: Datadog, Grafana Cloud)
+
+**Total Estimated Budget**:
+- **Initial Setup**: $170-540 (FTMO + GPU training)
+- **Monthly Operations**: $12-148/month (depends on sentiment API choice)
+  - **Lean** (no sentiment): $12-29/month
+  - **Standard** (Reddit free): $12-29/month
+  - **Premium** (Twitter $100/mo): $112-148/month
+- **Year 1 Total**: $314-2,316
+  - **Lean**: $314-888/year
+  - **Standard**: $314-888/year
+  - **Premium**: $1,370-2,316/year
+
+**Cost Optimization Tips**:
+- Use SQLite instead of PostgreSQL initially (Phase 2-5)
+- Use free tier cloud storage (GitHub LFS, Git LFS)
+- Use demo FTMO account for Phase 2.3 execution metrics
+- Rent GPU only for training (not 24/7)
+- Use cost-effective VPS providers (Hetzner, DigitalOcean)
+- Self-host monitoring (no external services)
 
 ---
 
@@ -52,7 +242,9 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 - [ ] Implement Binance API connector for 1m candles (BTC/ETH/BNB, **2020-present**)
   - **End date**: Current date at time of initial data collection
   - Plan for ongoing data updates (weekly/monthly refresh)
+  - **Parallel Processing**: Fetch multiple symbols in parallel using `asyncio` or `concurrent.futures`
 - [ ] Create data cleaning and validation pipeline
+  - **Parallel Processing**: Process multiple symbols/periods in parallel where possible
 - [ ] Set up DVC for data versioning (or Git LFS initially)
 - [ ] Implement walk-forward split logic:
   - Train: 2020-2023
@@ -67,6 +259,7 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
   - Volatility regime (high/medium/low)
 - [ ] Feature normalization pipeline
 - [ ] Handle NaN values and edge cases
+- [ ] **Parallel Processing**: Engineer features for multiple symbols in parallel
 - [ ] **Feature store-lite**: Versioned parquet for engineered features
   - Store in `data/features/features_YYYY-MM-DD.parquet`
   - Tie to DVC remote for versioning
@@ -76,10 +269,13 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 ### 2.3 Empirical FTMO Execution Model (CRITICAL)
 **Do NOT hardcode 12bps spread + 3bps slippage globally**
 
+**Note**: Can start with **FTMO demo account** (free) for initial measurements. Upgrade to live challenge account before Phase 7.
+
 - [ ] Create execution measurement system:
   - Measure spreads/slippage per pair (BTC/ETH/BNB)
   - Measure per session (Asia/EU/US)
   - Track distributions (mean, p50, p90)
+  - **Use FTMO demo account initially** (free, no purchase needed yet)
 - [ ] Store measurements in **versioned, date-stamped JSON** (`data/execution_metrics_YYYY-MM-DD.json`)
   - Enable rollback to previous calibration if needed
 - [ ] Create nightly job to recompute metrics from FTMO bridge:
@@ -105,9 +301,14 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 
 **Note**: Realistically 3-4d with per-coin training, full evaluation framework, and calibration. This phase includes significant work.
 
+**⚠️ IMPORTANT**: Phase 3 trains models on single-timeframe (1m) features. Phase 3.5 (V2) adds multi-timeframe features and retrains models.
+
 ### 3.1 LSTM Model
 - [ ] Direction prediction model (15-min horizon)
 - [ ] Per-coin training (BTC, ETH, BNB)
+- [ ] **GPU Training**: Use cloud GPU rental (RunPod/Vast.ai) or local GPU
+  - Estimated time: 2-4 hours per coin = 6-12 hours total
+  - GPU cost: ~$5-15 (one-time)
 - [ ] Training loop with walk-forward validation splits
 - [ ] Save/load model weights with experiment tracking
 - [ ] Model versioning by hash + params
@@ -115,11 +316,15 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 ### 3.2 Transformer Model
 - [ ] Trend strength prediction
 - [ ] Multi-coin training capability
+- [ ] **GPU Training**: Use cloud GPU rental (recommend A100 for Transformer)
+  - Estimated time: 4-8 hours total
+  - GPU cost: ~$10-25 (one-time)
 - [ ] Attention mechanism implementation
 - [ ] Experiment tracking integration
 
 ### 3.3 Evaluation Framework
 - [ ] Backtest engine with empirical FTMO execution model
+- [ ] **Parallel Processing**: Run backtests across multiple time periods in parallel
 - [ ] **Enhanced metrics** (beyond accuracy):
   - Per-tier precision/recall
   - Brier score / calibration curves
@@ -147,6 +352,37 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 
 ---
 
+## Phase 3.5: Multi-Timeframe Features + Model Retraining (V2) (2-3d) 🔄 **OPTIONAL V2**
+
+**Timing**: After Phase 3 completion, before Phase 4 (if using Option A - Full Integration Pre-Go-Live)
+
+**Purpose**: Add multi-timeframe features to improve model accuracy and retrain models.
+
+**⚠️ Note**: This is a V2 enhancement. Can be skipped if using Option B (V1 go-live first).
+
+### 3.5.1 Multi-Timeframe Feature Engineering
+- [ ] Fetch data for multiple timeframes (1m, 5m, 15m, 1h, 4h)
+- [ ] Engineer features for each timeframe
+- [ ] Create multi-TF feature aggregation:
+  - Higher timeframe trend signals
+  - Multi-TF momentum alignment
+  - Timeframe convergence/divergence
+- [ ] Update feature store with multi-TF features
+
+### 3.5.2 Model Retraining
+- [ ] Retrain LSTM models with multi-TF features
+- [ ] Retrain Transformer models with multi-TF features
+- [ ] Validate improvement (should see ≥2% accuracy improvement)
+- [ ] Update model versions
+
+**Success Criteria**:
+- ✅ Multi-TF features integrated
+- ✅ Models retrained and validated
+- ✅ Accuracy improvement confirmed (≥2% vs single-TF baseline)
+- ✅ Model versions updated
+
+---
+
 ## Phase 4: Runtime + Telegram (Dry-Run) (0.5-1d) ⬆️ **MOVED UP**
 
 **Rationale**: Get dry-run signals early to observe formatting, thresholds, and rule enforcement during model iteration.
@@ -156,6 +392,11 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 - Testing FTMO rules enforcement without risk
 - Iterating on confidence thresholds before models are ready
 - Full integration happens in Phase 8 (Go-Live) once models pass all gates
+
+**VPS Setup**:
+- Deploy to VPS (see Infrastructure & Resource Requirements for specs)
+- Configure systemd service
+- Set up log rotation and monitoring
 
 ### 4.1 Runtime Loop
 - [ ] 2-minute scanning cycle
@@ -186,7 +427,18 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 - [ ] Nightly export to S3/local for analysis
 - [ ] `/healthz` endpoint for uptime checks
 
-### 4.4 MT5 Bridge Interface (Pre-Work)
+### 4.4 Kafka Integration (V2 - Optional)
+- [ ] **Kafka Topics**: `signals`, `trades`, `metrics`, `sentiment`
+- [ ] Producer for runtime events
+- [ ] Consumer for downstream processing (if needed)
+- [ ] **Kafka Lag Monitoring**:
+  - Consumer group lag metric (`kafka_lag_ms`)
+  - Alert if lag >1s for 5+ minutes
+  - `/healthz` includes Kafka broker status
+  - Structured logs include `kafka_lag_ms`
+- [ ] Self-hosted Kafka (Docker) - $0 cost
+
+### 4.5 MT5 Bridge Interface (Pre-Work)
 - [ ] **Create thin interface + mock NOW** (`apps/mt5_bridge/interface.py`)
   - Abstract interface with mock implementation for development
   - Prevents blocking if Python MT5 wheel has Linux issues
@@ -203,7 +455,7 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 
 ### 5.1 Enhanced Confidence Scoring
 - [ ] Ensemble method with **fallback weights**:
-  - **With RL**: 35% LSTM, 40% Transformer, 25% RL
+  - **With RL**: 30% LSTM, 35% Transformer, 25% RL, 10% Sentiment
   - **Without RL** (if Phase 9 skipped): 50% LSTM, 50% Transformer
   - Configurable via `ENSEMBLE_WEIGHTS` env var or config file
 - [ ] Conservative bias application (-5%)
@@ -211,6 +463,10 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 - [ ] **Tier hysteresis**: require 2 consecutive scans > threshold to upgrade tier
 - [ ] **Per-pattern sample floor**: cap influence from <N observations
 - [ ] Historical pattern adjustment
+- [ ] **FREE Boosters** (V2):
+  - Multi-timeframe alignment bonus
+  - Session timing boost (Tokyo/London/NY optimal times)
+  - Volatility regime adjustment
 
 ### 5.2 FTMO Rules Library
 - [ ] Daily loss limits (4.5% of account)
@@ -278,7 +534,39 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 
 ---
 
+## Phase 6.5: Silent Observation Period (3-5 days) 🔍 **MANDATORY**
+
+**Timing**: **After Phase 6 (Testing & Validation) completion, BEFORE Phase 7 (Micro-Lot Testing)**
+
+**⚠️ CRITICAL**: This period MUST happen after all tests pass and BEFORE micro-lot testing begins.
+
+**Purpose**: Monitor system stability and signal quality without risk before risking real capital.
+
+**Activities**:
+- [ ] Run runtime in dry-run mode for 3-5 days
+- [ ] Log all signals that would be generated
+- [ ] Monitor FTMO rule enforcement
+- [ ] Verify Telegram bot responsiveness
+- [ ] Review structured logs for errors
+- [ ] Validate execution cost calculations
+- [ ] Monitor system resource usage
+- [ ] **FTMO Account**: Ensure FTMO account is purchased and configured by end of this period
+
+**Success Criteria**:
+- ✅ Zero crashes or unexpected errors
+- ✅ All signals properly formatted
+- ✅ FTMO rules correctly enforced
+- ✅ System stable over observation period
+- ✅ Ready to proceed to micro-lot testing
+
+---
+
 ## Phase 7: Micro-Lot Testing & Calibration (2-3d)
+
+**Prerequisites**:
+- ✅ Silent observation period completed
+- ✅ FTMO challenge account purchased and configured
+- ✅ System validated and stable
 
 ### 7.1 Micro-Lot Live Testing
 - [ ] 0.01 lot positions ($1-$2 risk)
@@ -333,19 +621,39 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 
 ---
 
-## Phase 9: Optional - GAN & RL Enhancement (2-4d) ⚠️ **OPTIONAL**
+## Phase 9: Optional - V2 Enhancements (Sentiment, RL Agent) (2-4d) ⚠️ **OPTIONAL**
 
 **Only proceed if V1 is stable and you want additional edge. These can introduce instability.**
 
-### 9.1 GAN for Synthetic Data
-- [ ] Generator and discriminator networks
-- [ ] Synthetic data generation (capped at ≤10-20% of dataset)
-- [ ] **Always tag synthetic rows** for tracking
-- [ ] Quality checks and sanity validation
-- [ ] **Ablation tests**: run with 0% synth to prove it helps
-- [ ] Watch for artifacts and regime hallucinations
+### 9.1 Sentiment Integration (V2)
 
-### 9.2 RL Environment
+**Sentiment Source Decision**:
+Choose ONE:
+1. **Reddit (FREE, recommended)** ⭐
+   - Use `praw` library
+   - Subreddits: r/cryptocurrency, r/bitcoin
+   - 60 req/min (free tier)
+   - Cost: $0/month
+2. **Twitter ($100/mo)**
+   - Better influencer coverage, but paid
+   - Requires Twitter API v2 access
+   - Cost: ~$100/month
+3. **CryptoPanic (FREE)**
+   - Simple news headline feed
+   - Cost: $0/month
+
+**Recommendation**: Start with Reddit → add Twitter later if budget allows.
+
+**Implementation**:
+- [ ] Integrate sentiment API (Reddit/Twitter/CryptoPanic)
+- [ ] Store daily sentiment scores (rolling 1h mean)
+- [ ] Apply sentiment filter before ensemble weighting
+- [ ] Add sentiment score to structured logs
+- [ ] Update ensemble weights to include sentiment (10% weight if enabled)
+
+### 9.2 RL Agent (V2)
+
+### 9.2.1 RL Environment
 - [ ] Gymnasium environment for trading
 - [ ] Action space (buy, sell, hold)
 - [ ] Observation space with market features
@@ -353,11 +661,31 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 - [ ] PPO implementation with execution model
 - [ ] Gradient clipping and stability checks
 
-### 9.3 RL Validation Requirements
+### 9.2.2 RL Validation Requirements
 - [ ] **Require reward curve stability**
-- [ ] **Out-of-sample improvement over supervised ensemble**
+- [ ] **Out-of-sample improvement ≥2% over supervised ensemble**
 - [ ] If not meeting requirements, keep as research branch only
 - [ ] Do not integrate into runtime until validated
+
+### 9.2.3 RL Agent Validation & Fallback Strategy
+**If RL validates (≥2% OOS improvement)**:
+- ✅ Ensemble: 30% LSTM, 35% Transformer, 25% RL, 10% Sentiment
+- ✅ Proceed to production
+- ✅ Update model registry
+
+**If RL fails (<2% improvement)**:
+- ❌ Keep as research branch
+- ❌ Fall back to: 50% LSTM, 50% Transformer (or 30% LSTM, 35% Transformer, 35% Sentiment if sentiment enabled)
+- ❌ Document results in `models/rl_failure_report.md`
+- ✅ Continue operations with no delay
+
+### 9.3 GAN for Synthetic Data (Optional)
+- [ ] Generator and discriminator networks
+- [ ] Synthetic data generation (capped at ≤10-20% of dataset)
+- [ ] **Always tag synthetic rows** for tracking
+- [ ] Quality checks and sanity validation
+- [ ] **Ablation tests**: run with 0% synth to prove it helps
+- [ ] Watch for artifacts and regime hallucinations
 
 ### 9.4 Re-Validation
 - [ ] Re-run all validation tests
@@ -459,6 +787,26 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
   - Version new model (increment patch version: v1.0.0 → v1.0.1)
   - Deploy via Phase 8 process (integration + rollback tested)
 
+### V2 Integration Strategy
+**Decision Required**: Choose integration path
+
+**Option A (Recommended - Full Integration Pre-Go-Live)**:
+- P3.5: Multi-TF features added + retrain models
+- P4: Runtime (with Kafka if enabled)
+- P5: Confidence (with FREE boosters)
+- P6: Tests (validate V2 features)
+- P6.5: Silent Observation (monitor V2 features)
+- P7: Micro-lot (validate V2 impact)
+- P8: Go-Live (V2 features proven)
+- P9: RL agent (optional post-go-live enhancement)
+
+**Option B (Safer - V1 Go-Live First, Add V2 Later)**:
+- P4-P8: V1 only (no multi-TF, no sentiment, no Kafka)
+- P8: Go-Live V1
+- P9: Add V2 features incrementally after validation
+
+**Recommendation**: Go with **Option A** to reach a unified system faster, unless risk or resource limits justify Option B.
+
 ### Runtime/Model Integration
 - Phase 4: Runtime scaffolding with mock/stub models (early UX feedback)
 - Phase 8: Real validated models integrated post-micro-lot validation
@@ -483,15 +831,18 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 | P1: Infra | 0.5-1d | - |
 | P2: Data + Exec Model | 1-1.5d | - |
 | P3: LSTM/Transformer | 2.5-3d | ⚠️ Buffered (+1d) |
+| **P3.5: Multi-TF (V2)** | **2-3d** | 🔄 **Optional V2** |
 | P4: Runtime + Telegram | 0.5-1d | - |
 | P5: Confidence + Rules + DB | 0.5-1d | - |
 | P6: Tests/Validation | 1d | - |
+| P6.5: Silent Observation | 3-5d | 🔍 **Mandatory** |
 | P7: Micro-lot + Calibration | 2-3d | - |
 | P8: Go-Live | 1d | ⚠️ Extended (+0.5d) |
 | **Buffer (data/API friction)** | **+2d** | - |
-| **V1 Total** | **11.5-13.5d** | - |
-| P9: RL + GAN (optional) | 2-4d | - |
-| **With Optional** | **13.5-17.5d** | - |
+| **V1 Total** | **14.5-18.5d** | ⚠️ Updated (includes observation period) |
+| **V1 + V2 (Option A)** | **27.5-41.5d** | 🔄 Includes P3.5 and V2 features |
+| P9: Sentiment + RL (optional) | 2-4d | - |
+| **With All Optional** | **29.5-45.5d** | - |
 
 ---
 

@@ -7,16 +7,33 @@ from loguru import logger
 
 def train_lstm(coin: str, epochs: int):
     """Train LSTM model for a specific coin."""
-    logger.info(f"Training LSTM for {coin} for {epochs} epochs (stub).")
-    # TODO: Implement LSTM training
-    pass
+    from apps.trainer.train.train_lstm import train_lstm_for_coin
+
+    # Convert coin symbol to format expected (e.g., BTC -> BTC-USD)
+    symbol = coin if "-" in coin else f"{coin}-USD"
+
+    train_lstm_for_coin(
+        symbol=symbol,
+        interval="1m",
+        epochs=epochs,
+        batch_size=32,
+        sequence_length=60,
+        horizon=15,
+    )
 
 
 def train_transformer(epochs: int):
     """Train Transformer model."""
-    logger.info(f"Training Transformer for {epochs} epochs (stub).")
-    # TODO: Implement Transformer training
-    pass
+    from apps.trainer.train.train_transformer import train_transformer_multi_coin
+
+    train_transformer_multi_coin(
+        symbols=["BTC-USD", "ETH-USD"],
+        interval="1m",
+        epochs=epochs,
+        batch_size=16,
+        sequence_length=100,
+        horizon=15,
+    )
 
 
 def train_gan(epochs: int, max_ratio: float):
