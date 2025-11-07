@@ -95,3 +95,14 @@ target-version = ["py310"]
 profile = "black"
 line_length = 100
 
+[tool.bandit]
+exclude_dirs = [
+    "tests",
+    ".venv",
+    "venv",
+    "__pycache__"
+]
+skips = [
+    "B101",  # assert_used - we use asserts in tests
+]
+
