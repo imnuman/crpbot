@@ -1,6 +1,6 @@
-# Workflow Setup: Cursor + Claude Code + GitHub
+# Workflow Setup: Cursor + Claude Code + Amazon Q + GitHub
 
-This document explains how the development workflow is set up and how to keep everything synchronized between Cursor (local), Claude Code (remote AI), and GitHub.
+This document explains how the development workflow is set up and how to keep everything synchronized between Cursor (local), Claude Code (remote AI), Amazon Q (AWS AI), and GitHub.
 
 ## 🏗️ Architecture Overview
 
@@ -11,9 +11,19 @@ This document explains how the development workflow is set up and how to keep ev
 │                 │         │                  │         │                 │
 │  - Edit code    │  pull   │  - Source of     │  push   │  - Code review  │
 │  - Run tests    │◀────────│    truth         │────────▶│  - Fix issues   │
-│  - Commit       │         │  - CI/CD runs    │         │  - Run tests    │
+│  - Development  │         │  - CI/CD runs    │         │  - Refactoring  │
 └─────────────────┘         └──────────────────┘         └─────────────────┘
         │                            │                            │
+        │                            │                            │
+┌─────────────────┐                 │                            │
+│    Amazon Q     │                 │                            │
+│  (Your Local)   │                 │                            │
+│                 │  push           │                            │
+│  - AWS infra    │────────────────▶│                            │
+│  - Lambda       │         pull    │                            │
+│  - Deployment   │◀────────────────│                            │
+│  - Cloud svcs   │                 │                            │
+└─────────────────┘                 │                            │
         │                            ▼                            │
         │                   ┌─────────────────┐                  │
         │                   │   CI Pipeline   │                  │
@@ -24,6 +34,193 @@ This document explains how the development workflow is set up and how to keep ev
                             │  - Tests        │
                             └─────────────────┘
 ```
+
+## 🤖 AI Tool Selection Guide
+
+### When to Use Each Tool
+
+**🎯 Cursor (Local Development)**
+- General Python development and coding
+- Local testing and debugging
+- Quick edits and refactoring
+- Real-time code completion
+- File navigation and exploration
+
+**🔍 Claude Code (Remote AI - Advanced Analysis)**
+- Code reviews and issue detection
+- Complex refactoring across multiple files
+- Architecture analysis and improvements
+- Documentation generation
+- Test creation and validation
+- Breaking down large tasks into parts
+
+**☁️ Amazon Q (AWS Specialist)**
+- AWS infrastructure setup (EC2, S3, RDS, etc.)
+- Lambda function development and deployment
+- AWS SDK integration (boto3)
+- CloudFormation/CDK templates
+- AWS best practices and security
+- Cost optimization for AWS resources
+- Debugging AWS-specific errors
+- Setting up CI/CD with AWS services
+
+**💡 Best Practice**: Use the right tool for the job:
+- Start with **Cursor** for day-to-day coding
+- Bring in **Claude Code** for code quality and complex issues
+- Use **Amazon Q** for anything AWS-related
+
+### Example Task Routing
+
+| Task | Tool | Reason |
+|------|------|--------|
+| Fix bug in trading algorithm | Cursor or Claude Code | Core Python logic |
+| Add database models | Cursor or Claude Code | SQLAlchemy/Python |
+| Deploy to AWS Lambda | **Amazon Q** | AWS deployment |
+| Set up S3 bucket for data | **Amazon Q** | AWS infrastructure |
+| Code review entire repo | **Claude Code** | Complex analysis |
+| Add new trading feature | Cursor | Local development |
+| Optimize AWS costs | **Amazon Q** | AWS expertise |
+| Create CloudWatch alarms | **Amazon Q** | AWS monitoring |
+| Refactor constants | Claude Code | Multi-file changes |
+| Debug boto3 connection | **Amazon Q** | AWS SDK issue |
+
+## 🔀 Working with Multiple AI Assistants
+
+### Branch Strategy for Multiple AIs
+
+To avoid conflicts when multiple AI assistants work on the same repository:
+
+**1. Dedicated Branches per Tool**
+```bash
+# Claude Code uses auto-generated branches
+claude/review-repo-issues-<session-id>
+
+# Amazon Q can use feature branches for AWS work
+aws/lambda-deployment
+aws/s3-setup
+aws/cloudwatch-monitoring
+
+# Your development branches
+feature/your-feature-name
+fix/bug-description
+```
+
+**2. Never Have Two AIs on Same Branch**
+- ❌ BAD: Claude Code and Amazon Q both editing `main`
+- ✅ GOOD: Claude on `claude/review-*`, Amazon Q on `aws/lambda-*`, you on `feature/trading-bot`
+
+**3. Sync Strategy**
+```bash
+# Before starting with any tool, always fetch latest
+git fetch origin
+
+# Check what branches exist
+git branch -r
+
+# Pull your working branch
+git pull origin <your-branch>
+```
+
+### Coordination Workflow
+
+**Scenario: AWS Infrastructure + Code Changes**
+
+1. **Plan the work**: Decide what goes where
+   - Core trading logic → Cursor/Claude Code
+   - AWS deployment → Amazon Q
+   - Code review → Claude Code
+
+2. **Sequential approach** (safer):
+   ```bash
+   # Step 1: Amazon Q sets up AWS infrastructure
+   git checkout -b aws/lambda-setup
+   # ... Amazon Q creates Lambda, IAM roles, etc.
+   git push origin aws/lambda-setup
+
+   # Step 2: You/Cursor integrates AWS SDK
+   git checkout -b feature/aws-integration
+   git merge aws/lambda-setup
+   # ... Add boto3 code, environment variables
+   git push origin feature/aws-integration
+
+   # Step 3: Claude Code reviews integration
+   # Claude works on claude/review-aws-integration
+   # ... Reviews code, adds tests, fixes issues
+   ```
+
+3. **Parallel approach** (when tasks are independent):
+   ```bash
+   # Amazon Q: Sets up S3 buckets (aws/s3-setup)
+   # Claude Code: Refactors trading logic (claude/refactor-signals)
+   # You in Cursor: Adds new features (feature/telegram-bot)
+
+   # All three can work simultaneously, then merge in order
+   ```
+
+### Merge Order Best Practice
+
+When merging multiple AI contributions:
+
+```bash
+# 1. Merge infrastructure first (foundation)
+git checkout main
+git merge aws/lambda-setup
+
+# 2. Merge code that uses infrastructure
+git merge feature/aws-integration
+
+# 3. Merge code quality improvements last (cleanup)
+git merge claude/review-aws-integration
+
+# 4. Push merged main
+git push origin main
+```
+
+### Communication via Commit Messages
+
+Since AIs can't directly communicate, use commit messages:
+
+```bash
+# Amazon Q creates infrastructure
+git commit -m "aws: Create Lambda function for signal processing
+
+Lambda ARN: arn:aws:lambda:us-east-1:123456789:function:crpbot-signals
+Environment: production
+Memory: 512MB
+Timeout: 30s
+
+TODO: Integration code should use environment variable LAMBDA_ARN"
+
+# You see this and add integration
+git commit -m "feat: Integrate Lambda for signal processing
+
+Uses LAMBDA_ARN from environment (set by Amazon Q)
+Refs: aws/lambda-setup commit abc123"
+```
+
+### Avoiding Conflicts Checklist
+
+Before starting work with ANY tool:
+
+- [ ] `git fetch origin` - Get latest changes
+- [ ] `git status` - Ensure clean working tree
+- [ ] `git branch -r` - Check what branches exist
+- [ ] Choose a unique branch name for your work
+- [ ] Pull any branches you need to base your work on
+
+During work:
+
+- [ ] Commit frequently with clear messages
+- [ ] Push regularly to GitHub (every 30-60 min)
+- [ ] Check GitHub web UI to see what others are doing
+- [ ] Don't edit files another AI is actively working on
+
+After work:
+
+- [ ] Push final changes: `git push origin <branch>`
+- [ ] Document what was done in commit message
+- [ ] Create PR if ready for review/merge
+- [ ] Notify team (via docs/commits) about new branches
 
 ## 📋 Current Session Summary
 
@@ -330,25 +527,38 @@ git log HEAD..origin/<branch-name>
 3. **Write clear commit messages** following conventional commits
 4. **Run tests before pushing**: `uv run pytest tests/ -v`
 5. **Push frequently** (every 30-60 minutes when working)
+6. **Coordinate AI assistants** - ensure they work on different branches
 
 ### For Claude Code (Remote AI):
 - Claude automatically:
-  - Creates dedicated branches
+  - Creates dedicated branches (claude/*)
   - Commits with descriptive messages
   - Pushes immediately after changes
   - Runs tests before committing
   - You just need to fetch and review
+- Best for: Code review, refactoring, testing, documentation
 
-### For Both:
+### For Amazon Q (AWS Specialist):
+- Amazon Q should work on dedicated AWS branches (aws/*)
+- Use for all AWS infrastructure and deployment tasks
+- Document AWS resource ARNs and configs in commit messages
+- Test AWS changes in a dev environment first
+- Include AWS cost estimates in commit messages when relevant
+- Best for: Lambda, S3, RDS, CloudFormation, boto3, AWS SDK
+
+### For All Tools:
 - **GitHub is the source of truth** - always sync there
 - **Never force push** unless absolutely necessary
 - **Communicate via commit messages** - they're your async conversation
 - **Review changes before merging** to main/production branches
+- **Use dedicated branches** - one branch per tool/feature
+- **Tag AWS-related commits** with `aws:` prefix for easy filtering
 
 ---
 
 ## 🚀 Quick Reference Commands
 
+### General Git Commands
 ```bash
 # Daily startup
 git fetch origin && git pull origin <branch>
@@ -359,8 +569,14 @@ git status
 # See recent commits
 git log --oneline -10
 
-# See branches
+# See branches (including remote)
 git branch -a
+
+# See only AWS branches
+git branch -r | grep aws/
+
+# See only Claude branches
+git branch -r | grep claude/
 
 # Switch branch
 git checkout <branch-name>
@@ -377,9 +593,6 @@ git commit -m "type: message"
 # Push
 git push origin <branch-name>
 
-# Pull Claude's latest work
-git fetch origin && git checkout claude/review-repo-issues-011CUshBtYfVHjA4Q6nBNaih
-
 # Run tests
 uv run pytest tests/ -v
 
@@ -388,6 +601,68 @@ uv run ruff check .
 uv run ruff format .
 uv run mypy .
 uv run bandit -r . -c pyproject.toml
+```
+
+### Working with Claude Code
+```bash
+# Pull Claude's latest work
+git fetch origin
+git checkout claude/review-repo-issues-011CUshBtYfVHjA4Q6nBNaih
+
+# Review what Claude changed
+git log --oneline -5
+git diff main
+
+# Merge Claude's changes to your branch
+git checkout your-branch
+git merge claude/review-repo-issues-011CUshBtYfVHjA4Q6nBNaih
+```
+
+### Working with Amazon Q
+```bash
+# Start AWS infrastructure work
+git checkout -b aws/lambda-deployment
+
+# After Amazon Q makes changes in VS Code, review them
+git status
+git diff
+
+# Commit AWS changes (Amazon Q may do this automatically)
+git add .
+git commit -m "aws: Setup Lambda function for signal processing
+
+Lambda ARN: arn:aws:lambda:region:account:function:name
+Runtime: Python 3.11
+Memory: 512MB"
+
+# Push AWS branch
+git push origin aws/lambda-deployment
+
+# Pull AWS changes from another machine
+git fetch origin
+git checkout aws/lambda-deployment
+
+# Merge AWS infrastructure to main (after testing)
+git checkout main
+git merge aws/lambda-deployment
+git push origin main
+```
+
+### Multi-AI Workflow
+```bash
+# See all active work
+git fetch origin
+git branch -r | grep -E "(aws/|claude/|feature/)"
+
+# Pull changes from all AI branches
+git fetch origin
+
+# Merge in order (infrastructure → features → cleanup)
+git checkout main
+git merge aws/s3-setup          # Infrastructure first
+git merge feature/data-pipeline  # Features that use infrastructure
+git merge claude/code-review     # Code quality improvements last
+git push origin main
 ```
 
 ---
@@ -471,6 +746,7 @@ Use this before ending your work session:
 
 ---
 
-**Last Updated**: 2025-11-07
-**Session**: Claude Code review session for repository issue fixes
+**Last Updated**: 2025-11-08
+**Session**: Multi-AI workflow integration (Cursor + Claude Code + Amazon Q)
 **Branch**: `claude/review-repo-issues-011CUshBtYfVHjA4Q6nBNaih`
+**Status**: ✅ Amazon Q integration documented and ready for AWS tasks
