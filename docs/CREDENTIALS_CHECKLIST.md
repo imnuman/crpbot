@@ -25,27 +25,30 @@ BINANCE_API_SECRET=your_secret_key_here
 ---
 
 ### 2. FTMO Account Credentials ⚠️ **CRITICAL**
-**Purpose**: Measure real spreads/slippage for execution model (Phase 2.3)
+**Purpose**: Measure real spreads/slippage for execution model (Phase 2.3) and enable micro-lot trading (Phase 7).
+
+**Setup Guide**: See [`docs/FTMO_SETUP.md`](../docs/FTMO_SETUP.md) for a full walkthrough (demo & challenge).
 
 **Where to get**:
-- You need an FTMO demo account (or live account)
-- Get credentials from your FTMO dashboard
+- Create an FTMO **Demo** first (free) for execution metrics
+- Purchase the FTMO **Challenge** before Phase 7
+- Retrieve credentials from the FTMO client dashboard
 
 **What you need**:
 ```
 FTMO_LOGIN=your_ftmo_login
 FTMO_PASS=your_ftmo_password
-FTMO_SERVER=FTMO-Demo-Server  # or FTMO-Server for live
+FTMO_SERVER=FTMO-Demo  # or FTMO-Server for live/challenge
 ```
 
-**Important Notes**:
-- **For execution model measurement**: Use **read-only credentials** if possible
-- You'll use this to measure spreads/slippage per pair and session
-- The nightly cron job (Phase 2.3) will use these credentials
-- If you don't have FTMO yet, you can:
-  - Start with Binance data only (Phase 2.1-2.2)
-  - Use mock spreads initially
-  - Add FTMO measurement later (Phase 2.3)
+**Verification Steps**:
+- Run `scripts/nightly_exec_metrics.py --once` after updating `.env`
+- Confirm `data/execution_metrics/*.json` updates with fresh measurements
+
+**Notes**:
+- Protect these credentials (FTMO does not offer read-only logins)
+- Nightly cron (`infra/scripts/nightly_exec_metrics.sh`) relies on the same `.env`
+- Until credentials are ready you may use mock spreads, but Phase 6.5+ requires real data
 
 ---
 
@@ -84,8 +87,8 @@ FTMO_SERVER=FTMO-Demo-Server  # or FTMO-Server for live
 
 **What you need** (can add later):
 ```
-TELEGRAM_TOKEN=your_bot_token_here
-TELEGRAM_CHAT_ID=your_chat_id_here
+TELEGRAM_TOKEN=8425324139:AAGXmo2h3_4xTbkMW-TiASELOlWtMryN5ho
+TELEGRAM_CHAT_ID=718556632
 ```
 
 **Note**: Not needed until Phase 4 (Runtime), but good to set up now if you have time.

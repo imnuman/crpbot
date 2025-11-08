@@ -508,29 +508,29 @@ This plan prioritizes a shippable V1 using LSTM/Transformer + confidence calibra
 ## Phase 6: Testing & Validation (1d)
 
 ### 6.1 Unit Tests
-- [ ] Test all core functions
-- [ ] Mock external dependencies
-- [ ] Test FTMO rules logic
-- [ ] Test confidence calibration
+- [x] Test all core functions
+- [x] Mock external dependencies
+- [x] Test FTMO rules logic
+- [x] Test confidence calibration
 
 ### 6.2 Smoke Tests
-- [ ] 5-minute backtest simulation (seeded for determinism)
-- [ ] Fast validation in CI
+- [x] 5-minute backtest simulation (seeded for determinism)
+- [x] Fast validation in CI
 
 ### 6.3 Integration Tests
-- [ ] End-to-end runtime simulation
-- [ ] Model loading and inference tests
-- [ ] Telegram bot command tests
+- [x] End-to-end runtime simulation
+- [x] Model loading and inference tests
+- [x] Telegram bot command tests
 
 ### 6.4 Critical Tests
-- [ ] **Leakage test**: train on T, assert any feature derived from >T is absent
-- [ ] **FTMO guardrail test**: synthetic losses push over limits → assert signal blocked
-- [ ] **Calibration gate**: predicted vs actual tier win rate MAE ≤5% on validation
+- [x] **Leakage test**: train on T, assert any feature derived from >T is absent
+- [x] **FTMO guardrail test**: synthetic losses push over limits → assert signal blocked
+- [x] **Calibration gate**: predicted vs actual tier win rate MAE ≤5% on validation
 
 ### 6.5 Security & Compliance
-- [ ] Secrets management: `.env` locally, GitHub Environments for Actions
-- [ ] Never print tokens in logs
-- [ ] FTMO TOS compliance check (no automation violations)
+- [x] Secrets management: `.env` locally, GitHub Environments for Actions
+- [x] Never print tokens in logs
+- [x] FTMO TOS compliance check (no automation violations)
 
 ---
 
