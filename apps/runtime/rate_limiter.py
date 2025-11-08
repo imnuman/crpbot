@@ -29,10 +29,10 @@ class RateLimiter:
         """
         self.max_signals_per_hour = max_signals_per_hour
 
-if max_signals_per_hour_high is None and max_high_tier_per_hour is not None:
-    max_signals_per_hour_high = max_high_tier_per_hour
-if max_signals_per_hour_high is None:
-    max_signals_per_hour_high = 5
+        if max_signals_per_hour_high is None and max_high_tier_per_hour is not None:
+            max_signals_per_hour_high = max_high_tier_per_hour
+        if max_signals_per_hour_high is None:
+            max_signals_per_hour_high = 5
 
         self.max_signals_per_hour_high = max_signals_per_hour_high
         self.backoff_losses = backoff_losses
