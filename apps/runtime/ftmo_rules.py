@@ -138,3 +138,41 @@ def calculate_position_size(
     )
 
     return position_size
+
+
+def check_daily_loss_limit(balance: float, daily_pnl: float, daily_loss_limit_pct: float = 0.05) -> bool:
+    """Function wrapper to check daily loss limit using scalar inputs."""
+    limit = balance * daily_loss_limit_pct
+    if daily_pnl < -limit:
+        logger.warning(
+            "Daily loss limit exceeded: %.2f < -%.2f", daily_pnl, limit
+        )
+        return False
+    return True
+
+
+def check_total_loss_limit(
+    initial_balance: float, current_balance: float, total_loss_limit_pct: float = 0.10
+) -> bool:
+    """Function wrapper to check total loss limit."""
+    total_loss = current_balance - initial_balance
+    limit = initial_balance * total_loss_limit_pct
+    if total_loss < -limit:
+        logger.warning(
+            "Total loss limit exceeded: %.2f < -%.2f", total_loss, limit
+        )
+        return False
+    return True
+
+
+def check_position_size(
+    balance: float, position_size: float, max_risk_pct: float = 0.01
+) -> bool:
+    """Function wrapper for position sizing checks."""
+    max_position = balance * max_risk_pct
+    if position_size > max_position:
+        logger.warning(
+            "Position size too large: %.2f > %.2f", position_size, max_position
+        )
+        return False
+    return True
