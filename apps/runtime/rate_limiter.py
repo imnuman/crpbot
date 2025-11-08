@@ -11,7 +11,8 @@ class RateLimiter:
     def __init__(
         self,
         max_signals_per_hour: int = 10,
-        max_signals_per_hour_high: int = 5,
+        max_signals_per_hour_high: int | None = 5,
+        max_high_tier_per_hour: int | None = None,
         backoff_losses: int = 2,
         backoff_window_minutes: int = 60,
         backoff_risk_reduction: float = 0.5,
@@ -27,6 +28,12 @@ class RateLimiter:
             backoff_risk_reduction: Risk reduction multiplier during backoff
         """
         self.max_signals_per_hour = max_signals_per_hour
+
+if max_signals_per_hour_high is None and max_high_tier_per_hour is not None:
+    max_signals_per_hour_high = max_high_tier_per_hour
+if max_signals_per_hour_high is None:
+    max_signals_per_hour_high = 5
+
         self.max_signals_per_hour_high = max_signals_per_hour_high
         self.backoff_losses = backoff_losses
         self.backoff_window_minutes = backoff_window_minutes
