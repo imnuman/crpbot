@@ -103,6 +103,14 @@ class RateLimiter:
 
         return True, ""
 
+
+
+    def can_emit_signal(self, tier: str) -> bool:
+        """Compatibility wrapper used by the runtime."""
+        can_emit, reason = self.can_emit(tier)
+        if not can_emit and reason:
+            logger.warning(reason)
+        return can_emit
     def record_signal(self, tier: str) -> None:
         """
         Record a signal emission.
