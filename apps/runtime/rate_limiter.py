@@ -1,161 +1,101 @@
-"""Rate limiting for signal emission."""
-from collections import defaultdict
+"""Rate limiting for signal generation."""
+from collections import deque
 from datetime import datetime, timedelta
-from typing import Any
 
 from loguru import logger
 
 
 class RateLimiter:
-    """Rate limiter for signals per hour per tier."""
+    """Rate limiter for controlling signal frequency."""
 
     def __init__(
         self,
         max_signals_per_hour: int = 10,
-        max_signals_per_hour_high: int = 5,
-        backoff_losses: int = 2,
-        backoff_window_minutes: int = 60,
-        backoff_risk_reduction: float = 0.5,
+        max_high_tier_per_hour: int = 5,
     ):
         """
         Initialize rate limiter.
 
         Args:
-            max_signals_per_hour: Max total signals per hour
-            max_signals_per_hour_high: Max HIGH tier signals per hour
-            backoff_losses: Number of losses to trigger backoff
-            backoff_window_minutes: Time window for backoff trigger
-            backoff_risk_reduction: Risk reduction multiplier during backoff
+            max_signals_per_hour: Maximum total signals per hour
+            max_high_tier_per_hour: Maximum high-tier signals per hour
         """
         self.max_signals_per_hour = max_signals_per_hour
-        self.max_signals_per_hour_high = max_signals_per_hour_high
-        self.backoff_losses = backoff_losses
-        self.backoff_window_minutes = backoff_window_minutes
-        self.backoff_risk_reduction = backoff_risk_reduction
+        self.max_high_tier_per_hour = max_high_tier_per_hour
 
-        # Track signals by hour
-        self.signal_history: list[datetime] = []
-        self.signal_history_high: list[datetime] = []
+        # Track signal timestamps (last hour)
+        self.all_signals: deque = deque()
+        self.high_tier_signals: deque = deque()
 
-        # Track losses for backoff
-        self.loss_history: list[datetime] = []
-        self.backoff_active = False
-        self.backoff_until: datetime | None = None
+    def _cleanup_old_signals(self) -> None:
+        """Remove signals older than 1 hour."""
+        cutoff = datetime.now() - timedelta(hours=1)
 
-        logger.info(
-            f"Rate limiter initialized: max={max_signals_per_hour}/hour, "
-            f"max_high={max_signals_per_hour_high}/hour"
-        )
+        while self.all_signals and self.all_signals[0] < cutoff:
+            self.all_signals.popleft()
 
-    def _clean_old_signals(self, history: list[datetime], window_hours: int = 1) -> None:
-        """Remove signals older than window."""
-        cutoff = datetime.utcnow() - timedelta(hours=window_hours)
-        history[:] = [s for s in history if s > cutoff]
+        while self.high_tier_signals and self.high_tier_signals[0] < cutoff:
+            self.high_tier_signals.popleft()
 
-    def _clean_old_losses(self) -> None:
-        """Remove losses older than backoff window."""
-        cutoff = datetime.utcnow() - timedelta(minutes=self.backoff_window_minutes)
-        self.loss_history[:] = [l for l in self.loss_history if l > cutoff]
-
-    def can_emit(self, tier: str) -> tuple[bool, str]:
+    def can_emit_signal(self, tier: str) -> bool:
         """
-        Check if signal can be emitted.
+        Check if a signal can be emitted.
 
         Args:
             tier: Signal tier ('high', 'medium', 'low')
 
         Returns:
-            Tuple of (can_emit, reason)
+            True if signal can be emitted, False if rate limit exceeded
         """
-        now = datetime.utcnow()
+        self._cleanup_old_signals()
 
-        # Check backoff status
-        if self.backoff_active and self.backoff_until:
-            if now < self.backoff_until:
-                # Check if backoff period ended
-                self._clean_old_losses()
-                if len(self.loss_history) < self.backoff_losses:
-                    self.backoff_active = False
-                    self.backoff_until = None
-                    logger.info("Backoff period ended")
-                else:
-                    remaining = (self.backoff_until - now).total_seconds() / 60
-                    return False, f"Backoff active (remaining: {remaining:.1f} minutes)"
-
-        # Clean old signals
-        self._clean_old_signals(self.signal_history)
-        self._clean_old_signals(self.signal_history_high)
-
-        # Check total rate limit
-        if len(self.signal_history) >= self.max_signals_per_hour:
-            return False, f"Rate limit exceeded: {len(self.signal_history)}/{self.max_signals_per_hour} signals/hour"
-
-        # Check high tier rate limit
-        if tier == "high" and len(self.signal_history_high) >= self.max_signals_per_hour_high:
-            return (
-                False,
-                f"High tier rate limit exceeded: {len(self.signal_history_high)}/{self.max_signals_per_hour_high} signals/hour",
+        # Check total signal limit
+        if len(self.all_signals) >= self.max_signals_per_hour:
+            logger.warning(
+                f"❌ Total signal rate limit reached: "
+                f"{len(self.all_signals)}/{self.max_signals_per_hour} signals in last hour"
             )
+            return False
 
-        return True, ""
+        # Check high-tier signal limit
+        if tier == "high" and len(self.high_tier_signals) >= self.max_high_tier_per_hour:
+            logger.warning(
+                f"❌ High-tier signal rate limit reached: "
+                f"{len(self.high_tier_signals)}/{self.max_high_tier_per_hour} signals in last hour"
+            )
+            return False
+
+        return True
 
     def record_signal(self, tier: str) -> None:
         """
-        Record a signal emission.
+        Record that a signal was emitted.
 
         Args:
-            tier: Signal tier
+            tier: Signal tier ('high', 'medium', 'low')
         """
-        now = datetime.utcnow()
-        self.signal_history.append(now)
+        now = datetime.now()
+        self.all_signals.append(now)
 
         if tier == "high":
-            self.signal_history_high.append(now)
+            self.high_tier_signals.append(now)
 
-        logger.debug(f"Recorded {tier} signal (total: {len(self.signal_history)}, high: {len(self.signal_history_high)})")
+        logger.info(
+            f"📊 Signals in last hour: {len(self.all_signals)} total, "
+            f"{len(self.high_tier_signals)} high-tier"
+        )
 
-    def record_loss(self) -> None:
-        """Record a loss (for backoff logic)."""
-        now = datetime.utcnow()
-        self.loss_history.append(now)
-
-        # Clean old losses
-        self._clean_old_losses()
-
-        # Check if backoff should be triggered
-        if len(self.loss_history) >= self.backoff_losses and not self.backoff_active:
-            self.backoff_active = True
-            # Backoff for the remainder of the session (until end of backoff window)
-            self.backoff_until = now + timedelta(minutes=self.backoff_window_minutes)
-            logger.warning(
-                f"Backoff triggered: {len(self.loss_history)} losses in {self.backoff_window_minutes} minutes. "
-                f"Backoff until {self.backoff_until}"
-            )
-
-    def get_backoff_multiplier(self) -> float:
+    def get_stats(self) -> dict[str, int]:
         """
-        Get risk reduction multiplier during backoff.
+        Get current rate limiter statistics.
 
         Returns:
-            Multiplier (1.0 if no backoff, backoff_risk_reduction if backoff active)
+            Dictionary with signal counts
         """
-        if self.backoff_active:
-            return self.backoff_risk_reduction
-        return 1.0
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get rate limiter statistics."""
-        self._clean_old_signals(self.signal_history)
-        self._clean_old_signals(self.signal_history_high)
-        self._clean_old_losses()
-
+        self._cleanup_old_signals()
         return {
-            "signals_last_hour": len(self.signal_history),
-            "signals_high_last_hour": len(self.signal_history_high),
-            "max_signals_per_hour": self.max_signals_per_hour,
-            "max_signals_high_per_hour": self.max_signals_per_hour_high,
-            "backoff_active": self.backoff_active,
-            "backoff_until": self.backoff_until.isoformat() if self.backoff_until else None,
-            "losses_in_window": len(self.loss_history),
+            "total_signals_last_hour": len(self.all_signals),
+            "high_tier_signals_last_hour": len(self.high_tier_signals),
+            "remaining_total": self.max_signals_per_hour - len(self.all_signals),
+            "remaining_high_tier": self.max_high_tier_per_hour - len(self.high_tier_signals),
         }
-

@@ -10,6 +10,21 @@ import torch
 from loguru import logger
 
 from apps.trainer.features import get_trading_session
+from libs.constants import (
+    BASIS_POINTS_CONVERSION,
+    EPSILON_DIV_BY_ZERO,
+    EXPECTED_WIN_RATE_DEFAULT,
+    EXPECTED_WIN_RATE_HIGH,
+    EXPECTED_WIN_RATE_LOW,
+    EXPECTED_WIN_RATE_MEDIUM,
+    INITIAL_BALANCE,
+    LATENCY_BUDGET_MS,
+    LATENCY_PENALTY_MULTIPLIER,
+    P90_PERCENTILE,
+    RISK_PER_TRADE,
+    RISK_REWARD_RATIO,
+    TRADING_DAYS_PER_YEAR,
+)
 from libs.rl_env.execution_model import ExecutionModel
 
 
@@ -109,10 +124,10 @@ class BacktestEngine:
     def __init__(
         self,
         execution_model: ExecutionModel | None = None,
-        latency_budget_ms: float = 500.0,
-        initial_balance: float = 10000.0,
-        risk_per_trade: float = 0.01,  # 1% risk per trade
-        rr_ratio: float = 2.0,  # Risk:Reward ratio
+        latency_budget_ms: float = LATENCY_BUDGET_MS,
+        initial_balance: float = INITIAL_BALANCE,
+        risk_per_trade: float = RISK_PER_TRADE,
+        rr_ratio: float = RISK_REWARD_RATIO,
     ):
         """
         Initialize backtest engine.
@@ -176,7 +191,7 @@ class BacktestEngine:
         total_cost_bps = spread_bps + slippage_bps
 
         # Calculate actual entry price with execution costs
-        price_impact = entry_price * (total_cost_bps / 10000)
+        price_impact = entry_price * (total_cost_bps / BASIS_POINTS_CONVERSION)
         if direction == "long":
             actual_entry = entry_price + price_impact
         else:  # short
@@ -306,7 +321,11 @@ class BacktestEngine:
 
         # Sharpe ratio (simplified)
         returns = [t.pnl / self.initial_balance for t in closed_trades]
-        sharpe_ratio = np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252) if len(returns) > 1 else 0.0
+        sharpe_ratio = (
+            np.mean(returns) / (np.std(returns) + EPSILON_DIV_BY_ZERO) * np.sqrt(TRADING_DAYS_PER_YEAR)
+            if len(returns) > 1
+            else 0.0
+        )
 
         # Per-tier metrics
         tier_metrics = {}
@@ -346,9 +365,13 @@ class BacktestEngine:
 
         # Calibration error (tier MAE)
         tier_calibration_errors = []
+        expected_win_rates = {
+            "high": EXPECTED_WIN_RATE_HIGH,
+            "medium": EXPECTED_WIN_RATE_MEDIUM,
+            "low": EXPECTED_WIN_RATE_LOW,
+        }
         for tier, metrics in tier_metrics.items():
-            # Expected win rate from tier (simplified: high=0.75, medium=0.65, low=0.55)
-            expected_win_rate = {"high": 0.75, "medium": 0.65, "low": 0.55}.get(tier, 0.60)
+            expected_win_rate = expected_win_rates.get(tier, EXPECTED_WIN_RATE_DEFAULT)
             actual_win_rate = metrics["win_rate"]
             tier_calibration_errors.append(abs(expected_win_rate - actual_win_rate))
         calibration_error = np.mean(tier_calibration_errors) if tier_calibration_errors else 0.0
@@ -356,11 +379,12 @@ class BacktestEngine:
         # Latency metrics
         latencies = [t.latency_ms for t in closed_trades]
         avg_latency = np.mean(latencies) if latencies else 0.0
-        p90_latency = np.percentile(latencies, 90) if latencies else 0.0
+        p90_latency = np.percentile(latencies, P90_PERCENTILE) if latencies else 0.0
 
         # Latency-penalized PnL
         latency_penalized_pnl = sum(
-            t.pnl * (1.0 if t.latency_ms <= self.latency_budget_ms else 0.9) for t in closed_trades
+            t.pnl * (1.0 if t.latency_ms <= self.latency_budget_ms else LATENCY_PENALTY_MULTIPLIER)
+            for t in closed_trades
         )
 
         # Hit rate by session

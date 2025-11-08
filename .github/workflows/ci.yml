@@ -34,10 +34,10 @@ jobs:
         run: uv run ruff format --check .
       
       - name: Type check with mypy
-        run: uv run mypy . || true  # Allow failures for now
-      
+        run: uv run mypy .
+
       - name: Security scan with bandit
-        run: uv run bandit -q -r . -c pyproject.toml || true
+        run: uv run bandit -q -r . -c pyproject.toml
       
       - name: Run unit tests
         run: uv run pytest tests/ -k "not smoke" -v
