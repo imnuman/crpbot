@@ -57,6 +57,11 @@ logs/
 runs/
 *.csv
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
