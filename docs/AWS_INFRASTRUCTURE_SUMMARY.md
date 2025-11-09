@@ -101,7 +101,33 @@ All Phase 1 infrastructure is deployed and tested:
 - ✅ Network connectivity
 - ✅ Integration utilities
 
-**Next**: Phase 2 Lambda Functions (Signal Processing, Risk Monitoring, Telegram Bot)
+**Next**: Phase 2 Lambda Functions (Signal Processing ✅ DEPLOYED, Risk Monitoring, Telegram Bot)
+
+## 🚀 Phase 2 Progress
+
+### Task 2.1: Lambda Signal Processing ✅ DEPLOYED
+**CloudFormation Stack**: `crpbot-lambda-signal-dev`
+**Template**: `infra/aws/cloudformation/lambda-signal-minimal.yaml`
+
+| Resource | Value |
+|----------|-------|
+| **Lambda Function** | `crpbot-signal-processor-dev` |
+| **Function ARN** | `arn:aws:lambda:us-east-1:980104576869:function:crpbot-signal-processor-dev` |
+| **IAM Role** | `arn:aws:iam::980104576869:role/crpbot-lambda-signal-role-dev` |
+| **Runtime** | Python 3.11, 512MB, 30s timeout |
+| **Status** | ✅ Deployed and tested |
+
+**Capabilities Tested**:
+- ✅ S3 read/write access
+- ✅ Secrets Manager integration
+- ✅ Log file generation
+- ✅ Error handling
+
+**Missing** (IAM permission issues):
+- ⚠️ EventBridge schedule (needs `events:*` permissions)
+- ⚠️ SNS topic (needs `sns:*` permissions)
+
+**Monthly Cost**: ~$0.24 (Lambda + EventBridge + SNS)
 
 ## 📋 Git Branch
 

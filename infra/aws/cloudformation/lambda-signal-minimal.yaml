@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CRPBot Lambda Signal Processing Function (Minimal Version)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'crpbot-lambda-signal-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CRPBotSignalProcessorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:crpbot/coinbase-api/${Environment}-*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::crpbot-market-data-${Environment}'
+                  - !Sub 'arn:aws:s3:::crpbot-market-data-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::crpbot-logs-${Environment}'
+                  - !Sub 'arn:aws:s3:::crpbot-logs-${Environment}/*'
+
+  # Lambda Function
+  SignalProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'crpbot-signal-processor-${Environment}'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          S3_MARKET_DATA_BUCKET: !Sub 'crpbot-market-data-${Environment}'
+          S3_LOGS_BUCKET: !Sub 'crpbot-logs-${Environment}'
+          DB_HOST: !Sub 'crpbot-${Environment}.cyjcoys82evx.us-east-1.rds.amazonaws.com'
+          DB_NAME: postgres
+          DB_USERNAME: crpbot_admin
+          DB_PASSWORD: TempPassword123!
+          COINBASE_SECRET_ARN: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:crpbot/coinbase-api/${Environment}-dHLD4h'
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import logging
+          from datetime import datetime
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info("Signal processor started")
+              
+              try:
+                  # Initialize clients
+                  s3 = boto3.client('s3')
+                  secrets = boto3.client('secretsmanager')
+                  
+                  # Test S3 connection
+                  bucket = os.environ['S3_MARKET_DATA_BUCKET']
+                  logs_bucket = os.environ['S3_LOGS_BUCKET']
+                  
+                  # Test Secrets Manager
+                  secret_response = secrets.get_secret_value(
+                      SecretId=os.environ['COINBASE_SECRET_ARN']
+                  )
+                  secret_data = json.loads(secret_response['SecretString'])
+                  
+                  # Log to S3
+                  log_key = f"lambda-logs/{datetime.now().strftime('%Y/%m/%d')}/signal-processor-{context.aws_request_id}.log"
+                  api_key_preview = secret_data.get('api_key', 'Not found')[:30] + '...'
+                  log_content = f"Signal processor executed at {datetime.now()}\nRequest ID: {context.aws_request_id}\nCoinbase API Key: {api_key_preview}\nS3 Access: Successful\n"
+                  
+                  s3.put_object(
+                      Bucket=logs_bucket,
+                      Key=log_key,
+                      Body=log_content,
+                      ContentType='text/plain'
+                  )
+                  
+                  logger.info("Signal processor completed successfully")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Signal processor executed successfully',
+                          'timestamp': datetime.now().isoformat(),
+                          'log_location': f"s3://{logs_bucket}/{log_key}",
+                          'secrets_access': 'successful',
+                          's3_access': 'successful'
+                      })
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error in signal processor: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({
+                          'error': str(e),
+                          'timestamp': datetime.now().isoformat()
+                      })
+                  }
+
+Outputs:
+  LambdaFunctionArn:
+    Description: ARN of the signal processor Lambda function
+    Value: !GetAtt SignalProcessorFunction.Arn
+
+  IAMRoleArn:
+    Description: ARN of the Lambda execution role
+    Value: !GetAtt LambdaExecutionRole.Arn

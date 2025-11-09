@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CRPBot Lambda Signal Processing Function'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # SNS Topic for High-Confidence Signals
+  SignalsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'crpbot-signals-${Environment}'
+      DisplayName: 'CRPBot Trading Signals'
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'crpbot-lambda-signal-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CRPBotSignalProcessorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:crpbot/coinbase-api/${Environment}-*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::crpbot-market-data-${Environment}'
+                  - !Sub 'arn:aws:s3:::crpbot-market-data-${Environment}/*'
+                  - !Sub 'arn:aws:s3:::crpbot-logs-${Environment}'
+                  - !Sub 'arn:aws:s3:::crpbot-logs-${Environment}/*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref SignalsTopic
+
+  # Lambda Function
+  SignalProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'crpbot-signal-processor-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          S3_MARKET_DATA_BUCKET: !Sub 'crpbot-market-data-${Environment}'
+          S3_LOGS_BUCKET: !Sub 'crpbot-logs-${Environment}'
+          DB_HOST: !Sub 'crpbot-${Environment}.cyjcoys82evx.us-east-1.rds.amazonaws.com'
+          DB_NAME: postgres
+          DB_USERNAME: crpbot_admin
+          DB_PASSWORD: TempPassword123!
+          COINBASE_SECRET_ARN: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:crpbot/coinbase-api/${Environment}-dHLD4h'
+          SNS_SIGNALS_TOPIC: !Ref SignalsTopic
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import logging
+          from datetime import datetime
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info("Signal processor started")
+              
+              try:
+                  # Initialize clients
+                  s3 = boto3.client('s3')
+                  sns = boto3.client('sns')
+                  secrets = boto3.client('secretsmanager')
+                  
+                  # Test connections
+                  bucket = os.environ['S3_MARKET_DATA_BUCKET']
+                  topic_arn = os.environ['SNS_SIGNALS_TOPIC']
+                  
+                  # Log to S3
+                  log_key = f"lambda-logs/{datetime.now().strftime('%Y/%m/%d')}/signal-processor-{context.aws_request_id}.log"
+                  log_content = f"Signal processor executed at {datetime.now()}\nRequest ID: {context.aws_request_id}\n"
+                  
+                  s3.put_object(
+                      Bucket=os.environ['S3_LOGS_BUCKET'],
+                      Key=log_key,
+                      Body=log_content,
+                      ContentType='text/plain'
+                  )
+                  
+                  # Test SNS publish
+                  test_signal = {
+                      'timestamp': datetime.now().isoformat(),
+                      'symbol': 'BTC-USD',
+                      'signal': 'TEST',
+                      'confidence': 0.85,
+                      'source': 'lambda-test'
+                  }
+                  
+                  sns.publish(
+                      TopicArn=topic_arn,
+                      Message=json.dumps(test_signal),
+                      Subject='CRPBot Test Signal'
+                  )
+                  
+                  logger.info("Signal processor completed successfully")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Signal processor executed successfully',
+                          'timestamp': datetime.now().isoformat(),
+                          'log_location': f"s3://{os.environ['S3_LOGS_BUCKET']}/{log_key}"
+                      })
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error in signal processor: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({
+                          'error': str(e),
+                          'timestamp': datetime.now().isoformat()
+                      })
+                  }
+
+  # EventBridge Rule for 5-minute schedule
+  SignalProcessorSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'crpbot-signal-schedule-${Environment}'
+      Description: 'Trigger signal processor every 5 minutes'
+      ScheduleExpression: 'rate(5 minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SignalProcessorFunction.Arn
+          Id: 'SignalProcessorTarget'
+
+  # Permission for EventBridge to invoke Lambda
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SignalProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SignalProcessorSchedule.Arn
+
+Outputs:
+  LambdaFunctionArn:
+    Description: ARN of the signal processor Lambda function
+    Value: !GetAtt SignalProcessorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
+
+  SNSTopicArn:
+    Description: ARN of the signals SNS topic
+    Value: !Ref SignalsTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SNSTopicArn'
+
+  EventBridgeRuleArn:
+    Description: ARN of the EventBridge schedule rule
+    Value: !GetAtt SignalProcessorSchedule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EventBridgeRuleArn'
+
+  IAMRoleArn:
+    Description: ARN of the Lambda execution role
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-IAMRoleArn'
