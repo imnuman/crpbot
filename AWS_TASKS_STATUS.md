@@ -1,6 +1,6 @@
 # AWS Tasks Status Report
 
-## ✅ Completed Tasks
+## ✅ Phase 1 – Core Infrastructure
 
 ### Task 1.1: S3 Bucket Setup - COMPLETE
 **Status**: ✅ Successfully deployed and tested
@@ -18,8 +18,6 @@
 
 **CloudFormation Stack**: `crpbot-s3-dev`
 **Template**: `infra/aws/cloudformation/s3-buckets-simple.yaml`
-
-## ✅ Phase 1 – Foundation
 
 ### Task 1.2: RDS PostgreSQL Database - COMPLETE
 **Status**: ✅ Deployed via CloudFormation (`crpbot-rds-dev`)
@@ -46,6 +44,34 @@
 - Retrieval verified via `libs/aws/secrets.py`
 - IAM permissions (`SecretsManagerReadWrite`) confirmed
 
+## ✅ Phase 2 – Serverless Runtime
+
+### Task 2.1: Lambda Signal Processor - COMPLETE  
+**Stack**: `crpbot-lambda-signal-dev`  
+**Runtime cadence**: Every 5 minutes (EventBridge)  
+**Integrations**: S3, Secrets, RDS, SNS (`crpbot-signals-dev`)
+
+### Task 2.2: Lambda Risk Monitor - COMPLETE  
+**Stack**: `crpbot-risk-monitor-dev`  
+**Runtime cadence**: Hourly (EventBridge)  
+**Integrations**: RDS risk snapshots, SNS (`crpbot-risk-alerts-dev`)
+
+### Task 2.3: Telegram Relay Lambda - COMPLETE  
+**Stack**: `crpbot-telegram-bot-dev`  
+**Trigger**: SNS subscriptions for high-confidence signals & risk alerts  
+**Integrations**: Secrets Manager, Telegram API
+
+## ✅ Phase 3 – CloudWatch Monitoring
+
+### Task 3.1: Dashboards - COMPLETE  
+- Stacks: `crpbot-dashboards-dev`  
+- Dashboards: `CRPBot-Trading-dev`, `CRPBot-System-dev` (10 widgets in total)
+
+### Task 3.2: Alarms - COMPLETE  
+- Stack: `crpbot-alarms-dev`  
+- Alarms: 7 critical alerts (Lambda errors/duration, SNS failures, EventBridge failures, inactivity)  
+- Notifications: SNS topic `crpbot-alarm-notifications-dev`
+
 ## 🛠️ Created Infrastructure
 
 ### AWS Utilities
@@ -53,33 +79,30 @@
 - `libs/aws/secrets.py` - Secrets management with env fallback
 - `test_s3_simple.py` - S3 integration test (verified working)
 
-### CloudFormation Templates
-- `infra/aws/cloudformation/s3-buckets-simple.yaml` ✅ Deployed (`crpbot-s3-dev`)
-- `infra/aws/cloudformation/rds-postgres.yaml` ✅ Deployed (`crpbot-rds-dev`)
-- `infra/aws/cloudformation/secrets-manager.yaml` ✅ Deployed (`crpbot-secrets-dev`)
-- `infra/aws/cloudformation/lambda-signal-processing.yaml` ✅ Deployed (`crpbot-lambda-signal-dev`)
+### CloudFormation Templates (deployed)
+- `infra/aws/cloudformation/s3-buckets-simple.yaml` → `crpbot-s3-dev`
+- `infra/aws/cloudformation/rds-postgres.yaml` → `crpbot-rds-dev`
+- `infra/aws/cloudformation/secrets-manager.yaml` → `crpbot-secrets-dev`
+- `infra/aws/cloudformation/lambda-signal-processing.yaml` → `crpbot-lambda-signal-dev`
+- `infra/aws/cloudformation/lambda-risk-monitor.yaml` → `crpbot-risk-monitor-dev`
+- `infra/aws/cloudformation/lambda-telegram-bot.yaml` → `crpbot-telegram-bot-dev`
+- `infra/aws/cloudformation/cloudwatch-dashboards.yaml` → `crpbot-dashboards-dev`
+- `infra/aws/cloudformation/cloudwatch-alarms.yaml` → `crpbot-alarms-dev`
 
 ### Documentation
-- `infra/aws/setup_permissions.md` - Required IAM permissions
-- `.env.aws` - AWS environment variables
+- `PHASE2_COMPLETE_STATUS.md`, `PHASE3_STATUS.md`
+- `.env.aws` – AWS environment variables
+- `docs/AWS_INFRASTRUCTURE_SUMMARY.md` – consolidated reference
 
-## 🎯 Phase 2 Roadmap
-- ✅ **Task 2.1** – Lambda Signal Processor (EventBridge + SNS) *(see `PHASE2_COMPLETE_STATUS.md`)*
-- ⏳ **Task 2.2** – Lambda Risk Monitoring (next Amazon Q objective)
-- ⏳ **Task 2.3** – CloudWatch dashboards & alarms
-
-## 💰 Current AWS Costs (dev estimates)
-- **S3 Storage/Requests**: ~$0.03/month
-- **RDS db.t3.micro**: ~$15.00/month
-- **Secrets Manager**: ~$1.20/month
-- **Lambda Signal Processor stack**: ~$0.25/month
-- **Total (Phase 1 + Task 2.1)**: ~\$16.48/month
+## 💰 Current AWS Costs (dev)
+- **Phase 1 (core storage/secrets/db)**: ~$0.38/month
+- **Phase 2 (three Lambda stacks + SNS + schedules)**: ~$0.38/month
+- **Phase 3 (dashboards, alarms, metrics/logs)**: ~$4.50/month
+- **Total Run Cost**: **~$5.26/month**
 
 ## 🔄 Integration Status
-- ✅ S3 buckets accessible from runtime and Lambda
-- ✅ RDS Postgres reachable (psycopg + Lambda)
-- ✅ Secrets Manager integrated (`libs/aws/secrets.py`, Lambda env)
-- ✅ SNS topic live for high-confidence signals
-- ✅ EventBridge schedule active (5‑minute cadence)
-- ✅ AWS CLI + CloudFormation workflow verified
-- 🚧 Risk monitoring + observability scheduled for Task 2.2/2.3
+- ✅ Market data ingestion → signal processor → risk monitor → Telegram
+- ✅ S3, RDS, Secrets, SNS, EventBridge connectivity validated
+- ✅ CloudWatch dashboards and alarms operational
+- ✅ Logging to S3 and CloudWatch for every component
+- ✅ AWS CLI / IaC workflow standardized on branch `aws/rds-setup`

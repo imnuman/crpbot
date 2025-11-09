@@ -101,38 +101,73 @@ All Phase 1 infrastructure is deployed and tested:
 - ✅ Network connectivity
 - ✅ Integration utilities
 
-**Next**: Phase 2 Lambda Functions (Signal Processing ✅ DEPLOYED, Risk Monitoring, Telegram Bot)
+**Next**: Phase 2 Lambda Functions (Signal Processor ✅, Risk Monitor ✅, Telegram Bot ✅)
 
 ## 🚀 Phase 2 Progress
 
-### Task 2.1: Lambda Signal Processing ✅ DEPLOYED
-**CloudFormation Stack**: `crpbot-lambda-signal-dev`
+### Task 2.1: Lambda Signal Processing ✅
+**Stack**: `crpbot-lambda-signal-dev`  
 **Template**: `infra/aws/cloudformation/lambda-signal-processing.yaml`
 
 | Resource | Value |
 |----------|-------|
 | **Lambda Function** | `crpbot-signal-processor-dev` |
-| **Function ARN** | `arn:aws:lambda:us-east-1:980104576869:function:crpbot-signal-processor-dev` |
-| **EventBridge Rule** | `arn:aws:events:us-east-1:980104576869:rule/crpbot-signal-schedule-dev` (5‑minute cadence) |
-| **SNS Topic** | `arn:aws:sns:us-east-1:980104576869:crpbot-signals-dev` |
-| **IAM Role** | `arn:aws:iam::980104576869:role/crpbot-lambda-signal-role-dev` |
-| **Runtime** | Python 3.11, 512 MB, 30 s timeout |
-| **Status** | ✅ Deployed, validated end-to-end |
+| **EventBridge Rule** | `crpbot-signal-schedule-dev` (rate 5 minutes) |
+| **SNS Topic** | `crpbot-signals-dev` |
+| **IAM Role** | `crpbot-lambda-signal-role-dev` |
+| **Status** | ✅ Live (S3/Secrets/RDS/SNS validated) |
 
-**Capabilities Tested** *(see `PHASE2_COMPLETE_STATUS.md` for evidence)*:
-- ✅ S3 market-data + log writes
-- ✅ Secrets Manager credential retrieval
-- ✅ RDS connectivity and inserts
-- ✅ SNS publish path
-- ✅ EventBridge schedule trigger
-- ✅ Structured logging & error handling
+### Task 2.2: Lambda Risk Monitoring ✅
+**Stack**: `crpbot-risk-monitor-dev`  
+**Template**: `infra/aws/cloudformation/lambda-risk-monitor.yaml`
 
-**Monthly Cost (dev)**: ~\$0.25 (Lambda \$0.18, EventBridge \$0.01, SNS \$0.05, S3 requests \$0.01)
+| Resource | Value |
+|----------|-------|
+| **Lambda Function** | `crpbot-risk-monitor-dev` (hourly EventBridge trigger) |
+| **SNS Topic** | `crpbot-risk-alerts-dev` |
+| **Checks** | Daily loss, total loss, rate-limit telemetry |
+| **Status** | ✅ Deployed & publishing risk alerts |
+
+### Task 2.3: Telegram Bot Lambda ✅
+**Stack**: `crpbot-telegram-bot-dev`  
+**Template**: `infra/aws/cloudformation/lambda-telegram-bot.yaml`
+
+| Resource | Value |
+|----------|-------|
+| **Lambda Function** | `crpbot-telegram-relay-dev` (SNS trigger) |
+| **Secrets** | Telegram token/chat ID via Secrets Manager |
+| **Outputs** | Sends signal/risk alerts to Telegram |
+| **Status** | ✅ Operational (SNS integration tested) |
+
+**Phase 2 Monthly Cost**: ~\$0.38 (all three Lambdas + schedules + SNS)
+
+## 📊 Phase 3 – CloudWatch Monitoring
+
+*(See `PHASE3_STATUS.md` for full validation snapshots.)*
+
+### Task 3.1: Dashboards ✅
+- `CRPBot-Trading-dev`: signal & risk Lambda metrics, SNS activity, log insights
+- `CRPBot-System-dev`: fleet health (invocations, errors, S3 storage, EventBridge executions)
+- 10 widgets total across both dashboards
+- Template: `infra/aws/cloudformation/cloudwatch-dashboards.yaml`
+
+### Task 3.2: Alarms ✅
+- 7 CloudWatch alarms covering Lambda errors/duration, SNS failures, EventBridge failures, inactivity alerts
+- Alarm topic: `crpbot-alarm-notifications-dev`
+- Template: `infra/aws/cloudformation/cloudwatch-alarms.yaml`
+
+**Phase 3 Monthly Cost**: ~\$4.50 (dashboards, alarms, metrics, logs)
 
 ## 📋 Git Branch
 
-All Phase 2 work tracked on: `aws/rds-setup`
-- CloudFormation templates
-- Lambda source & packaging notes
-- Documentation updates
-- Validation reports (`PHASE2_COMPLETE_STATUS.md`)
+All AWS automation tracked on: `aws/rds-setup`
+- Phase 1 infrastructure templates
+- Phase 2 Lambda stacks
+- Phase 3 CloudWatch stacks
+- Validation reports (`PHASE2_COMPLETE_STATUS.md`, `PHASE3_STATUS.md`)
+
+## 💰 Total AWS Spine (dev)
+- **Phase 1**: ~$0.38/month (S3, RDS, Secrets)
+- **Phase 2**: ~$0.38/month (Lambdas, schedules, SNS)
+- **Phase 3**: ~$4.50/month (dashboards, alarms, metrics)
+- **Grand Total**: **~$5.26/month**
