@@ -60,7 +60,7 @@ Resources:
     Properties:
       FunctionName: !Sub 'crpbot-signal-processor-${Environment}'
       Runtime: python3.11
-      Handler: lambda_function.lambda_handler
+      Handler: index.lambda_handler
       MemorySize: 512
       Timeout: 30
       Role: !GetAtt LambdaExecutionRole.Arn

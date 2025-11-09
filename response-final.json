@@ -1,0 +1,1 @@
+{"statusCode": 200, "body": "{\"message\": \"Signal processor executed successfully\", \"timestamp\": \"2025-11-09T20:02:39.621055\", \"log_location\": \"s3://crpbot-logs-dev/lambda-logs/2025/11/09/signal-processor-0ca29168-7b32-4787-9a45-6fc6d16fb528.log\"}"}
