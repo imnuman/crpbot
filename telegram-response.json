@@ -1,0 +1,1 @@
+{"statusCode": 200, "body": "{\"message\": \"Telegram message sent successfully\", \"timestamp\": \"2025-11-09T20:16:17.369960\", \"message_type\": \"TEST\", \"telegram_message_id\": 136, \"log_location\": \"s3://crpbot-logs-dev/telegram-logs/2025/11/09/telegram-5dc543bc-1391-4984-bce8-79447d2f0420.json\"}"}

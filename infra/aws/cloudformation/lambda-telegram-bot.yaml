@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CRPBot Lambda Telegram Bot Function'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # IAM Role for Lambda
+  TelegramBotRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'crpbot-telegram-bot-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TelegramBotPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:crpbot/telegram-bot/${Environment}-*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::crpbot-logs-${Environment}/*'
+
+  # Lambda Function
+  TelegramBotFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'crpbot-telegram-bot-${Environment}'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Timeout: 10
+      Role: !GetAtt TelegramBotRole.Arn
+      Environment:
+        Variables:
+          S3_LOGS_BUCKET: !Sub 'crpbot-logs-${Environment}'
+          TELEGRAM_SECRET_ARN: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:crpbot/telegram-bot/${Environment}-mIN8RP'
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import logging
+          import urllib3
+          from datetime import datetime
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info("Telegram bot started")
+              
+              try:
+                  # Initialize clients
+                  s3 = boto3.client('s3')
+                  secrets = boto3.client('secretsmanager')
+                  http = urllib3.PoolManager()
+                  
+                  # Get Telegram credentials
+                  secret_response = secrets.get_secret_value(
+                      SecretId=os.environ['TELEGRAM_SECRET_ARN']
+                  )
+                  telegram_creds = json.loads(secret_response['SecretString'])
+                  bot_token = telegram_creds.get('bot_token')
+                  chat_id = telegram_creds.get('chat_id')
+                  
+                  if not bot_token or not chat_id:
+                      raise ValueError("Missing Telegram bot_token or chat_id")
+                  
+                  # Parse SNS message if triggered by SNS
+                  message_data = {}
+                  if 'Records' in event and event['Records']:
+                      # SNS trigger
+                      sns_message = json.loads(event['Records'][0]['Sns']['Message'])
+                      message_data = sns_message
+                      message_type = "SNS_ALERT"
+                  else:
+                      # Direct invocation or test
+                      message_data = event.get('message', {})
+                      message_type = "TEST"
+                  
+                  # Format message based on type
+                  if message_type == "SNS_ALERT":
+                      if 'risk_level' in message_data:
+                          # Risk alert
+                          telegram_message = f"🚨 CRPBot Risk Alert\n\nRisk Level: {message_data.get('risk_level', 'UNKNOWN')}\nTimestamp: {message_data.get('timestamp', 'N/A')}\nDaily Loss: {message_data.get('daily_loss', 'N/A')}\nTotal Loss: {message_data.get('total_loss', 'N/A')}\n\nAlerts:\n" + '\n'.join(['• ' + alert for alert in message_data.get('alerts', [])])
+                      else:
+                          # Trading signal
+                          telegram_message = f"📊 CRPBot Trading Signal\n\nSymbol: {message_data.get('symbol', 'N/A')}\nSignal: {message_data.get('signal', 'N/A')}\nConfidence: {message_data.get('confidence', 'N/A')}\nTimestamp: {message_data.get('timestamp', 'N/A')}"
+                  else:
+                      # Test message
+                      telegram_message = f"✅ CRPBot Test Message\n\nStatus: System operational\nTimestamp: {datetime.now().isoformat()}\nEnvironment: {os.environ.get('ENVIRONMENT', 'dev')}\nRequest ID: {context.aws_request_id}"
+                  
+                  # Send to Telegram
+                  telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                  payload = {
+                      'chat_id': chat_id,
+                      'text': telegram_message
+                  }
+                  
+                  response = http.request(
+                      'POST',
+                      telegram_url,
+                      body=json.dumps(payload),
+                      headers={'Content-Type': 'application/json'}
+                  )
+                  
+                  if response.status != 200:
+                      raise Exception(f"Telegram API error: {response.status} - {response.data}")
+                  
+                  telegram_response = json.loads(response.data)
+                  
+                  # Log to S3
+                  log_key = f"telegram-logs/{datetime.now().strftime('%Y/%m/%d')}/telegram-{context.aws_request_id}.json"
+                  log_data = {
+                      'timestamp': datetime.now().isoformat(),
+                      'message_type': message_type,
+                      'telegram_response': telegram_response,
+                      'message_sent': telegram_message[:100] + '...' if len(telegram_message) > 100 else telegram_message
+                  }
+                  
+                  s3.put_object(
+                      Bucket=os.environ['S3_LOGS_BUCKET'],
+                      Key=log_key,
+                      Body=json.dumps(log_data, indent=2),
+                      ContentType='application/json'
+                  )
+                  
+                  logger.info("Telegram message sent successfully")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Telegram message sent successfully',
+                          'timestamp': datetime.now().isoformat(),
+                          'message_type': message_type,
+                          'telegram_message_id': telegram_response.get('result', {}).get('message_id'),
+                          'log_location': f"s3://{os.environ['S3_LOGS_BUCKET']}/{log_key}"
+                      })
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error in Telegram bot: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({
+                          'error': str(e),
+                          'timestamp': datetime.now().isoformat()
+                      })
+                  }
+
+  # SNS Subscription for Signals Topic
+  SignalsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: lambda
+      TopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:crpbot-signals-${Environment}'
+      Endpoint: !GetAtt TelegramBotFunction.Arn
+
+  # SNS Subscription for Risk Alerts Topic
+  RiskAlertsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: lambda
+      TopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:crpbot-risk-alerts-${Environment}'
+      Endpoint: !GetAtt TelegramBotFunction.Arn
+
+  # Permission for SNS to invoke Lambda (Signals)
+  SignalsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TelegramBotFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:crpbot-signals-${Environment}'
+
+  # Permission for SNS to invoke Lambda (Risk Alerts)
+  RiskAlertsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TelegramBotFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:crpbot-risk-alerts-${Environment}'
+
+Outputs:
+  TelegramBotFunctionArn:
+    Description: ARN of the Telegram bot Lambda function
+    Value: !GetAtt TelegramBotFunction.Arn
+
+  TelegramBotRoleArn:
+    Description: ARN of the Telegram bot IAM role
+    Value: !GetAtt TelegramBotRole.Arn
+
+  SignalsSubscriptionArn:
+    Description: ARN of the signals SNS subscription
+    Value: !Ref SignalsSubscription
+
+  RiskAlertsSubscriptionArn:
+    Description: ARN of the risk alerts SNS subscription
+    Value: !Ref RiskAlertsSubscription
