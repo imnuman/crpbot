@@ -49,6 +49,10 @@ run-dry: ## Start runtime loop in dry-run mode (infinite observation)
 export-metrics: ## Export observation metrics to JSON (override with WINDOW=24 OUT=path)
 	uv run python scripts/export_metrics.py --window $(or $(WINDOW),24) --out $(or $(OUT),reports/phase6_5/metrics_latest.json)
 
+phase6_5-daily: ## Append automated snapshot to observation log (usage: make phase6_5-daily DAY=day1 WINDOW=24)
+	@if [ -z "$(DAY)" ]; then echo "❌ Error: DAY variable required (e.g. DAY=day1)"; exit 1; fi
+	uv run python scripts/phase6_5_daily.py --day $(DAY) --window $(or $(WINDOW),24)
+
 # DVC & Deploy helpers
 .PHONY: dvc-init dvc-add dvc-push deploy rollback-model
 

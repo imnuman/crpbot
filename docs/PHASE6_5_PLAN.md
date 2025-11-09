@@ -39,6 +39,8 @@
    - [ ] Feature store contains last 30 days of data (`data/features/*.parquet`).
    - [ ] Backtest snapshot recorded for baseline (`reports/backtests/latest.json`).
 
+💡 **Automation**: Use `make export-metrics` and `make phase6_5-daily DAY=dayX` (see below) to capture evidence consistently.
+
 ---
 
 ## 🔁 Daily Operating Procedure
@@ -52,7 +54,8 @@
    - Trigger manual Telegram `/stats` to confirm fresh data.
 3. **Evening Review (21:00 UTC)**
    - Tail structured logs for WARN/ERROR.
-   - Export metrics via `python scripts/export_metrics.py --window 24h --out reports/phase6_5/dayX_metrics.json`.
+   - Export metrics via `make export-metrics WINDOW=24 OUT=reports/phase6_5/dayX_metrics.json`.
+   - Append automated snapshot with `make phase6_5-daily DAY=dayX`.
    - Update observation journal (`reports/phase6_5/dayX.md`) with:
      - Total signals
      - Tier distribution
@@ -94,6 +97,11 @@ If criteria are not met, resolve issues and repeat a fresh 72h observation windo
   - `make export-metrics` → wrapper for metrics export script.
 - [ ] Coordinate FTMO Challenge purchase timing (must be ready by Phase 7 kickoff).
 - [ ] Communicate observation start/stop to collaborators (Claude, Amazon Q) to avoid conflicting deployments.
+
+### 🔧 Automation Reference
+- `make run-dry` → launches runtime in dry-run mode (infinite loop).
+- `make export-metrics WINDOW=24 OUT=...` → exports metrics JSON for reporting.
+- `make phase6_5-daily DAY=dayX` → appends metrics/alarms snapshot to daily log.
 
 ---
 

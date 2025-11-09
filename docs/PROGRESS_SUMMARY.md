@@ -163,6 +163,7 @@
 **Timing**: After Phase 6, BEFORE Phase 7
 
 **Runbook**: See `docs/PHASE6_5_PLAN.md` for detailed schedule, checklists, and evidence templates.
+**Collaboration Plan**: See `docs/PHASE6_5_TEAM_PLAN.md` for day-by-day responsibilities across Cursor, Claude, and Amazon Q.
 
 **Activities** *(tracked daily via `reports/phase6_5/`)*:
 - [ ] Run runtime in dry-run mode for 3-5 days

@@ -83,3 +83,7 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
+# Phase 6.5 observation artifacts
+tradingai.db
+reports/phase6_5/*_metrics.json
+
