@@ -162,15 +162,17 @@
 **Priority**: Critical  
 **Timing**: After Phase 6, BEFORE Phase 7
 
-**Activities**:
+**Runbook**: See `docs/PHASE6_5_PLAN.md` for detailed schedule, checklists, and evidence templates.
+
+**Activities** *(tracked daily via `reports/phase6_5/`)*:
 - [ ] Run runtime in dry-run mode for 3-5 days
 - [ ] Monitor signal quality and formatting
 - [ ] Verify FTMO rule enforcement
 - [ ] Test Telegram bot responsiveness
-- [ ] Review structured logs
+- [ ] Review structured logs & CloudWatch dashboards
 - [ ] Validate execution cost calculations
-- [ ] Monitor system resource usage
-- [ ] **FTMO Account**: Purchase and configure FTMO account
+- [ ] Monitor system resource usage and alarms
+- [ ] **FTMO Account**: Purchase and configure FTMO challenge before moving to Phase 7
 
 **Success Criteria**:
 - ✅ Zero crashes or unexpected errors
