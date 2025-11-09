@@ -1,4 +1,4 @@
-.PHONY: setup sync fmt lint test unit smoke train rl run-bot help
+.PHONY: setup sync fmt lint test unit smoke train rl run-bot run-dry export-metrics help
 .DEFAULT_GOAL := help
 
 help: ## Show this help message
@@ -42,6 +42,12 @@ rl: ## Train RL model (example: make rl STEPS=1000)
 
 run-bot: ## Start runtime loop
 	python apps/runtime/main.py
+
+run-dry: ## Start runtime loop in dry-run mode (infinite observation)
+	python apps/runtime/main.py --mode dryrun --iterations -1 --sleep-seconds 120
+
+export-metrics: ## Export observation metrics to JSON (override with WINDOW=24 OUT=path)
+	python scripts/export_metrics.py --window $(or $(WINDOW),24) --out $(or $(OUT),reports/phase6_5/metrics_latest.json)
 
 # DVC & Deploy helpers
 .PHONY: dvc-init dvc-add dvc-push deploy rollback-model

@@ -3,6 +3,7 @@
 This is the production runtime that continuously scans coins and emits trading signals
 when confidence thresholds are met and FTMO rules allow.
 """
+import argparse
 import os
 import time
 from datetime import datetime
@@ -41,6 +42,7 @@ class TradingRuntime:
         self.config = config or Settings()
         self.kill_switch = self.config.kill_switch
         self.confidence_threshold = self.config.confidence_threshold
+        self.runtime_mode = self.config.runtime_mode.lower().replace("-", "")
 
         # Initialize rate limiter
         self.rate_limiter = RateLimiter(
@@ -256,6 +258,7 @@ class TradingRuntime:
         """
         logger.info("🚀 Trading runtime starting")
         logger.info(f"   Confidence threshold: {self.confidence_threshold:.2%}")
+        logger.info(f"   Runtime mode: {self.runtime_mode.upper()}")
         logger.info(f"   Kill-switch: {'🛑 ACTIVE' if self.kill_switch else '✅ INACTIVE'}")
         logger.info(f"   Database: {self.config.db_url}")
 
@@ -286,8 +289,37 @@ class TradingRuntime:
 
 
 if __name__ == "__main__":
-    # Initialize runtime
-    runtime = TradingRuntime()
+    parser = argparse.ArgumentParser(description="CRPBot trading runtime")
+    parser.add_argument(
+        "--mode",
+        default=os.environ.get("RUNTIME_MODE", "dryrun"),
+        choices=["dryrun", "dry-run", "live"],
+        help="Runtime mode (default: dryrun)",
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=10,
+        help="Number of loop iterations (-1 for infinite)",
+    )
+    parser.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=3.0,
+        help="Seconds to sleep between iterations",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Override log level for this run",
+    )
 
-    # Run for limited iterations (use -1 for infinite loop in production)
-    runtime.run(iterations=10, sleep_seconds=3)
+    args = parser.parse_args()
+    normalized_mode = args.mode.lower().replace("-", "")
+    os.environ["RUNTIME_MODE"] = normalized_mode
+
+    if args.log_level:
+        os.environ["LOG_LEVEL"] = args.log_level
+
+    runtime = TradingRuntime()
+    runtime.run(iterations=args.iterations, sleep_seconds=args.sleep_seconds)

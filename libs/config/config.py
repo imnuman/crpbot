@@ -175,6 +175,7 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     log_format: str = "json"  # json or text
+    runtime_mode: str = Field(default="dryrun", description="Runtime mode: dryrun or live")
 
     @property
     def ensemble_weights_parsed(self) -> EnsembleWeights:
@@ -200,6 +201,9 @@ class Settings(BaseSettings):
 
         if self.max_signals_per_hour_high > self.max_signals_per_hour:
             errors.append("High-tier signal limit cannot exceed general limit")
+
+        if self.runtime_mode.lower() not in {"dryrun", "dry-run", "live"}:
+            errors.append("Runtime mode must be 'dryrun' or 'live'")
 
         if errors:
             raise ValueError(f"Configuration errors: {', '.join(errors)}")
