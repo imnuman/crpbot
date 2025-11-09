@@ -21,24 +21,30 @@
 
 ## ⚠️ Partially Complete Tasks
 
-### Task 1.2: RDS PostgreSQL Database - BLOCKED
-**Status**: ❌ Blocked by IAM permissions
+### Task 1.2: RDS PostgreSQL Database - COMPLETE
+**Status**: ✅ Deployed via CloudFormation (`crpbot-rds-dev`)
 
-**Issue**: User `ncldev` lacks required permissions:
-- `AmazonRDSFullAccess`
-- `AmazonVPCFullAccess`
+**Details**:
+- Engine: PostgreSQL 14.15 (`db.t3.micro`)
+- Endpoint: `crpbot-dev.cyjcoys82evx.us-east-1.rds.amazonaws.com`
+- Storage: 20GB GP3 (encrypted) with 7-day automated backups
+- Access: Public for dev; security groups documented in `docs/AWS_INFRASTRUCTURE_SUMMARY.md`
 
-**Workaround**: Continue using SQLite for development
-**Template Ready**: `infra/aws/cloudformation/rds-postgres.yaml`
+**Testing**:
+- `psycopg` connection test executed (table create/insert)
+- Credentials reflected in `.env.aws`
 
-### Task 1.3: AWS Secrets Manager - BLOCKED  
-**Status**: ❌ Blocked by IAM permissions
+### Task 1.3: AWS Secrets Manager - COMPLETE  
+**Status**: ✅ Deployed via CloudFormation (`crpbot-secrets-dev`)
 
-**Issue**: User `ncldev` lacks required permissions:
-- `SecretsManagerReadWrite`
+**Secrets**:
+- Coinbase API – `arn:aws:secretsmanager:us-east-1:980104576869:secret:crpbot/coinbase-api/dev-dHLD4h`
+- Telegram Bot – `arn:aws:secretsmanager:us-east-1:980104576869:secret:crpbot/telegram-bot/dev-mIN8RP`
+- FTMO Account – `arn:aws:secretsmanager:us-east-1:980104576869:secret:crpbot/ftmo-account/dev-QEkZgM`
 
-**Workaround**: Using environment variables in `.env` file
-**Template Ready**: `infra/aws/cloudformation/secrets-manager.yaml`
+**Testing**:
+- Retrieval verified via `libs/aws/secrets.py`
+- IAM permissions (`SecretsManagerReadWrite`) confirmed
 
 ## 🛠️ Created Infrastructure
 
@@ -58,24 +64,10 @@
 
 ## 🎯 Next Steps
 
-### Option 1: Get IAM Permissions (Recommended)
-Add these managed policies to user `ncldev`:
-1. `AmazonRDSFullAccess`
-2. `SecretsManagerReadWrite` 
-3. `AmazonVPCFullAccess`
-
-Then deploy:
-```bash
-aws cloudformation deploy --template-file infra/aws/cloudformation/rds-postgres.yaml --stack-name crpbot-rds-dev --parameter-overrides Environment=dev
-
-aws cloudformation deploy --template-file infra/aws/cloudformation/secrets-manager.yaml --stack-name crpbot-secrets-dev --parameter-overrides Environment=dev --capabilities CAPABILITY_NAMED_IAM
-```
-
-### Option 2: Continue with Current Setup
-- ✅ S3 integration working
-- ✅ SQLite database (existing)
-- ✅ Environment variables for secrets
-- Ready to proceed with Phase 2 (Lambda functions)
+### Phase 2 Workflow (Next Up)
+- Task 2.1: Lambda Signal Processing (Amazon Q) – branch `aws/rds-setup`
+- Task 2.2: Lambda Risk Monitoring
+- Task 2.3: CloudWatch dashboards & alarms
 
 ## 💰 Current AWS Costs
 - **S3 Storage**: ~$0.02/month (minimal test data)
