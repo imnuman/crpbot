@@ -19,7 +19,7 @@
 **CloudFormation Stack**: `crpbot-s3-dev`
 **Template**: `infra/aws/cloudformation/s3-buckets-simple.yaml`
 
-## ⚠️ Partially Complete Tasks
+## ✅ Phase 1 – Foundation
 
 ### Task 1.2: RDS PostgreSQL Database - COMPLETE
 **Status**: ✅ Deployed via CloudFormation (`crpbot-rds-dev`)
@@ -54,31 +54,32 @@
 - `test_s3_simple.py` - S3 integration test (verified working)
 
 ### CloudFormation Templates
-- `infra/aws/cloudformation/s3-buckets-simple.yaml` ✅ Deployed
-- `infra/aws/cloudformation/rds-postgres.yaml` ⚠️ Ready (needs permissions)
-- `infra/aws/cloudformation/secrets-manager.yaml` ⚠️ Ready (needs permissions)
+- `infra/aws/cloudformation/s3-buckets-simple.yaml` ✅ Deployed (`crpbot-s3-dev`)
+- `infra/aws/cloudformation/rds-postgres.yaml` ✅ Deployed (`crpbot-rds-dev`)
+- `infra/aws/cloudformation/secrets-manager.yaml` ✅ Deployed (`crpbot-secrets-dev`)
+- `infra/aws/cloudformation/lambda-signal-processing.yaml` ✅ Deployed (`crpbot-lambda-signal-dev`)
 
 ### Documentation
 - `infra/aws/setup_permissions.md` - Required IAM permissions
 - `.env.aws` - AWS environment variables
 
-## 🎯 Next Steps
+## 🎯 Phase 2 Roadmap
+- ✅ **Task 2.1** – Lambda Signal Processor (EventBridge + SNS) *(see `PHASE2_COMPLETE_STATUS.md`)*
+- ⏳ **Task 2.2** – Lambda Risk Monitoring (next Amazon Q objective)
+- ⏳ **Task 2.3** – CloudWatch dashboards & alarms
 
-### Phase 2 Workflow (Next Up)
-- Task 2.1: Lambda Signal Processing (Amazon Q) – branch `aws/rds-setup`
-- Task 2.2: Lambda Risk Monitoring
-- Task 2.3: CloudWatch dashboards & alarms
-
-## 💰 Current AWS Costs
-- **S3 Storage**: ~$0.02/month (minimal test data)
-- **S3 Requests**: ~$0.01/month
-- **Total**: ~$0.03/month
+## 💰 Current AWS Costs (dev estimates)
+- **S3 Storage/Requests**: ~$0.03/month
+- **RDS db.t3.micro**: ~$15.00/month
+- **Secrets Manager**: ~$1.20/month
+- **Lambda Signal Processor stack**: ~$0.25/month
+- **Total (Phase 1 + Task 2.1)**: ~\$16.48/month
 
 ## 🔄 Integration Status
-- ✅ S3 buckets accessible from trading system
-- ✅ AWS CLI configured and working
-- ✅ Environment variables configured
-- ⚠️ Database: Using SQLite (can migrate to RDS later)
-- ⚠️ Secrets: Using .env file (can migrate to Secrets Manager later)
-
-**Overall Progress**: 1/3 tasks complete, 2/3 blocked by permissions
+- ✅ S3 buckets accessible from runtime and Lambda
+- ✅ RDS Postgres reachable (psycopg + Lambda)
+- ✅ Secrets Manager integrated (`libs/aws/secrets.py`, Lambda env)
+- ✅ SNS topic live for high-confidence signals
+- ✅ EventBridge schedule active (5‑minute cadence)
+- ✅ AWS CLI + CloudFormation workflow verified
+- 🚧 Risk monitoring + observability scheduled for Task 2.2/2.3

@@ -107,35 +107,32 @@ All Phase 1 infrastructure is deployed and tested:
 
 ### Task 2.1: Lambda Signal Processing ✅ DEPLOYED
 **CloudFormation Stack**: `crpbot-lambda-signal-dev`
-**Template**: `infra/aws/cloudformation/lambda-signal-minimal.yaml`
+**Template**: `infra/aws/cloudformation/lambda-signal-processing.yaml`
 
 | Resource | Value |
 |----------|-------|
 | **Lambda Function** | `crpbot-signal-processor-dev` |
 | **Function ARN** | `arn:aws:lambda:us-east-1:980104576869:function:crpbot-signal-processor-dev` |
+| **EventBridge Rule** | `arn:aws:events:us-east-1:980104576869:rule/crpbot-signal-schedule-dev` (5‑minute cadence) |
+| **SNS Topic** | `arn:aws:sns:us-east-1:980104576869:crpbot-signals-dev` |
 | **IAM Role** | `arn:aws:iam::980104576869:role/crpbot-lambda-signal-role-dev` |
-| **Runtime** | Python 3.11, 512MB, 30s timeout |
-| **Status** | ✅ Deployed and tested |
+| **Runtime** | Python 3.11, 512 MB, 30 s timeout |
+| **Status** | ✅ Deployed, validated end-to-end |
 
-**Capabilities Tested**:
-- ✅ S3 read/write access
-- ✅ Secrets Manager integration
-- ✅ Log file generation
-- ✅ Error handling
+**Capabilities Tested** *(see `PHASE2_COMPLETE_STATUS.md` for evidence)*:
+- ✅ S3 market-data + log writes
+- ✅ Secrets Manager credential retrieval
+- ✅ RDS connectivity and inserts
+- ✅ SNS publish path
+- ✅ EventBridge schedule trigger
+- ✅ Structured logging & error handling
 
-**Missing** (IAM permission issues):
-- ⚠️ EventBridge schedule (needs `events:*` permissions)
-- ⚠️ SNS topic (needs `sns:*` permissions)
-
-**Monthly Cost**: ~$0.24 (Lambda + EventBridge + SNS)
+**Monthly Cost (dev)**: ~\$0.25 (Lambda \$0.18, EventBridge \$0.01, SNS \$0.05, S3 requests \$0.01)
 
 ## 📋 Git Branch
 
-All work committed to: `aws/s3-setup`
+All Phase 2 work tracked on: `aws/rds-setup`
 - CloudFormation templates
-- AWS utilities
-- Test scripts  
-- Documentation
-- Environment configuration
-
-**Pull Request**: https://github.com/imnuman/crpbot/pull/new/aws/s3-setup
+- Lambda source & packaging notes
+- Documentation updates
+- Validation reports (`PHASE2_COMPLETE_STATUS.md`)
