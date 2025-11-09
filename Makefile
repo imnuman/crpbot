@@ -41,13 +41,13 @@ rl: ## Train RL model (example: make rl STEPS=1000)
 	python apps/trainer/main.py --task ppo --steps $(or $(STEPS),1000)
 
 run-bot: ## Start runtime loop
-	python apps/runtime/main.py
+	uv run python apps/runtime/main.py
 
 run-dry: ## Start runtime loop in dry-run mode (infinite observation)
-	python apps/runtime/main.py --mode dryrun --iterations -1 --sleep-seconds 120
+	uv run python apps/runtime/main.py --mode dryrun --iterations -1 --sleep-seconds 120
 
 export-metrics: ## Export observation metrics to JSON (override with WINDOW=24 OUT=path)
-	python scripts/export_metrics.py --window $(or $(WINDOW),24) --out $(or $(OUT),reports/phase6_5/metrics_latest.json)
+	uv run python scripts/export_metrics.py --window $(or $(WINDOW),24) --out $(or $(OUT),reports/phase6_5/metrics_latest.json)
 
 # DVC & Deploy helpers
 .PHONY: dvc-init dvc-add dvc-push deploy rollback-model

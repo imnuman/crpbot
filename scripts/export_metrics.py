@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
 from sqlalchemy import func
+logger = logging.getLogger("export_metrics")
+
 
 from libs.config.config import Settings
 from libs.db.models import Signal, get_session
@@ -80,6 +82,7 @@ def export_metrics(window_hours: int, output_path: Path) -> dict[str, Any]:
         "latency_ms": {
             "avg": avg_latency_ms,
             "max": max_latency_ms,
+        },
         "risk": {
             "snapshots_collected": 0,
         },
@@ -87,7 +90,7 @@ def export_metrics(window_hours: int, output_path: Path) -> dict[str, Any]:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(metrics, indent=2, sort_keys=True))
-    logger.info(f"Exported observation metrics to {output_path} (signals={total_signals})")
+    logger.info("Exported observation metrics to %s (signals=%s)", output_path, total_signals)
     return metrics
 
 
@@ -107,6 +110,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     export_metrics(args.window, args.out)
 
 
