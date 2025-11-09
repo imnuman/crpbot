@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CRPBot Lambda Risk Monitoring Function'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # SNS Topic for Risk Alerts
+  RiskAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'crpbot-risk-alerts-${Environment}'
+      DisplayName: 'CRPBot Risk Alerts'
+
+  # IAM Role for Lambda
+  RiskMonitorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'crpbot-risk-monitor-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: RiskMonitorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::crpbot-logs-${Environment}/*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref RiskAlertsTopic
+
+  # Lambda Function
+  RiskMonitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'crpbot-risk-monitor-${Environment}'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      MemorySize: 256
+      Timeout: 15
+      Role: !GetAtt RiskMonitorRole.Arn
+      Environment:
+        Variables:
+          S3_LOGS_BUCKET: !Sub 'crpbot-logs-${Environment}'
+          DB_HOST: !Sub 'crpbot-${Environment}.cyjcoys82evx.us-east-1.rds.amazonaws.com'
+          DB_NAME: postgres
+          DB_USERNAME: crpbot_admin
+          DB_PASSWORD: TempPassword123!
+          SNS_RISK_ALERTS_TOPIC: !Ref RiskAlertsTopic
+          ENVIRONMENT: !Ref Environment
+          FTMO_DAILY_LOSS_LIMIT: '5.0'
+          FTMO_TOTAL_LOSS_LIMIT: '10.0'
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import logging
+          from datetime import datetime, timedelta
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info("Risk monitor started")
+              
+              try:
+                  # Initialize clients
+                  s3 = boto3.client('s3')
+                  sns = boto3.client('sns')
+                  
+                  # Risk thresholds
+                  daily_limit = float(os.environ.get('FTMO_DAILY_LOSS_LIMIT', '5.0'))
+                  total_limit = float(os.environ.get('FTMO_TOTAL_LOSS_LIMIT', '10.0'))
+                  
+                  # Simulate risk calculations (replace with actual RDS queries)
+                  current_daily_loss = 2.5  # Mock data
+                  current_total_loss = 6.8   # Mock data
+                  
+                  # Calculate risk percentages
+                  daily_risk_pct = (current_daily_loss / daily_limit) * 100
+                  total_risk_pct = (current_total_loss / total_limit) * 100
+                  
+                  # Risk assessment
+                  risk_level = "LOW"
+                  alerts = []
+                  
+                  if daily_risk_pct >= 80:
+                      risk_level = "CRITICAL"
+                      alerts.append(f"Daily loss at {daily_risk_pct:.1f}% of limit ({current_daily_loss}%/{daily_limit}%)")
+                  elif daily_risk_pct >= 60:
+                      risk_level = "HIGH"
+                      alerts.append(f"Daily loss at {daily_risk_pct:.1f}% of limit")
+                  
+                  if total_risk_pct >= 80:
+                      risk_level = "CRITICAL"
+                      alerts.append(f"Total loss at {total_risk_pct:.1f}% of limit ({current_total_loss}%/{total_limit}%)")
+                  elif total_risk_pct >= 60:
+                      risk_level = "HIGH"
+                      alerts.append(f"Total loss at {total_risk_pct:.1f}% of limit")
+                  
+                  # Create risk snapshot
+                  risk_snapshot = {
+                      'timestamp': datetime.now().isoformat(),
+                      'daily_loss_pct': current_daily_loss,
+                      'total_loss_pct': current_total_loss,
+                      'daily_risk_level': daily_risk_pct,
+                      'total_risk_level': total_risk_pct,
+                      'risk_level': risk_level,
+                      'alerts': alerts
+                  }
+                  
+                  # Log to S3
+                  log_key = f"risk-snapshots/{datetime.now().strftime('%Y/%m/%d')}/risk-{context.aws_request_id}.json"
+                  s3.put_object(
+                      Bucket=os.environ['S3_LOGS_BUCKET'],
+                      Key=log_key,
+                      Body=json.dumps(risk_snapshot, indent=2),
+                      ContentType='application/json'
+                  )
+                  
+                  # Send alerts if needed
+                  if alerts:
+                      alert_message = {
+                          'risk_level': risk_level,
+                          'timestamp': datetime.now().isoformat(),
+                          'alerts': alerts,
+                          'daily_loss': f"{current_daily_loss}% / {daily_limit}%",
+                          'total_loss': f"{current_total_loss}% / {total_limit}%"
+                      }
+                      
+                      sns.publish(
+                          TopicArn=os.environ['SNS_RISK_ALERTS_TOPIC'],
+                          Message=json.dumps(alert_message, indent=2),
+                          Subject=f'CRPBot Risk Alert - {risk_level}'
+                      )
+                      
+                      logger.warning(f"Risk alert sent: {risk_level}")
+                  
+                  logger.info("Risk monitor completed successfully")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Risk monitor executed successfully',
+                          'timestamp': datetime.now().isoformat(),
+                          'risk_level': risk_level,
+                          'daily_loss_pct': current_daily_loss,
+                          'total_loss_pct': current_total_loss,
+                          'alerts_sent': len(alerts),
+                          'snapshot_location': f"s3://{os.environ['S3_LOGS_BUCKET']}/{log_key}"
+                      })
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error in risk monitor: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({
+                          'error': str(e),
+                          'timestamp': datetime.now().isoformat()
+                      })
+                  }
+
+  # EventBridge Rule for hourly schedule
+  RiskMonitorSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'crpbot-risk-schedule-${Environment}'
+      Description: 'Trigger risk monitor every hour'
+      ScheduleExpression: 'rate(1 hour)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt RiskMonitorFunction.Arn
+          Id: 'RiskMonitorTarget'
+
+  # Permission for EventBridge to invoke Lambda
+  RiskMonitorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RiskMonitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt RiskMonitorSchedule.Arn
+
+Outputs:
+  RiskMonitorFunctionArn:
+    Description: ARN of the risk monitor Lambda function
+    Value: !GetAtt RiskMonitorFunction.Arn
+
+  RiskAlertsTopicArn:
+    Description: ARN of the risk alerts SNS topic
+    Value: !Ref RiskAlertsTopic
+
+  RiskMonitorScheduleArn:
+    Description: ARN of the EventBridge schedule rule
+    Value: !GetAtt RiskMonitorSchedule.Arn
+
+  RiskMonitorRoleArn:
+    Description: ARN of the risk monitor IAM role
+    Value: !GetAtt RiskMonitorRole.Arn

@@ -1,0 +1,1 @@
+{"statusCode": 200, "body": "{\"message\": \"Risk monitor executed successfully\", \"timestamp\": \"2025-11-09T20:10:44.263478\", \"risk_level\": \"HIGH\", \"daily_loss_pct\": 2.5, \"total_loss_pct\": 6.8, \"alerts_sent\": 1, \"snapshot_location\": \"s3://crpbot-logs-dev/risk-snapshots/2025/11/09/risk-b33f53d1-4255-4bd6-81df-d8a72f5b8ecf.json\"}"}
