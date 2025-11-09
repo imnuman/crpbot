@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CRPBot CloudWatch Alarms for Trading and System Monitoring'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # SNS Topic for Alarm Notifications
+  AlarmNotificationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'crpbot-alarm-notifications-${Environment}'
+      DisplayName: 'CRPBot Alarm Notifications'
+
+  # Lambda Function Errors Alarm
+  SignalProcessorErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'CRPBot-SignalProcessor-Errors-${Environment}'
+      AlarmDescription: 'Signal processor Lambda function errors'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 2
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'crpbot-signal-processor-${Environment}'
+      AlarmActions:
+        - !Ref AlarmNotificationsTopic
+      TreatMissingData: notBreaching
+
+  # Risk Monitor Errors Alarm
+  RiskMonitorErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'CRPBot-RiskMonitor-Errors-${Environment}'
+      AlarmDescription: 'Risk monitor Lambda function errors'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'crpbot-risk-monitor-${Environment}'
+      AlarmActions:
+        - !Ref AlarmNotificationsTopic
+      TreatMissingData: notBreaching
+
+  # Telegram Bot Errors Alarm
+  TelegramBotErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'CRPBot-TelegramBot-Errors-${Environment}'
+      AlarmDescription: 'Telegram bot Lambda function errors'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'crpbot-telegram-bot-${Environment}'
+      AlarmActions:
+        - !Ref AlarmNotificationsTopic
+      TreatMissingData: notBreaching
+
+  # Signal Processor Duration Alarm
+  SignalProcessorDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'CRPBot-SignalProcessor-Duration-${Environment}'
+      AlarmDescription: 'Signal processor Lambda function duration too high'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 25000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'crpbot-signal-processor-${Environment}'
+      AlarmActions:
+        - !Ref AlarmNotificationsTopic
+      TreatMissingData: notBreaching
+
+  # No Signals Generated Alarm
+  NoSignalsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'CRPBot-NoSignals-${Environment}'
+      AlarmDescription: 'No trading signals generated in 2 hours'
+      MetricName: Invocations
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 7200
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub 'crpbot-signal-processor-${Environment}'
+      AlarmActions:
+        - !Ref AlarmNotificationsTopic
+      TreatMissingData: breaching
+
+  # SNS Message Failures Alarm
+  SNSFailuresAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'CRPBot-SNS-Failures-${Environment}'
+      AlarmDescription: 'SNS message delivery failures'
+      MetricName: NumberOfNotificationsFailed
+      Namespace: AWS/SNS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: TopicName
+          Value: !Sub 'crpbot-signals-${Environment}'
+      AlarmActions:
+        - !Ref AlarmNotificationsTopic
+      TreatMissingData: notBreaching
+
+  # EventBridge Rule Failures Alarm
+  EventBridgeFailuresAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'CRPBot-EventBridge-Failures-${Environment}'
+      AlarmDescription: 'EventBridge rule execution failures'
+      MetricName: FailedInvocations
+      Namespace: AWS/Events
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: RuleName
+          Value: !Sub 'crpbot-signal-schedule-${Environment}'
+      AlarmActions:
+        - !Ref AlarmNotificationsTopic
+      TreatMissingData: notBreaching
+
+Outputs:
+  AlarmNotificationsTopicArn:
+    Description: ARN of the alarm notifications SNS topic
+    Value: !Ref AlarmNotificationsTopic
+
+  SignalProcessorErrorsAlarmArn:
+    Description: ARN of the signal processor errors alarm
+    Value: !GetAtt SignalProcessorErrorsAlarm.Arn
+
+  RiskMonitorErrorsAlarmArn:
+    Description: ARN of the risk monitor errors alarm
+    Value: !GetAtt RiskMonitorErrorsAlarm.Arn
+
+  TelegramBotErrorsAlarmArn:
+    Description: ARN of the Telegram bot errors alarm
+    Value: !GetAtt TelegramBotErrorsAlarm.Arn
+
+  NoSignalsAlarmArn:
+    Description: ARN of the no signals alarm
+    Value: !GetAtt NoSignalsAlarm.Arn

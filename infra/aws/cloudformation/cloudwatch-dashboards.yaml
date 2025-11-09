@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CRPBot CloudWatch Dashboards for Trading and System Metrics'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # Trading Metrics Dashboard
+  TradingDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'CRPBot-Trading-${Environment}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "crpbot-signal-processor-${Environment}" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Duration", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Signal Processor Metrics",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "crpbot-risk-monitor-${Environment}" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Duration", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Risk Monitor Metrics",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SNS", "NumberOfMessagesPublished", "TopicName", "crpbot-signals-${Environment}" ],
+                  [ ".", "NumberOfNotificationsFailed", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Trading Signals Published",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SNS", "NumberOfMessagesPublished", "TopicName", "crpbot-risk-alerts-${Environment}" ],
+                  [ ".", "NumberOfNotificationsFailed", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Risk Alerts Published",
+                "period": 300
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 12,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/crpbot-signal-processor-${Environment}' | fields @timestamp, @message\n| filter @message like /Signal processor/\n| sort @timestamp desc\n| limit 20",
+                "region": "us-east-1",
+                "title": "Recent Signal Processing Logs",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+  # System Health Dashboard
+  SystemDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'CRPBot-System-${Environment}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "crpbot-signal-processor-${Environment}" ],
+                  [ ".", ".", ".", "crpbot-risk-monitor-${Environment}" ],
+                  [ ".", ".", ".", "crpbot-telegram-bot-${Environment}" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Lambda Invocations",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Errors", "FunctionName", "crpbot-signal-processor-${Environment}" ],
+                  [ ".", ".", ".", "crpbot-risk-monitor-${Environment}" ],
+                  [ ".", ".", ".", "crpbot-telegram-bot-${Environment}" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Lambda Errors",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 0,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Duration", "FunctionName", "crpbot-signal-processor-${Environment}" ],
+                  [ ".", ".", ".", "crpbot-risk-monitor-${Environment}" ],
+                  [ ".", ".", ".", "crpbot-telegram-bot-${Environment}" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "Lambda Duration",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/S3", "BucketSizeBytes", "BucketName", "crpbot-market-data-${Environment}", "StorageType", "StandardStorage" ],
+                  [ ".", ".", ".", "crpbot-logs-${Environment}", ".", "." ],
+                  [ ".", ".", ".", "crpbot-backups-${Environment}", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "S3 Storage Usage",
+                "period": 86400
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Events", "SuccessfulInvocations", "RuleName", "crpbot-signal-schedule-${Environment}" ],
+                  [ ".", "FailedInvocations", ".", "." ],
+                  [ ".", "SuccessfulInvocations", ".", "crpbot-risk-schedule-${Environment}" ],
+                  [ ".", "FailedInvocations", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "us-east-1",
+                "title": "EventBridge Rule Executions",
+                "period": 300
+              }
+            }
+          ]
+        }
+
+Outputs:
+  TradingDashboardURL:
+    Description: URL of the Trading Metrics Dashboard
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=CRPBot-Trading-${Environment}'
+
+  SystemDashboardURL:
+    Description: URL of the System Health Dashboard
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=CRPBot-System-${Environment}'
