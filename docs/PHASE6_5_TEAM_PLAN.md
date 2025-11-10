@@ -59,6 +59,7 @@ Claude reviews steps 2–4 daily; Amazon Q reviews screenshots on assigned day
 - Cursor compiles `reports/phase6_5/summary.md` with metrics and evidence.
 - Claude reviews and signs off on the go/no-go decision for Phase 7.
 - Amazon Q prepares any infrastructure changes needed ahead of micro-lot testing.
+- Bugbot reviews the wrap-up pull request (`@Bugbot review`) before merge to catch regressions.
 
 This sequence keeps everyone aligned and minimizes context-switching as we move toward Phase 7 and beyond.***
 

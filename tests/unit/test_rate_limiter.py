@@ -1,6 +1,6 @@
 """Unit tests for rate limiter."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -56,7 +56,7 @@ def test_backoff_expires_after_window(monkeypatch):
     assert limiter.backoff_active is True
 
     # Simulate time passing by placing loss timestamps well in the past
-    past_time = datetime.utcnow() - timedelta(minutes=5)
+    past_time = datetime.now(timezone.utc) - timedelta(minutes=5)
     limiter.loss_history = [past_time for _ in limiter.loss_history]
     limiter.backoff_until = past_time
 

@@ -1,6 +1,6 @@
 """FTMO rules enforcement library."""
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from loguru import logger
 
@@ -20,12 +20,12 @@ class FTMOState:
     def __post_init__(self) -> None:
         """Initialize daily start time if not set."""
         if self.daily_start_time is None:
-            today = datetime.utcnow()
+            today = datetime.now(timezone.utc)
             self.daily_start_time = today.replace(hour=0, minute=0, second=0, microsecond=0)
 
     def reset_daily(self) -> None:
         """Reset daily loss tracking (call at start of new trading day)."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if self.daily_start_time and now.date() > self.daily_start_time.date():
             logger.info("Resetting daily loss tracking (new trading day)")
             self.daily_start_balance = self.account_balance
