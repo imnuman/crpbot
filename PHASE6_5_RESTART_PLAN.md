@@ -21,14 +21,15 @@ This document is a coordinated plan to generate data, train models, and restart 
 | 1 | Data provider infrastructure (synthetic/yfinance/ccxt) | Claude → Cursor | ✅ Complete (2025-11-10) |
 | 2 | Generate raw datasets (synthetic or external) | Cursor | ✅ Complete (2025-11-10) |
 | 3 | Engineer features (`scripts/engineer_features.py`) | Cursor | ✅ Complete (2025-11-10) |
-| 4 | Train models (per-coin LSTM + global transformer) | Cursor | 🔄 In Progress (1/4 complete) |
+| 4 | Train models (per-coin LSTM + global transformer) | Cursor | 🔄 In Progress (3/4 complete) |
 | 5 | Evaluate & promote models (Phase 3 gates) | Claude | ⏹️ Queued |
 | 6 | Point runtime at promoted models, smoke-test | Cursor | ⏹️ Queued |
 | 7 | Restart Phase 6.5 observation (3–5 days) | Cursor + Claude | ⏹️ Queued |
 | 8 | Observation summary & go/no-go for Phase 7 | Claude + Amazon Q | ⏹️ Queued |
 
-> Update the status column as each step is completed.  
-> **Steps 1-3 completed, Step 4 in progress (BTC-USD model trained, ETH-USD training)**
+> Update the status column as each step is completed.
+> **Steps 1-3 completed, Step 4 in progress (3/3 LSTM models trained, Transformer queued)**
+> **Phase 3.5 (Multi-TF) in parallel**: Module created, data fetching in progress
 
 ---
 
@@ -100,20 +101,21 @@ This document is a coordinated plan to generate data, train models, and restart 
 
 ---
 
-## 4. Model Training 🔄 IN PROGRESS
+## 4. Model Training ✅ LSTM COMPLETE, Transformer Queued
 
 **Configuration**: 15 epochs per model (conservative first run)
 **Hardware**: CPU training (~60 min per LSTM, ~40 min for Transformer)
 **Started**: 2025-11-10 03:21 UTC
+**LSTM Training Completed**: 2025-11-10 13:59 UTC
 
 ### Training Status
 
-| Model | Command | Status | Completion | Model File |
-|-------|---------|--------|------------|------------|
-| BTC-USD LSTM | `make train COIN=BTC EPOCHS=15` | ✅ Complete | 2025-11-10 04:16 | `lstm_BTC_USD_1m_a7aff5c4.pt` (249 KB) |
-| ETH-USD LSTM | `make train COIN=ETH EPOCHS=15` | 🔄 **Training** | ~35 min remaining | In progress (Epoch 6/15) |
-| SOL-USD LSTM | `make train COIN=SOL EPOCHS=15` | ⏹️ Queued | ~60 min | Not started |
-| Multi-Coin Transformer | `make task transformer EPOCHS=15` | ⏹️ Queued | ~40 min | Not started |
+| Model | Command | Status | Completion | Model File | Val Accuracy |
+|-------|---------|--------|------------|------------|--------------|
+| BTC-USD LSTM | `make train COIN=BTC EPOCHS=15` | ✅ Complete | 2025-11-10 04:16 | `lstm_BTC_USD_1m_a7aff5c4.pt` (249 KB) | N/A |
+| ETH-USD LSTM | `make train COIN=ETH EPOCHS=15` | ✅ Complete | 2025-11-10 12:39 | `lstm_ETH_USD_1m_a7aff5c4.pt` (249 KB) | 50.87% |
+| SOL-USD LSTM | `make train COIN=SOL EPOCHS=15` | ✅ Complete | 2025-11-10 13:59 | `lstm_SOL_USD_1m_a7aff5c4.pt` (249 KB) | 50.22% |
+| Multi-Coin Transformer | `make task transformer EPOCHS=15` | ⏹️ Queued | ~40 min | Not started | TBD |
 
 ### Training Configuration
 
@@ -142,9 +144,15 @@ This document is a coordinated plan to generate data, train models, and restart 
 ### Training Logs
 
 - BTC-USD: `/tmp/train_btc_lstm.log` ✅
-- ETH-USD: `/tmp/train_eth_lstm.log` 🔄
-- SOL-USD: TBD
+- ETH-USD: `/tmp/train_eth_lstm.log` ✅
+- SOL-USD: `/tmp/train_sol_lstm.log` ✅
 - Transformer: TBD
+
+### Notes
+
+- All 3 LSTM models trained successfully with ~50% validation accuracy (baseline)
+- Models ready for Phase 3 evaluation gates (68% accuracy, 5% calibration error)
+- **Phase 3.5 (Multi-TF) in parallel**: Multi-timeframe feature engineering module created and tested, data fetching in progress (5m, 15m, 1h for all symbols)
 
 ---
 
