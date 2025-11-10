@@ -12,7 +12,7 @@ def create_data_provider(provider: str, **kwargs) -> "DataProviderInterface":
     Factory function to create data provider instance.
 
     Args:
-        provider: Provider name ('coinbase', 'kraken', 'cryptocompare', 'binance', 'mock')
+        provider: Provider name ('coinbase', 'kraken', 'cryptocompare', 'binance', 'ccxt', 'mock')
         **kwargs: Provider-specific credentials
 
     Returns:
@@ -24,16 +24,29 @@ def create_data_provider(provider: str, **kwargs) -> "DataProviderInterface":
         # Coinbase Advanced Trade uses JWT with API key name and private key
         api_key_name = kwargs.get("api_key_name") or kwargs.get("api_key", "")
         private_key = kwargs.get("private_key") or kwargs.get("api_secret", "")
-        
+
         return CoinbaseDataProvider(
             api_key_name=api_key_name,
             private_key=private_key,
         )
+    elif provider in ["ccxt", "binance", "kraken"]:
+        from libs.data.ccxt_provider import CCXTDataProvider
+
+        # Use provider name as exchange, default to binance if 'ccxt' generic
+        exchange = provider if provider != "ccxt" else "binance"
+        return CCXTDataProvider(exchange=exchange)
+    elif provider == "yfinance":
+        from libs.data.yfinance_provider import YFinanceDataProvider
+        return YFinanceDataProvider()
+    elif provider == "synthetic":
+        from libs.data.synthetic_provider import SyntheticDataProvider
+        return SyntheticDataProvider(seed=kwargs.get("seed", 42))
     elif provider == "mock":
         return MockDataProvider()
     else:
-        logger.warning(f"Provider {provider} not implemented, using mock")
-        return MockDataProvider()
+        logger.warning(f"Provider {provider} not implemented, using synthetic data")
+        from libs.data.synthetic_provider import SyntheticDataProvider
+        return SyntheticDataProvider(seed=42)
 
 
 class DataProviderInterface(ABC):
