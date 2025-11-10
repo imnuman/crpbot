@@ -27,3 +27,15 @@ Date: <!-- YYYY-MM-DD -->
 - [ ] Go for runtime start
 - [ ] Issues found (document above)
 
+
+## Automated Snapshot (2025-11-10 00:00:09 UTC)
+- Metrics window: 24h → `reports/phase6_5/day0_metrics.json`
+- Signals produced: 0
+- Avg confidence: 0.000
+- Tier distribution:
+  - High: 0
+  - Medium: 0
+  - Low: 0
+- Symbols observed: None
+- Latency (ms): avg 0.00, max 0.00
+- CloudWatch alarm summary: unavailable (boto3 not installed in environment)
