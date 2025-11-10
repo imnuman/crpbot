@@ -1,6 +1,5 @@
 """Feature engineering for cryptocurrency trading data."""
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 from typing import Any
 
 import numpy as np
@@ -57,27 +56,27 @@ def add_session_features(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with session features added
     """
     df = df.copy()
-    
+
     # Ensure timestamp is datetime
     if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
         df["timestamp"] = pd.to_datetime(df["timestamp"])
-    
+
     # Add session
     df["session"] = df["timestamp"].apply(get_trading_session)
-    
+
     # One-hot encode sessions
     df["session_tokyo"] = (df["session"] == "tokyo").astype(int)
     df["session_london"] = (df["session"] == "london").astype(int)
     df["session_new_york"] = (df["session"] == "new_york").astype(int)
-    
+
     # Day of week (0=Monday, 6=Sunday)
     df["day_of_week"] = df["timestamp"].dt.dayofweek
-    
+
     # Weekend indicator
     df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
-    
+
     logger.debug(f"Added session features: {df[['session', 'day_of_week', 'is_weekend']].head()}")
-    
+
     return df
 
 
@@ -95,17 +94,17 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     high = df["high"]
     low = df["low"]
     close = df["close"]
-    
+
     # Calculate True Range
     tr1 = high - low
     tr2 = abs(high - close.shift(1))
     tr3 = abs(low - close.shift(1))
-    
+
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    
+
     # Calculate ATR as moving average of TR
     atr = tr.rolling(window=period, min_periods=1).mean()
-    
+
     return atr
 
 
@@ -125,20 +124,20 @@ def calculate_spread_features(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with spread features added
     """
     df = df.copy()
-    
+
     # Absolute spread
     df["spread"] = df["high"] - df["low"]
-    
+
     # Percentage spread
     df["spread_pct"] = (df["spread"] / df["close"]) * 100
-    
+
     # Calculate ATR for normalization
     atr = calculate_atr(df)
     df["atr"] = atr
-    
+
     # Spread normalized by ATR
     df["spread_atr_ratio"] = df["spread"] / (atr + 1e-8)  # Avoid division by zero
-    
+
     return df
 
 
@@ -159,18 +158,20 @@ def calculate_volume_features(df: pd.DataFrame, period: int = 20) -> pd.DataFram
         DataFrame with volume features added
     """
     df = df.copy()
-    
+
     # Volume moving average
     df["volume_ma"] = df["volume"].rolling(window=period, min_periods=1).mean()
-    
+
     # Volume ratio (current vs average)
     df["volume_ratio"] = df["volume"] / (df["volume_ma"] + 1e-8)
-    
+
     # Volume trend (slope over last N periods)
-    df["volume_trend"] = df["volume"].rolling(window=period, min_periods=1).apply(
-        lambda x: np.polyfit(range(len(x)), x, 1)[0] if len(x) > 1 else 0
+    df["volume_trend"] = (
+        df["volume"]
+        .rolling(window=period, min_periods=1)
+        .apply(lambda x: np.polyfit(range(len(x)), x, 1)[0] if len(x) > 1 else 0)
     )
-    
+
     return df
 
 
@@ -195,16 +196,16 @@ def calculate_volatility_regime(
         Series with volatility regime: 'low', 'medium', 'high'
     """
     atr = calculate_atr(df)
-    
+
     # Calculate rolling percentiles
     low_thresh = atr.rolling(window=window, min_periods=1).quantile(low_percentile / 100)
     high_thresh = atr.rolling(window=window, min_periods=1).quantile(high_percentile / 100)
-    
+
     # Determine regime based on ATR relative to percentiles
     regime = pd.Series("medium", index=df.index, dtype="object")
     regime[atr < low_thresh] = "low"
     regime[atr >= high_thresh] = "high"
-    
+
     return regime
 
 
@@ -227,27 +228,27 @@ def add_technical_indicators(df: pd.DataFrame, use_ta: bool = True) -> pd.DataFr
         DataFrame with technical indicators added
     """
     df = df.copy()
-    
+
     # ATR (custom implementation)
     df["atr"] = calculate_atr(df)
-    
+
     # Moving averages
     for period in [7, 14, 21, 50]:
         df[f"sma_{period}"] = df["close"].rolling(window=period, min_periods=1).mean()
         df[f"price_sma_{period}_ratio"] = df["close"] / (df[f"sma_{period}"] + 1e-8)
-    
+
     # Use ta library if available
     if use_ta and ta is not None:
         try:
             # RSI
             df["rsi"] = ta.momentum.RSIIndicator(close=df["close"]).rsi()
-            
+
             # MACD
             macd = ta.trend.MACD(close=df["close"])
             df["macd"] = macd.macd()
             df["macd_signal"] = macd.macd_signal()
             df["macd_diff"] = macd.macd_diff()
-            
+
             # Bollinger Bands
             bollinger = ta.volatility.BollingerBands(close=df["close"])
             df["bb_high"] = bollinger.bollinger_hband()
@@ -258,7 +259,7 @@ def add_technical_indicators(df: pd.DataFrame, use_ta: bool = True) -> pd.DataFr
             logger.warning(f"Error calculating ta indicators: {e}")
     else:
         logger.debug("ta library not available, using custom indicators only")
-    
+
     return df
 
 
@@ -285,36 +286,36 @@ def engineer_features(
         DataFrame with all engineered features
     """
     logger.info("Engineering features...")
-    
+
     if df.empty:
         logger.warning("DataFrame is empty, returning as-is")
         return df
-    
+
     df = df.copy()
-    
+
     # Ensure timestamp is datetime
     if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
         df["timestamp"] = pd.to_datetime(df["timestamp"])
-    
+
     # Sort by timestamp to ensure proper feature calculation
     df = df.sort_values("timestamp").reset_index(drop=True)
-    
+
     # Add session features (critical for trading)
     if add_session_features_flag:
         df = add_session_features(df)
-    
+
     # Add spread features
     if add_spread_features_flag:
         df = calculate_spread_features(df)
-    
+
     # Add volume features
     if add_volume_features_flag:
         df = calculate_volume_features(df)
-    
+
     # Add technical indicators
     if add_technical_indicators_flag:
         df = add_technical_indicators(df)
-    
+
     # Add volatility regime
     if add_volatility_regime_flag:
         df["volatility_regime"] = calculate_volatility_regime(df)
@@ -322,20 +323,24 @@ def engineer_features(
         df["volatility_low"] = (df["volatility_regime"] == "low").astype(int)
         df["volatility_medium"] = (df["volatility_regime"] == "medium").astype(int)
         df["volatility_high"] = (df["volatility_regime"] == "high").astype(int)
-    
+
     # Handle NaN values (forward fill, then backward fill)
     initial_nans = df.isna().sum().sum()
     df = df.ffill().bfill()
     final_nans = df.isna().sum().sum()
-    
+
     if initial_nans > 0:
         logger.info(f"Filled {initial_nans - final_nans} NaN values in features")
-    
+
     # Log feature count
-    feature_cols = [col for col in df.columns if col not in ["timestamp", "open", "high", "low", "close", "volume"]]
+    feature_cols = [
+        col
+        for col in df.columns
+        if col not in ["timestamp", "open", "high", "low", "close", "volume"]
+    ]
     logger.info(f"Engineered {len(feature_cols)} features")
     logger.debug(f"Feature columns: {feature_cols[:10]}...")  # Show first 10
-    
+
     return df
 
 
@@ -364,9 +369,9 @@ def normalize_features(
     """
     if df.empty:
         return df, {}
-    
+
     df = df.copy()
-    
+
     # Auto-detect feature columns if not provided
     if feature_columns is None:
         exclude_cols = ["timestamp", "session", "volatility_regime"]
@@ -375,24 +380,24 @@ def normalize_features(
             for col in df.columns
             if col not in exclude_cols and pd.api.types.is_numeric_dtype(df[col])
         ]
-    
+
     if not feature_columns:
         logger.warning("No feature columns found for normalization")
         return df, {}
-    
+
     # Use fit_data for calculating normalization params if provided
     fit_df = fit_data if fit_data is not None else df
-    
+
     normalization_params = {}
-    
+
     for col in feature_columns:
         if col not in df.columns:
             continue
-        
+
         values = fit_df[col].dropna()
         if len(values) == 0:
             continue
-        
+
         if method == "standard":
             mean = values.mean()
             std = values.std()
@@ -413,8 +418,7 @@ def normalize_features(
             if iqr > 1e-8:
                 df[col] = (df[col] - median) / iqr
                 normalization_params[col] = {"method": "robust", "median": median, "iqr": iqr}
-    
-    logger.info(f"Normalized {len(normalization_params)} features using {method} method")
-    
-    return df, normalization_params
 
+    logger.info(f"Normalized {len(normalization_params)} features using {method} method")
+
+    return df, normalization_params

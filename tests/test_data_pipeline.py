@@ -1,14 +1,12 @@
 """Tests for data pipeline."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from apps.trainer.data_pipeline import (
     clean_and_validate_data,
     create_walk_forward_splits,
-    detect_outliers,
     interval_map,
 )
 
@@ -16,14 +14,18 @@ from apps.trainer.data_pipeline import (
 def test_clean_and_validate_data_basic():
     """Test that clean_and_validate_data processes data correctly."""
     # Create clean test data
-    df = pd.DataFrame({
-        "timestamp": pd.date_range(start="2023-01-01", periods=10, freq="1min", tz=timezone.utc),
-        "open": [100.0 + i for i in range(10)],
-        "high": [101.0 + i for i in range(10)],
-        "low": [99.0 + i for i in range(10)],
-        "close": [100.5 + i for i in range(10)],
-        "volume": [1000 + i * 100 for i in range(10)],
-    })
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                start="2023-01-01", periods=10, freq="1min", tz=timezone.utc
+            ),
+            "open": [100.0 + i for i in range(10)],
+            "high": [101.0 + i for i in range(10)],
+            "low": [99.0 + i for i in range(10)],
+            "close": [100.5 + i for i in range(10)],
+            "volume": [1000 + i * 100 for i in range(10)],
+        }
+    )
 
     # clean_and_validate_data returns (DataFrame, DataQualityReport)
     cleaned, report = clean_and_validate_data(df)
@@ -41,12 +43,12 @@ def test_clean_and_validate_data_basic():
 def test_create_walk_forward_splits_basic():
     """Test walk-forward splits with basic configuration."""
     # Create test data with required columns
-    df = pd.DataFrame({
-        "timestamp": pd.date_range(
-            start="2023-01-01", periods=100, freq="1h", tz=timezone.utc
-        ),
-        "close": np.random.randn(100).cumsum() + 100,
-    })
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(start="2023-01-01", periods=100, freq="1h", tz=timezone.utc),
+            "close": np.random.randn(100).cumsum() + 100,
+        }
+    )
 
     # Define split points (2 days and 3 days into the data)
     train_end = datetime(2023, 1, 3, 0, 0, tzinfo=timezone.utc)
@@ -79,5 +81,3 @@ def test_interval_mapping():
     # Check values are in pandas-compatible format
     assert interval_map["1m"] == "1min"
     assert interval_map["1h"] == "1h"
-
-

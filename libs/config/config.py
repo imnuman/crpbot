@@ -79,13 +79,12 @@ class Settings(BaseSettings):
 
     # Data Provider (supports multiple: coinbase, kraken, cryptocompare, binance)
     data_provider: str = Field(
-        default="coinbase",
-        description="Data provider: coinbase, kraken, cryptocompare, binance"
+        default="coinbase", description="Data provider: coinbase, kraken, cryptocompare, binance"
     )
     data_provider_api_key: str = ""
     data_provider_api_secret: str = ""
     data_provider_api_passphrase: str = ""  # For Coinbase
-    
+
     # Provider-specific env vars (also supported for convenience)
     # Coinbase Advanced Trade API uses JWT authentication
     coinbase_api_key_name: str = ""  # Full path: organizations/.../apiKeys/...
@@ -97,11 +96,11 @@ class Settings(BaseSettings):
     kraken_api_key: str = ""
     kraken_api_secret: str = ""
     cryptocompare_api_key: str = ""
-    
+
     # Legacy Binance support (for backward compatibility)
     binance_api_key: str = ""
     binance_api_secret: str = ""
-    
+
     @property
     def effective_api_key(self) -> str:
         """Get API key from provider-specific or generic field."""
@@ -119,7 +118,7 @@ class Settings(BaseSettings):
         if self.binance_api_key:  # Legacy support
             return self.binance_api_key
         return ""
-    
+
     @property
     def effective_api_secret(self) -> str:
         """Get API secret from provider-specific or generic field."""
@@ -135,7 +134,7 @@ class Settings(BaseSettings):
         if self.binance_api_secret:  # Legacy support
             return self.binance_api_secret
         return ""
-    
+
     @property
     def effective_api_passphrase(self) -> str:
         """Get API passphrase (not used for Coinbase Advanced Trade JWT)."""

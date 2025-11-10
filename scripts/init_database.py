@@ -8,8 +8,8 @@ sys.path.insert(0, str(project_root))
 
 from loguru import logger
 
-from libs.db.database import init_database
 from libs.config.config import Settings
+from libs.db.database import init_database
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     logger.info(f"Initializing database: {config.db_url}")
 
     # Initialize database and create tables
-    db = init_database(db_url=config.db_url, create_tables=True)
+    init_database(db_url=config.db_url, create_tables=True)
 
     logger.info("✅ Database initialized successfully!")
     logger.info("   Tables created:")
@@ -29,4 +29,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

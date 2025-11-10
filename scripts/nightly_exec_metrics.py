@@ -9,17 +9,13 @@ from loguru import logger
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from apps.mt5_bridge.interface import MT5BridgeInterface, MockMT5Bridge
-from libs.config.config import Settings
+from apps.mt5_bridge.interface import MockMT5Bridge
 from libs.rl_env.execution_metrics import measure_execution_metrics, save_execution_metrics
 
 
 def main():
     """Run nightly execution metrics measurement."""
     logger.info("Starting nightly execution metrics measurement...")
-
-    # Load config
-    config = Settings()
 
     # Create MT5 bridge (will use MockMT5Bridge if FTMO not available)
     # TODO: Replace with actual FTMO bridge when available
@@ -54,4 +50,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

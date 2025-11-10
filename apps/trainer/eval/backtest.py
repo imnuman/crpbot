@@ -1,12 +1,8 @@
 """Backtest engine with empirical FTMO execution model."""
-import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import datetime
 
 import numpy as np
-import pandas as pd
-import torch
 from loguru import logger
 
 from apps.trainer.features import get_trading_session
@@ -227,7 +223,9 @@ class BacktestEngine:
         self.trades.append(trade)
         return trade
 
-    def close_trade(self, trade: Trade, exit_time: datetime, exit_price: float, reason: str = "manual") -> None:
+    def close_trade(
+        self, trade: Trade, exit_time: datetime, exit_price: float, reason: str = "manual"
+    ) -> None:
         """
         Close a trade and calculate PnL.
 
@@ -322,7 +320,9 @@ class BacktestEngine:
         # Sharpe ratio (simplified)
         returns = [t.pnl / self.initial_balance for t in closed_trades]
         sharpe_ratio = (
-            np.mean(returns) / (np.std(returns) + EPSILON_DIV_BY_ZERO) * np.sqrt(TRADING_DAYS_PER_YEAR)
+            np.mean(returns)
+            / (np.std(returns) + EPSILON_DIV_BY_ZERO)
+            * np.sqrt(TRADING_DAYS_PER_YEAR)
             if len(returns) > 1
             else 0.0
         )
@@ -346,7 +346,9 @@ class BacktestEngine:
         for session in ["tokyo", "london", "new_york"]:
             session_trades = [t for t in closed_trades if t.session == session]
             if session_trades:
-                session_win_rate = sum(1 for t in session_trades if t.result == "win") / len(session_trades)
+                session_win_rate = sum(1 for t in session_trades if t.result == "win") / len(
+                    session_trades
+                )
                 session_pnl = sum(t.pnl for t in session_trades)
                 session_metrics[session] = {
                     "trades": len(session_trades),
@@ -359,7 +361,9 @@ class BacktestEngine:
         confidences = [t.signal_confidence for t in closed_trades]
         outcomes = [1.0 if t.result == "win" else 0.0 for t in closed_trades]
         if confidences and outcomes:
-            brier_score = np.mean([(c - o) ** 2 for c, o in zip(confidences, outcomes)])
+            brier_score = np.mean(
+                [(c - o) ** 2 for c, o in zip(confidences, outcomes, strict=True)]
+            )
         else:
             brier_score = 0.0
 
@@ -411,4 +415,3 @@ class BacktestEngine:
             latency_penalized_pnl=latency_penalized_pnl,
             hit_rate_by_session=hit_rate_by_session,
         )
-

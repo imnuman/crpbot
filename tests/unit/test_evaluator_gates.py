@@ -5,25 +5,29 @@ from apps.trainer.eval.evaluator import ModelEvaluator
 
 
 def _dummy_metrics(**overrides):
-    base = dict(
-        total_trades=50,
-        winning_trades=40,
-        losing_trades=10,
-        win_rate=0.8,
-        total_pnl=1000.0,
-        avg_pnl_per_trade=20.0,
-        max_drawdown=0.05,
-        avg_drawdown=0.02,
-        sharpe_ratio=1.5,
-        tier_metrics={"high": {"trades": 20, "win_rate": 0.8, "total_pnl": 600.0, "avg_pnl": 30.0}},
-        session_metrics={"london": {"trades": 20, "win_rate": 0.8, "total_pnl": 600.0, "avg_pnl": 30.0}},
-        brier_score=0.02,
-        calibration_error=0.03,
-        avg_latency_ms=120.0,
-        p90_latency_ms=200.0,
-        latency_penalized_pnl=950.0,
-        hit_rate_by_session={"london": 0.8},
-    )
+    base = {
+        "total_trades": 50,
+        "winning_trades": 40,
+        "losing_trades": 10,
+        "win_rate": 0.8,
+        "total_pnl": 1000.0,
+        "avg_pnl_per_trade": 20.0,
+        "max_drawdown": 0.05,
+        "avg_drawdown": 0.02,
+        "sharpe_ratio": 1.5,
+        "tier_metrics": {
+            "high": {"trades": 20, "win_rate": 0.8, "total_pnl": 600.0, "avg_pnl": 30.0}
+        },
+        "session_metrics": {
+            "london": {"trades": 20, "win_rate": 0.8, "total_pnl": 600.0, "avg_pnl": 30.0}
+        },
+        "brier_score": 0.02,
+        "calibration_error": 0.03,
+        "avg_latency_ms": 120.0,
+        "p90_latency_ms": 200.0,
+        "latency_penalized_pnl": 950.0,
+        "hit_rate_by_session": {"london": 0.8},
+    }
     base.update(overrides)
     return BacktestMetrics(**base)
 

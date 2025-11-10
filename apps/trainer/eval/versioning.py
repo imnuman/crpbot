@@ -1,6 +1,5 @@
 """Model versioning utilities."""
 import hashlib
-import json
 from pathlib import Path
 from typing import Any
 
@@ -125,4 +124,3 @@ def get_model_info(model_path: Path | str) -> dict[str, Any]:
 
 # Import datetime here to avoid circular imports
 from datetime import datetime
-

@@ -1,10 +1,8 @@
 """Model evaluator with enhanced metrics and promotion gates."""
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import torch
 from loguru import logger
@@ -13,7 +11,6 @@ from apps.trainer.eval.backtest import BacktestEngine, BacktestMetrics
 from apps.trainer.models.lstm import LSTMDirectionModel
 from apps.trainer.models.transformer import TransformerTrendModel
 from apps.trainer.train.dataset import TradingDataset
-from libs.data.quality import check_data_leakage
 from libs.rl_env.execution_model import ExecutionModel
 
 
@@ -85,7 +82,6 @@ class ModelEvaluator:
             for i in range(len(test_dataset)):
                 sample = test_dataset[i]
                 features = sample["features"].unsqueeze(0).to(device)
-                label = sample["label"].item()
 
                 # Measure inference latency
                 start_time = time.time()
@@ -138,7 +134,9 @@ class ModelEvaluator:
                     # Simulate exit (in real backtest, use TP/SL logic)
                     # For now, close after fixed period
                     exit_time = entry_time + pd.Timedelta(minutes=15)
-                    exit_price = entry_price * (1.01 if direction == "long" else 0.99)  # Placeholder
+                    exit_price = entry_price * (
+                        1.01 if direction == "long" else 0.99
+                    )  # Placeholder
 
                     backtest_engine.close_trade(trade, exit_time, exit_price, reason="tp")
 
@@ -205,4 +203,3 @@ class ModelEvaluator:
                 logger.warning(f"  - {failure}")
 
         return passed, failures
-

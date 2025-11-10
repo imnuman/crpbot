@@ -7,7 +7,6 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 import requests
-from loguru import logger
 
 from libs.config.config import Settings
 
@@ -15,11 +14,11 @@ from libs.config.config import Settings
 def diagnose_telegram():
     """Diagnose Telegram bot connection."""
     config = Settings()
-    
+
     print("🔍 Telegram Bot Diagnosis")
     print("=" * 70)
     print()
-    
+
     # Check config
     if not config.telegram_token:
         print("❌ TELEGRAM_TOKEN not set in .env")
@@ -27,11 +26,11 @@ def diagnose_telegram():
     if not config.telegram_chat_id:
         print("❌ TELEGRAM_CHAT_ID not set in .env")
         return False
-    
+
     print(f"✅ Token: {config.telegram_token[:15]}...")
     print(f"✅ Chat ID: {config.telegram_chat_id}")
     print()
-    
+
     # Test bot API directly
     try:
         # Get bot info
@@ -41,14 +40,16 @@ def diagnose_telegram():
             bot_info = resp.json()
             if bot_info.get("ok"):
                 bot_data = bot_info["result"]
-                print(f"✅ Bot verified: @{bot_data.get('username')} ({bot_data.get('first_name')})")
+                print(
+                    f"✅ Bot verified: @{bot_data.get('username')} ({bot_data.get('first_name')})"
+                )
             else:
                 print(f"❌ Bot API error: {bot_info.get('description')}")
                 return False
         else:
             print(f"❌ HTTP error: {resp.status_code}")
             return False
-        
+
         # Get updates (to find chat ID)
         updates_url = f"https://api.telegram.org/bot{config.telegram_token}/getUpdates"
         resp = requests.get(updates_url, timeout=10)
@@ -69,8 +70,10 @@ def diagnose_telegram():
                             first_name = chat.get("first_name", "N/A")
                             if chat_id:
                                 chat_ids.add(chat_id)
-                                print(f"   • Chat ID: {chat_id} (type: {chat_type}, user: {first_name} @{username})")
-                    
+                                print(
+                                    f"   • Chat ID: {chat_id} (type: {chat_type}, user: {first_name} @{username})"
+                                )
+
                     print(f"\n📊 Your configured chat ID: {config.telegram_chat_id}")
                     if str(config.telegram_chat_id) in [str(cid) for cid in chat_ids]:
                         print("✅ Your chat ID matches one found in updates!")
@@ -88,12 +91,12 @@ def diagnose_telegram():
                     print("   2. Start a chat with your bot (@your_bot_username)")
                     print("   3. Send any message (e.g., '/start') to the bot")
                     print("   4. Then rerun this diagnostic")
-        
+
         # Try to send a message to test
         send_url = f"https://api.telegram.org/bot{config.telegram_token}/sendMessage"
         payload = {
             "chat_id": config.telegram_chat_id,
-            "text": "🧪 Test message from diagnostic script"
+            "text": "🧪 Test message from diagnostic script",
         }
         resp = requests.post(send_url, json=payload, timeout=10)
         if resp.status_code == 200:
@@ -122,15 +125,16 @@ def diagnose_telegram():
                 result = resp.json()
                 error_desc = result.get("description", "Unknown error")
                 print(f"   Error: {error_desc}")
-            except:
+            except Exception:
                 print(f"   Response: {resp.text[:200]}")
-                    
+
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return False
-    
+
     return False
 
 

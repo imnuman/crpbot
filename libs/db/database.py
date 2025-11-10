@@ -1,11 +1,10 @@
 """Database connection and session management."""
-from typing import Generator
-
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from collections.abc import Generator
 
 from loguru import logger
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from libs.config.config import Settings
 from libs.db.models import Base
@@ -108,4 +107,3 @@ def init_database(db_url: str | None = None, create_tables: bool = True) -> Data
     if create_tables:
         db.create_tables()
     return db
-

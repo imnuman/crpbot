@@ -1,7 +1,4 @@
 """Telegram bot integration for runtime notifications and commands."""
-import asyncio
-from datetime import datetime
-from typing import Any
 
 from loguru import logger
 from telegram import Update
@@ -159,7 +156,9 @@ class TelegramBot:
             # TODO: Update threshold in runtime
             await update.message.reply_text(f"✅ Confidence threshold set to {threshold:.2%}")
         except ValueError:
-            await update.message.reply_text("Invalid threshold value. Use a number between 0.0 and 1.0")
+            await update.message.reply_text(
+                "Invalid threshold value. Use a number between 0.0 and 1.0"
+            )
 
     async def _handle_kill_switch(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /kill_switch command."""
@@ -221,4 +220,3 @@ async def send_message(message: str, mode: str = "dryrun") -> bool:
     if bot_instance:
         return await bot_instance.send_message(message, mode)
     return False
-

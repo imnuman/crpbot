@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func
+
 logger = logging.getLogger("export_metrics")
 
 
@@ -116,4 +117,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

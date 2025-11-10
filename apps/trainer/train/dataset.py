@@ -1,12 +1,10 @@
 """Dataset classes for model training."""
-from typing import Any
 
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
-
 from loguru import logger
+from torch.utils.data import Dataset
 
 
 class TradingDataset(Dataset):
@@ -138,4 +136,3 @@ class TradingDataset(Dataset):
         label_tensor = torch.FloatTensor([label])
 
         return {"features": features_tensor, "label": label_tensor}
-

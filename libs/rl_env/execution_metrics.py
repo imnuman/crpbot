@@ -8,9 +8,7 @@ from typing import Any
 import numpy as np
 from loguru import logger
 
-from apps.mt5_bridge.interface import MT5BridgeInterface, MockMT5Bridge
-from apps.trainer.features import get_trading_session
-from libs.config.config import Settings
+from apps.mt5_bridge.interface import MT5BridgeInterface
 from libs.rl_env.execution_model import ExecutionMetrics
 
 
@@ -199,7 +197,7 @@ def load_execution_metrics(version: str = "latest") -> dict[str, dict[str, Execu
     if not filepath.exists():
         raise FileNotFoundError(f"Execution metrics file not found: {filepath}")
 
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         json_data = json.load(f)
 
     # Convert from JSON to ExecutionMetrics objects
@@ -211,4 +209,3 @@ def load_execution_metrics(version: str = "latest") -> dict[str, dict[str, Execu
 
     logger.info(f"Loaded execution metrics from {filepath}")
     return metrics
-

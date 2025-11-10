@@ -4,13 +4,12 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from libs.rl_env.execution_model import ExecutionModel
+from apps.mt5_bridge.interface import MockMT5Bridge
 from libs.rl_env.execution_metrics import (
-    ExecutionMetrics,
     measure_execution_metrics,
     save_execution_metrics,
 )
-from apps.mt5_bridge.interface import MockMT5Bridge
+from libs.rl_env.execution_model import ExecutionModel
 
 
 def test_execution_model():
@@ -52,14 +51,16 @@ def test_execution_model():
     timestamp = datetime.now(timezone.utc)
 
     spreads = [exec_model.sample_spread(symbol, session, timestamp) for _ in range(10)]
-    slippages = [
-        exec_model.sample_slippage(symbol, session, timestamp) for _ in range(10)
-    ]
+    slippages = [exec_model.sample_slippage(symbol, session, timestamp) for _ in range(10)]
 
-    logger.info(f"  Spread samples: mean={sum(spreads)/len(spreads):.2f}bps, "
-                f"min={min(spreads):.2f}bps, max={max(spreads):.2f}bps")
-    logger.info(f"  Slippage samples: mean={sum(slippages)/len(slippages):.2f}bps, "
-                f"min={min(slippages):.2f}bps, max={max(slippages):.2f}bps")
+    logger.info(
+        f"  Spread samples: mean={sum(spreads)/len(spreads):.2f}bps, "
+        f"min={min(spreads):.2f}bps, max={max(spreads):.2f}bps"
+    )
+    logger.info(
+        f"  Slippage samples: mean={sum(slippages)/len(slippages):.2f}bps, "
+        f"min={min(slippages):.2f}bps, max={max(slippages):.2f}bps"
+    )
 
     # Test execution cost calculation
     logger.info("\n💰 Testing execution cost calculation:")
@@ -71,9 +72,6 @@ def test_execution_model():
         cost = exec_model.calculate_execution_cost(entry_price, symbol, session, timestamp)
         costs_long.append(cost)
 
-        actual_entry_long = exec_model.apply_execution_cost(
-            entry_price, symbol, session, timestamp, direction="long"
-        )
         actual_entry_short = exec_model.apply_execution_cost(
             entry_price, symbol, session, timestamp, direction="short"
         )
@@ -103,13 +101,10 @@ def test_execution_model():
 
     logger.info(f"  Normal latency ({normal_latency}ms): slippage={slippage_normal:.2f}bps")
     logger.info(f"  High latency ({high_latency}ms): slippage={slippage_high:.2f}bps (p90)")
-    logger.info(
-        f"  Latency penalty: {slippage_high - slippage_normal:.2f}bps additional slippage"
-    )
+    logger.info(f"  Latency penalty: {slippage_high - slippage_normal:.2f}bps additional slippage")
 
     logger.info("\n✅ Execution model tests complete!")
 
 
 if __name__ == "__main__":
     test_execution_model()
-

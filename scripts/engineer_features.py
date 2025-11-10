@@ -6,9 +6,7 @@ from pathlib import Path
 from loguru import logger
 
 from apps.trainer.data_pipeline import (
-    clean_and_validate_data,
     load_data,
-    load_features_from_parquet,
     save_features_to_parquet,
 )
 from apps.trainer.features import engineer_features, normalize_features
@@ -18,14 +16,21 @@ def main():
     """Engineer features from raw data."""
     parser = argparse.ArgumentParser(description="Engineer features from raw OHLCV data")
     parser.add_argument("--input", required=True, help="Input parquet file with raw OHLCV data")
+    parser.add_argument("--output", default=None, help="Output directory (default: data/features)")
     parser.add_argument(
-        "--output", default=None, help="Output directory (default: data/features)"
+        "--symbol", default=None, help="Symbol (auto-detected from filename if not provided)"
     )
-    parser.add_argument("--symbol", default=None, help="Symbol (auto-detected from filename if not provided)")
-    parser.add_argument("--interval", default=None, help="Interval (auto-detected from filename if not provided)")
+    parser.add_argument(
+        "--interval", default=None, help="Interval (auto-detected from filename if not provided)"
+    )
     parser.add_argument("--version", default=None, help="Version string (default: date-based)")
     parser.add_argument("--normalize", action="store_true", help="Normalize features")
-    parser.add_argument("--normalize-method", default="standard", choices=["standard", "minmax", "robust"], help="Normalization method")
+    parser.add_argument(
+        "--normalize-method",
+        default="standard",
+        choices=["standard", "minmax", "robust"],
+        help="Normalization method",
+    )
     parser.add_argument("--no-session", action="store_true", help="Skip session features")
     parser.add_argument("--no-technical", action="store_true", help="Skip technical indicators")
     parser.add_argument("--no-spread", action="store_true", help="Skip spread features")
@@ -65,7 +70,9 @@ def main():
                 interval = interval or parts[1] if len(parts) > 1 else None
 
     if not symbol or not interval:
-        logger.error("Could not auto-detect symbol/interval. Please provide --symbol and --interval")
+        logger.error(
+            "Could not auto-detect symbol/interval. Please provide --symbol and --interval"
+        )
         return
 
     logger.info(f"Processing: {symbol} {interval}")
@@ -95,9 +102,10 @@ def main():
     logger.info(f"✅ Features engineered and saved to {feature_file}")
     logger.info(f"   Total features: {len(df_features.columns)}")
     logger.info(f"   Rows: {len(df_features)}")
-    logger.info(f"   Date range: {df_features['timestamp'].min()} to {df_features['timestamp'].max()}")
+    logger.info(
+        f"   Date range: {df_features['timestamp'].min()} to {df_features['timestamp'].max()}"
+    )
 
 
 if __name__ == "__main__":
     main()
-

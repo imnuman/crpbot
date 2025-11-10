@@ -2,7 +2,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -10,7 +9,6 @@ from loguru import logger
 
 from libs.config.config import Settings
 from libs.data.provider import create_data_provider
-
 
 # Interval mapping for pandas frequency
 interval_map = {
@@ -50,8 +48,7 @@ def fetch_historical_data(
         end_date = datetime.now(timezone=start_date.tzinfo)
 
     logger.info(
-        f"Fetching {symbol} data from {start_date} to {end_date} "
-        f"(interval: {interval})"
+        f"Fetching {symbol} data from {start_date} to {end_date} " f"(interval: {interval})"
     )
 
     # Create data provider
@@ -116,9 +113,7 @@ def fetch_historical_data(
 
     if not all_data:
         logger.warning(f"No data fetched for {symbol}")
-        return pd.DataFrame(
-            columns=["timestamp", "open", "high", "low", "close", "volume"]
-        )
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     # Combine all chunks
     df = pd.concat(all_data, ignore_index=True)
@@ -150,7 +145,7 @@ class DataQualityReport:
 Data Quality Report:
   Initial rows: {self.initial_rows}
   Final rows: {self.final_rows}
-  Removed: {self.duplicates_removed} duplicates, {self.invalid_price_removed} invalid prices, 
+  Removed: {self.duplicates_removed} duplicates, {self.invalid_price_removed} invalid prices,
            {self.invalid_ohlc_removed} invalid OHLC, {self.outliers_removed} outliers
   Filled: {self.missing_values_filled} missing values, {self.gaps_filled} gaps
   Completeness: {self.completeness_pct:.2f}%
@@ -235,9 +230,7 @@ def validate_data_completeness(
 
     # Generate expected timestamps
     freq_str = interval_map.get(interval.lower(), "1min")
-    expected_timestamps = pd.date_range(
-        start=start_time, end=end_time, freq=freq_str
-    )
+    expected_timestamps = pd.date_range(start=start_time, end=end_time, freq=freq_str)
     expected_count = len(expected_timestamps)
 
     # Find missing timestamps
@@ -417,9 +410,7 @@ def create_walk_forward_splits(
     val_df = df[(df["timestamp"] > train_end) & (df["timestamp"] <= val_end)].copy()
     test_df = df[df["timestamp"] > val_end].copy()
 
-    logger.info(
-        f"Split sizes: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}"
-    )
+    logger.info(f"Split sizes: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
 
     return train_df, val_df, test_df
 
@@ -461,25 +452,26 @@ def save_features_to_parquet(
     """
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Generate version if not provided
     if version is None:
         from datetime import datetime
+
         version = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
+
     # Create filename: features_{symbol}_{interval}_{version}.parquet
     filename = f"features_{symbol}_{interval}_{version}.parquet"
     filepath = base_dir / filename
-    
+
     df.to_parquet(filepath, index=False)
     logger.info(f"Saved features to {filepath} ({len(df)} rows, {len(df.columns)} columns)")
-    
+
     # Update symlink to latest version
     latest_link = base_dir / f"features_{symbol}_{interval}_latest.parquet"
     if latest_link.exists():
         latest_link.unlink()
     latest_link.symlink_to(filepath.name)
-    
+
     return filepath
 
 
@@ -504,7 +496,7 @@ def load_features_from_parquet(
         DataFrame with engineered features
     """
     base_dir = Path(base_dir)
-    
+
     if filepath:
         # Direct path provided
         filepath = Path(filepath)
@@ -512,17 +504,17 @@ def load_features_from_parquet(
         # Build path from symbol, interval, version
         if symbol is None or interval is None:
             raise ValueError("Either filepath or both symbol and interval must be provided")
-        
+
         if version == "latest":
             filename = f"features_{symbol}_{interval}_latest.parquet"
         else:
             filename = f"features_{symbol}_{interval}_{version}.parquet"
-        
+
         filepath = base_dir / filename
-    
+
     if not filepath.exists():
         raise FileNotFoundError(f"Feature file not found: {filepath}")
-    
+
     df = pd.read_parquet(filepath)
     logger.info(f"Loaded features from {filepath}: {len(df)} rows, {len(df.columns)} columns")
     return df

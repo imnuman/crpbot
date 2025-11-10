@@ -33,7 +33,7 @@ class ExperimentTracker:
         """Load model registry from JSON file."""
         if self.registry_path.exists():
             try:
-                with open(self.registry_path, "r") as f:
+                with open(self.registry_path) as f:
                     return json.load(f)
             except Exception as e:
                 logger.warning(f"Failed to load registry: {e}. Creating new registry.")
@@ -83,7 +83,11 @@ class ExperimentTracker:
         file_hash = hashlib.sha256(model_file.read_bytes()).hexdigest()
 
         # Register model
-        model_id = f"{model_type}_{symbol or 'multi'}_{version}" if symbol else f"{model_type}_multi_{version}"
+        model_id = (
+            f"{model_type}_{symbol or 'multi'}_{version}"
+            if symbol
+            else f"{model_type}_multi_{version}"
+        )
 
         model_entry = {
             "model_id": model_id,
@@ -126,7 +130,10 @@ class ExperimentTracker:
         promoted_dir.mkdir(parents=True, exist_ok=True)
 
         # Create symlink
-        symlink_path = promoted_dir / f"{model_entry['model_type']}_{model_entry.get('symbol', 'multi')}_latest.pt"
+        symlink_path = (
+            promoted_dir
+            / f"{model_entry['model_type']}_{model_entry.get('symbol', 'multi')}_latest.pt"
+        )
 
         if symlink_path.exists():
             symlink_path.unlink()
@@ -183,7 +190,9 @@ class ExperimentTracker:
         """
         return self.registry.get("models", {}).get(model_id)
 
-    def list_models(self, model_type: str | None = None, symbol: str | None = None) -> list[dict[str, Any]]:
+    def list_models(
+        self, model_type: str | None = None, symbol: str | None = None
+    ) -> list[dict[str, Any]]:
         """
         List models in registry.
 
@@ -203,7 +212,9 @@ class ExperimentTracker:
 
         return sorted(models, key=lambda x: x["created_at"], reverse=True)
 
-    def get_promoted_model(self, model_type: str, symbol: str | None = None) -> dict[str, Any] | None:
+    def get_promoted_model(
+        self, model_type: str, symbol: str | None = None
+    ) -> dict[str, Any] | None:
         """
         Get the currently promoted model.
 
@@ -220,4 +231,3 @@ class ExperimentTracker:
         if promoted:
             return promoted[0]  # Return most recently promoted
         return None
-

@@ -6,10 +6,9 @@ from typing import Any
 
 import torch
 import torch.nn as nn
+from loguru import logger
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
-from loguru import logger
 
 
 class ModelTrainer:
@@ -251,4 +250,3 @@ def train_model(
         "best_val_accuracy": best_val_accuracy,
         "best_model_path": str(best_model_path) if best_model_path else None,
     }
-

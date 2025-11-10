@@ -1,7 +1,6 @@
 """Integration tests for runtime guardrails."""
 
 from apps.runtime import main as runtime_main
-from apps.runtime.ftmo_rules import FTMOState
 from apps.runtime.rate_limiter import RateLimiter
 from libs.config.config import Settings
 
@@ -21,16 +20,20 @@ def test_runtime_blocks_signal_when_ftmo_limit_breached(monkeypatch):
 
     emitted = []
 
-    monkeypatch.setattr(runtime, "generate_mock_signal", lambda: {
-        "symbol": "BTC-USD",
-        "confidence": 0.9,
-        "tier": "high",
-        "direction": "long",
-        "lstm_prediction": 0.9,
-        "transformer_prediction": 0.9,
-        "rl_prediction": 0.9,
-        "entry_price": 50000.0,
-    })
+    monkeypatch.setattr(
+        runtime,
+        "generate_mock_signal",
+        lambda: {
+            "symbol": "BTC-USD",
+            "confidence": 0.9,
+            "tier": "high",
+            "direction": "long",
+            "lstm_prediction": 0.9,
+            "transformer_prediction": 0.9,
+            "rl_prediction": 0.9,
+            "entry_price": 50000.0,
+        },
+    )
     monkeypatch.setattr(runtime, "record_signal_to_db", lambda data: emitted.append(data))
 
     runtime.loop_once()
@@ -53,16 +56,20 @@ def test_runtime_emits_signal_when_limits_ok(monkeypatch):
 
     emitted = []
 
-    monkeypatch.setattr(runtime, "generate_mock_signal", lambda: {
-        "symbol": "BTC-USD",
-        "confidence": 0.9,
-        "tier": "high",
-        "direction": "long",
-        "lstm_prediction": 0.9,
-        "transformer_prediction": 0.9,
-        "rl_prediction": 0.9,
-        "entry_price": 50000.0,
-    })
+    monkeypatch.setattr(
+        runtime,
+        "generate_mock_signal",
+        lambda: {
+            "symbol": "BTC-USD",
+            "confidence": 0.9,
+            "tier": "high",
+            "direction": "long",
+            "lstm_prediction": 0.9,
+            "transformer_prediction": 0.9,
+            "rl_prediction": 0.9,
+            "entry_price": 50000.0,
+        },
+    )
     monkeypatch.setattr(runtime, "record_signal_to_db", lambda data: emitted.append(data))
 
     runtime.loop_once()

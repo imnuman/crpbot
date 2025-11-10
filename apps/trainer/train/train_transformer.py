@@ -4,15 +4,14 @@ from pathlib import Path
 
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader
-
 from loguru import logger
+from torch.utils.data import DataLoader
 
 from apps.trainer.data_pipeline import (
     create_walk_forward_splits,
     load_features_from_parquet,
 )
-from apps.trainer.features import engineer_features, normalize_features
+from apps.trainer.features import normalize_features
 from apps.trainer.models.transformer import TransformerTrendModel
 from apps.trainer.train.dataset import TradingDataset
 from apps.trainer.train.trainer import train_model
@@ -80,7 +79,9 @@ def train_transformer_multi_coin(
             all_dataframes.append(df)
         except FileNotFoundError:
             logger.error(f"Feature file not found for {symbol} {interval}")
-            logger.error("Please run feature engineering first: python scripts/engineer_features.py")
+            logger.error(
+                "Please run feature engineering first: python scripts/engineer_features.py"
+            )
             raise
 
     if not all_dataframes:
@@ -174,7 +175,7 @@ def train_transformer_multi_coin(
         model_name=f"transformer_multi_{'_'.join([s.replace('-', '_') for s in symbols])}_{interval}",
     )
 
-    logger.info(f"✅ Training complete for Transformer!")
+    logger.info("✅ Training complete for Transformer!")
     logger.info(f"  Best validation accuracy: {results['best_val_accuracy']:.4f}")
 
     return results
@@ -182,7 +183,9 @@ def train_transformer_multi_coin(
 
 def main():
     """Main training entry point."""
-    parser = argparse.ArgumentParser(description="Train Transformer model for cryptocurrency trading")
+    parser = argparse.ArgumentParser(
+        description="Train Transformer model for cryptocurrency trading"
+    )
     parser.add_argument(
         "--symbols",
         nargs="+",
@@ -191,7 +194,9 @@ def main():
     )
     parser.add_argument("--interval", default="1m", help="Time interval (default: 1m)")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
-    parser.add_argument("--batch-size", type=int, default=16, help="Batch size (smaller for Transformer)")
+    parser.add_argument(
+        "--batch-size", type=int, default=16, help="Batch size (smaller for Transformer)"
+    )
     parser.add_argument("--sequence-length", type=int, default=100, help="Input sequence length")
     parser.add_argument("--horizon", type=int, default=15, help="Prediction horizon (time steps)")
     parser.add_argument("--d-model", type=int, default=128, help="Transformer model dimension")
@@ -206,6 +211,7 @@ def main():
 
     # Import pandas here to avoid circular import
     import pandas as pd
+
     globals()["pd"] = pd
 
     train_transformer_multi_coin(
@@ -227,4 +233,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

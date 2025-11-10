@@ -52,7 +52,7 @@ if all_good:
     from libs.config.config import Settings
 
     s = Settings()
-    print(f"✅ Config loaded successfully")
+    print("✅ Config loaded successfully")
     print(f"   Provider: {s.data_provider}")
     print(f"   Has API Key: {bool(s.effective_api_key)}")
     print(f"   Has API Secret: {bool(s.effective_api_secret)}")
@@ -64,4 +64,3 @@ else:
     print("  COINBASE_API_SECRET=your_secret_here")
     print("  COINBASE_API_PASSPHRASE=your_passphrase_here")
     print("  DATA_PROVIDER=coinbase")
-

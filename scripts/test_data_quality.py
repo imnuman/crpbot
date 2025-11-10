@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Comprehensive test suite for data quality checks."""
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 from loguru import logger
@@ -11,7 +11,6 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from apps.trainer.data_pipeline import (
-    clean_and_validate_data,
     create_walk_forward_splits,
     load_data,
 )
@@ -118,7 +117,7 @@ def test_data_completeness():
     # Test with different intervals
     intervals = ["1m", "1h", "1d"]
     for interval in intervals:
-        df = load_data(f"data/raw/test_BTC-USD_1h_7d.parquet")  # Use same data for all
+        df = load_data("data/raw/test_BTC-USD_1h_7d.parquet")  # Use same data for all
         completeness_check = check_data_completeness(df, interval=interval)
         logger.info(f"{interval} interval: {completeness_check}")
         # For 1h interval, should pass
@@ -207,4 +206,3 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-

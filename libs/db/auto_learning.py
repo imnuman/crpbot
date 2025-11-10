@@ -117,7 +117,7 @@ class AutoLearningSystem:
                 )
 
             session.commit()
-        except Exception as e:
+        except Exception:
             session.rollback()
             raise
         finally:
@@ -177,7 +177,7 @@ class AutoLearningSystem:
             session.add(snapshot)
             session.commit()
             logger.debug(f"Recorded trade: {signal_id} ({pair}, {tier}, {mode})")
-        except Exception as e:
+        except Exception:
             session.rollback()
             raise
         finally:
@@ -205,7 +205,11 @@ class AutoLearningSystem:
         """
         session = self.db.get_session_direct()
         try:
-            snapshot = session.query(RiskBookSnapshot).filter(RiskBookSnapshot.signal_id == signal_id).first()
+            snapshot = (
+                session.query(RiskBookSnapshot)
+                .filter(RiskBookSnapshot.signal_id == signal_id)
+                .first()
+            )
 
             if snapshot is None:
                 logger.warning(f"Trade not found: {signal_id}")
@@ -219,7 +223,7 @@ class AutoLearningSystem:
 
             session.commit()
             logger.debug(f"Updated trade result: {signal_id} ({result})")
-        except Exception as e:
+        except Exception:
             session.rollback()
             raise
         finally:
@@ -245,7 +249,9 @@ class AutoLearningSystem:
 
         session = self.db.get_session_direct()
         try:
-            query = session.query(RiskBookSnapshot).filter(RiskBookSnapshot.entry_time >= cutoff_date)
+            query = session.query(RiskBookSnapshot).filter(
+                RiskBookSnapshot.entry_time >= cutoff_date
+            )
 
             if mode:
                 query = query.filter(RiskBookSnapshot.mode == mode)
@@ -256,27 +262,26 @@ class AutoLearningSystem:
         finally:
             session.close()
 
-            if not trades:
-                return {
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0,
-                    "win_rate": 0.0,
-                    "total_pnl": 0.0,
-                }
-
-            closed_trades = [t for t in trades if t.result is not None]
-            winning_trades = [t for t in closed_trades if t.result == "win"]
-            losing_trades = [t for t in closed_trades if t.result == "loss"]
-
-            # Calculate PnL (simplified - would need actual position sizes)
-            total_pnl = 0.0  # TODO: Calculate from entry/exit prices and positions
-
+        if not trades:
             return {
-                "total_trades": len(closed_trades),
-                "winning_trades": len(winning_trades),
-                "losing_trades": len(losing_trades),
-                "win_rate": len(winning_trades) / len(closed_trades) if closed_trades else 0.0,
-                "total_pnl": total_pnl,
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "win_rate": 0.0,
+                "total_pnl": 0.0,
             }
 
+        closed_trades = [t for t in trades if t.result is not None]
+        winning_trades = [t for t in closed_trades if t.result == "win"]
+        losing_trades = [t for t in closed_trades if t.result == "loss"]
+
+        # Calculate PnL (simplified - would need actual position sizes)
+        total_pnl = 0.0  # TODO: Calculate from entry/exit prices and positions
+
+        return {
+            "total_trades": len(closed_trades),
+            "winning_trades": len(winning_trades),
+            "losing_trades": len(losing_trades),
+            "win_rate": len(winning_trades) / len(closed_trades) if closed_trades else 0.0,
+            "total_pnl": total_pnl,
+        }

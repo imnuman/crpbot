@@ -1,13 +1,8 @@
 """Comprehensive data quality checks and validation."""
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
 
-import numpy as np
 import pandas as pd
-from loguru import logger
-
-from apps.trainer.features import engineer_features
 
 
 @dataclass
@@ -50,7 +45,11 @@ class DataQualityReport:
 
         # Group by severity
         errors = [c for c in self.checks if not c.passed and c.severity == "error"]
-        warnings_list = [c for c in self.checks if (not c.passed and c.severity == "warning") or c.severity == "warning"]
+        warnings_list = [
+            c
+            for c in self.checks
+            if (not c.passed and c.severity == "warning") or c.severity == "warning"
+        ]
 
         if errors:
             lines.append("❌ ERRORS:")
@@ -144,7 +143,7 @@ def check_data_leakage(
                 if pd.api.types.is_numeric_dtype(df[col]):
                     train_mean = train_df[col].mean()
                     test_mean = test_df[col].mean()
-                    
+
                     # If feature distributions are very similar, it might indicate leakage
                     # This is a heuristic - not definitive
                     if abs(train_mean - test_mean) < 1e-10 and train_df[col].std() > 0:
@@ -568,4 +567,3 @@ def validate_feature_quality(
         check_types=True,
         check_ranges=False,  # Features may have different ranges
     )
-

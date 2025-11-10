@@ -1,7 +1,6 @@
 """Abstract data provider interface for cryptocurrency exchanges."""
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any
 
 import pandas as pd
 from loguru import logger
@@ -24,7 +23,7 @@ def create_data_provider(provider: str, **kwargs) -> "DataProviderInterface":
         # Coinbase Advanced Trade uses JWT with API key name and private key
         api_key_name = kwargs.get("api_key_name") or kwargs.get("api_key", "")
         private_key = kwargs.get("private_key") or kwargs.get("api_secret", "")
-        
+
         return CoinbaseDataProvider(
             api_key_name=api_key_name,
             private_key=private_key,
@@ -87,9 +86,7 @@ class MockDataProvider(DataProviderInterface):
     ) -> pd.DataFrame:
         """Return empty mock data."""
         logger.info(f"Mock: Fetching {symbol} {interval} data")
-        return pd.DataFrame(
-            columns=["timestamp", "open", "high", "low", "close", "volume"]
-        )
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     def get_available_symbols(self) -> list[str]:
         """Return mock symbols."""
@@ -98,4 +95,3 @@ class MockDataProvider(DataProviderInterface):
     def test_connection(self) -> bool:
         """Mock connection test."""
         return True
-

@@ -7,7 +7,6 @@ from loguru import logger
 
 from apps.trainer.data_pipeline import (
     clean_and_validate_data,
-    create_walk_forward_splits,
     fetch_historical_data,
     save_data,
 )
@@ -18,14 +17,10 @@ def main():
     """Fetch and save historical data."""
     parser = argparse.ArgumentParser(description="Fetch historical cryptocurrency data")
     parser.add_argument("--symbol", default="BTC-USD", help="Trading pair (e.g., BTC-USD)")
-    parser.add_argument(
-        "--start", default="2020-01-01", help="Start date (YYYY-MM-DD)"
-    )
+    parser.add_argument("--start", default="2020-01-01", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", default=None, help="End date (YYYY-MM-DD, default: today)")
     parser.add_argument("--interval", default="1m", help="Time interval (1m, 5m, 1h, 1d)")
-    parser.add_argument(
-        "--output", default="data/raw", help="Output directory for parquet files"
-    )
+    parser.add_argument("--output", default="data/raw", help="Output directory for parquet files")
     parser.add_argument("--test", action="store_true", help="Test mode: fetch only 100 candles")
 
     args = parser.parse_args()
@@ -70,7 +65,9 @@ def main():
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{args.symbol}_{args.interval}_{start_date.date()}_{end_date.date()}.parquet"
+    output_file = (
+        output_dir / f"{args.symbol}_{args.interval}_{start_date.date()}_{end_date.date()}.parquet"
+    )
     save_data(df, output_file)
 
     logger.info(f"✅ Data saved to {output_file}")
@@ -80,4 +77,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

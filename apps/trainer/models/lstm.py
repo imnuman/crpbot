@@ -1,7 +1,6 @@
 """LSTM model for direction prediction (15-min horizon)."""
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
 
 
 class LSTMDirectionModel(nn.Module):
@@ -114,4 +113,3 @@ class LSTMDirectionModel(nn.Module):
             probabilities = self.forward(x)
             predictions = (probabilities >= threshold).long()
         return predictions.squeeze()
-

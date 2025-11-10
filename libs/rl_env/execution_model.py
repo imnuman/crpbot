@@ -1,6 +1,5 @@
 """Empirical FTMO execution model using measured spreads and slippage."""
 import json
-import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -91,7 +90,7 @@ class ExecutionModel:
             return
 
         try:
-            with open(self.metrics_file, "r") as f:
+            with open(self.metrics_file) as f:
                 data = json.load(f)
 
             # Parse metrics structure: {symbol: {session: ExecutionMetrics}}
@@ -102,7 +101,9 @@ class ExecutionModel:
 
             logger.info(f"Loaded execution metrics from {self.metrics_file}")
             logger.info(f"  Symbols: {list(self.metrics.keys())}")
-            logger.info(f"  Sessions: {list(next(iter(self.metrics.values())).keys()) if self.metrics else []}")
+            logger.info(
+                f"  Sessions: {list(next(iter(self.metrics.values())).keys()) if self.metrics else []}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to load execution metrics: {e}. Using default fallback values.")
@@ -313,4 +314,3 @@ class ExecutionModel:
             return entry_price + cost
         else:
             return entry_price - cost
-

@@ -18,7 +18,6 @@ from apps.runtime.ftmo_rules import (
 from apps.runtime.rate_limiter import RateLimiter
 from libs.config.config import Settings
 from libs.constants import (
-    CONFIDENCE_THRESHOLD,
     INITIAL_BALANCE,
     MAX_HIGH_TIER_SIGNALS_PER_HOUR,
     MAX_SIGNALS_PER_HOUR,

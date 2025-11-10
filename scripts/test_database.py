@@ -9,10 +9,9 @@ sys.path.insert(0, str(project_root))
 
 from loguru import logger
 
-from libs.db.database import init_database
-from libs.db.auto_learning import AutoLearningSystem
-from libs.db.models import Pattern, RiskBookSnapshot, ModelDeployment
 from libs.config.config import Settings
+from libs.db.auto_learning import AutoLearningSystem
+from libs.db.database import init_database
 
 
 def test_database():
@@ -21,7 +20,7 @@ def test_database():
     logger.info("Testing database...")
 
     # Initialize database
-    db = init_database(db_url=config.db_url, create_tables=True)
+    init_database(db_url=config.db_url, create_tables=True)
     logger.info("✅ Database initialized")
 
     # Test auto-learning system
@@ -78,4 +77,3 @@ def test_database():
 
 if __name__ == "__main__":
     test_database()
-

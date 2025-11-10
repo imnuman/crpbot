@@ -27,7 +27,9 @@ def test_large_fetch(symbol: str, days: int, interval: str = "1m"):
     start_date = end_date - timedelta(days=days)
 
     logger.info(f"Date range: {start_date.date()} to {end_date.date()}")
-    logger.info(f"Expected approximate candles: {days * 24 * 60 if interval == '1m' else days * 24}")
+    logger.info(
+        f"Expected approximate candles: {days * 24 * 60 if interval == '1m' else days * 24}"
+    )
 
     # Fetch data
     df = fetch_historical_data(
@@ -134,10 +136,16 @@ def test_walk_forward_splits(symbol: str, days: int = 30):
     # Create splits
     train_df, val_df, test_df = create_walk_forward_splits(df_clean, train_end, val_end)
 
-    logger.info(f"\n📊 Walk-Forward Split Results:")
-    logger.info(f"  Train: {len(train_df)} candles ({train_df['timestamp'].min()} to {train_df['timestamp'].max()})")
-    logger.info(f"  Val:   {len(val_df)} candles ({val_df['timestamp'].min()} to {val_df['timestamp'].max()})")
-    logger.info(f"  Test:  {len(test_df)} candles ({test_df['timestamp'].min()} to {test_df['timestamp'].max()})")
+    logger.info("\n📊 Walk-Forward Split Results:")
+    logger.info(
+        f"  Train: {len(train_df)} candles ({train_df['timestamp'].min()} to {train_df['timestamp'].max()})"
+    )
+    logger.info(
+        f"  Val:   {len(val_df)} candles ({val_df['timestamp'].min()} to {val_df['timestamp'].max()})"
+    )
+    logger.info(
+        f"  Test:  {len(test_df)} candles ({test_df['timestamp'].min()} to {test_df['timestamp'].max()})"
+    )
 
     # Verify no overlap
     assert train_df["timestamp"].max() <= val_df["timestamp"].min(), "Train/Val overlap!"
@@ -234,4 +242,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

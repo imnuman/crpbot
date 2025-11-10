@@ -1,5 +1,4 @@
 """Platt and Isotonic scaling for confidence calibration."""
-from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -7,6 +6,7 @@ from loguru import logger
 try:
     from sklearn.isotonic import IsotonicRegression
     from sklearn.linear_model import LogisticRegression
+
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
@@ -102,7 +102,7 @@ def calculate_calibration_error(
     bin_uppers = bin_boundaries[1:]
 
     ece = 0.0
-    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
+    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers, strict=True):
         # Find predictions in this bin
         in_bin = (predicted_scores > bin_lower) & (predicted_scores <= bin_upper)
         prop_in_bin = in_bin.mean()
@@ -118,9 +118,7 @@ def calculate_calibration_error(
     return ece
 
 
-def should_apply_calibration(
-    calibration_error: float, threshold: float = 0.05
-) -> tuple[bool, str]:
+def should_apply_calibration(calibration_error: float, threshold: float = 0.05) -> tuple[bool, str]:
     """
     Determine if calibration should be applied.
 
@@ -141,4 +139,3 @@ def should_apply_calibration(
         return True, "isotonic"
     else:
         return True, "platt"
-

@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """Evaluate a trained model with backtest and promotion gates."""
 import argparse
-from pathlib import Path
 
 import torch
-
 from loguru import logger
 
 from apps.trainer.data_pipeline import create_walk_forward_splits, load_features_from_parquet
+from apps.trainer.eval.evaluator import ModelEvaluator
+from apps.trainer.eval.tracking import ExperimentTracker
 from apps.trainer.features import normalize_features
 from apps.trainer.models.lstm import LSTMDirectionModel
 from apps.trainer.models.transformer import TransformerTrendModel
 from apps.trainer.train.dataset import TradingDataset
-from apps.trainer.eval.evaluator import ModelEvaluator
-from apps.trainer.eval.tracking import ExperimentTracker
 from libs.data.quality import validate_feature_quality
 from libs.rl_env.execution_model import ExecutionModel
 
@@ -54,7 +52,16 @@ def evaluate_model(
         return False
 
     # Get feature columns
-    exclude_cols = ["timestamp", "open", "high", "low", "close", "volume", "session", "volatility_regime"]
+    exclude_cols = [
+        "timestamp",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "session",
+        "volatility_regime",
+    ]
     feature_columns = [col for col in df.columns if col not in exclude_cols]
 
     # Create test split
@@ -113,7 +120,10 @@ def evaluate_model(
 
     # Check promotion gates
     passed, failures = evaluator.check_promotion_gates(
-        metrics, symbol=symbol, min_accuracy=min_accuracy, max_calibration_error=max_calibration_error
+        metrics,
+        symbol=symbol,
+        min_accuracy=min_accuracy,
+        max_calibration_error=max_calibration_error,
     )
 
     # Register in tracking
@@ -145,11 +155,20 @@ def main():
     parser.add_argument("--model", required=True, help="Path to model file")
     parser.add_argument("--symbol", required=True, help="Trading pair (e.g., BTC-USD)")
     parser.add_argument("--interval", default="1m", help="Time interval")
-    parser.add_argument("--model-type", choices=["lstm", "transformer"], default="lstm", help="Model type")
-    parser.add_argument("--confidence-threshold", type=float, default=0.5, help="Confidence threshold")
-    parser.add_argument("--min-accuracy", type=float, default=0.68, help="Minimum accuracy threshold")
     parser.add_argument(
-        "--max-calibration-error", type=float, default=0.05, help="Maximum calibration error threshold"
+        "--model-type", choices=["lstm", "transformer"], default="lstm", help="Model type"
+    )
+    parser.add_argument(
+        "--confidence-threshold", type=float, default=0.5, help="Confidence threshold"
+    )
+    parser.add_argument(
+        "--min-accuracy", type=float, default=0.68, help="Minimum accuracy threshold"
+    )
+    parser.add_argument(
+        "--max-calibration-error",
+        type=float,
+        default=0.05,
+        help="Maximum calibration error threshold",
     )
 
     args = parser.parse_args()
@@ -169,4 +188,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

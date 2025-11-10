@@ -1,7 +1,7 @@
 """Coinbase Advanced Trade API data provider implementation using JWT authentication."""
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import jwt
@@ -31,27 +31,29 @@ class CoinbaseDataProvider(DataProviderInterface):
                 "Coinbase API credentials are required. "
                 "Please set COINBASE_API_KEY_NAME and COINBASE_API_PRIVATE_KEY in .env"
             )
-        
+
         self.api_key_name = api_key_name
         self.private_key_pem = private_key
-        
+
         # Load the private key
         # Handle multi-line private keys (common in .env files)
         # Replace escaped newlines with actual newlines
         private_key_clean = private_key.replace("\\n", "\n")
-        
+
         # Ensure proper PEM format
         if not private_key_clean.strip().startswith("-----BEGIN"):
             logger.error("Private key must start with -----BEGIN EC PRIVATE KEY-----")
             raise ValueError("Invalid private key format: missing PEM header")
-        
+
         try:
             self.private_key = serialization.load_pem_private_key(
                 private_key_clean.encode(), password=None
             )
         except Exception as e:
             logger.error(f"Failed to load private key: {e}")
-            logger.error(f"Private key format check: starts_with_header={private_key.strip().startswith('-----BEGIN')}, length={len(private_key)} chars")
+            logger.error(
+                f"Private key format check: starts_with_header={private_key.strip().startswith('-----BEGIN')}, length={len(private_key)} chars"
+            )
             logger.error(
                 "Troubleshooting:\n"
                 "1. Private key should be PEM format (starts with -----BEGIN EC PRIVATE KEY-----\n"
@@ -60,21 +62,20 @@ class CoinbaseDataProvider(DataProviderInterface):
                 "4. Make sure there are no extra escape characters"
             )
             raise ValueError(
-                "Invalid private key format. Expected PEM-encoded EC private key. "
-                f"Error: {e}"
+                "Invalid private key format. Expected PEM-encoded EC private key. " f"Error: {e}"
             ) from e
-        
+
         logger.info("Coinbase data provider initialized (JWT authentication)")
 
     def _generate_jwt(self, method: str = "GET", path: str = "") -> str:
         """Generate JWT token for Coinbase Advanced Trade API."""
         now = int(time.time())
-        
+
         # Build URI for the request (e.g., "GET api.coinbase.com/api/v3/brokerage/products")
         if not path:
             path = "/api/v3/brokerage/products"  # Default
         uri = f"{method} api.coinbase.com{path}"
-        
+
         # JWT payload according to Coinbase Advanced Trade API spec
         payload = {
             "iss": "cdp",  # Issuer
@@ -83,13 +84,13 @@ class CoinbaseDataProvider(DataProviderInterface):
             "exp": now + 120,  # Expiration (2 minutes)
             "uri": uri,  # Request URI
         }
-        
+
         # JWT headers
         headers = {
             "kid": self.api_key_name,  # Key ID
             "nonce": secrets.token_hex(),  # Random nonce
         }
-        
+
         # Generate JWT using ES256 algorithm (ECDSA with P-256 and SHA-256)
         token = jwt.encode(payload, self.private_key, algorithm="ES256", headers=headers)
         return token
@@ -100,22 +101,22 @@ class CoinbaseDataProvider(DataProviderInterface):
         """Make authenticated request to Coinbase API using JWT."""
         # Build request path for JWT (without query params - they're sent separately)
         request_path = f"/api/v3/brokerage{endpoint}"
-        
+
         # Generate fresh JWT for each request (includes request method and path only, no query params)
         jwt_token = self._generate_jwt(method=method, path=request_path)
-        
+
         headers = {
             "Authorization": f"Bearer {jwt_token}",
             "Content-Type": "application/json",
         }
-        
+
         url = f"{self.BASE_URL}{endpoint}"
-        
+
         logger.debug(f"Request: {method} {url}")
-        logger.debug(f"JWT token generated (expires in 2 minutes)")
-        
+        logger.debug("JWT token generated (expires in 2 minutes)")
+
         response = requests.request(method, url, headers=headers, params=params)
-        
+
         # Log response for debugging
         if response.status_code != 200:
             logger.debug(f"Response status: {response.status_code}")
@@ -127,7 +128,7 @@ class CoinbaseDataProvider(DataProviderInterface):
             error_detail = response.text
             logger.error(f"Coinbase API error: {response.status_code}")
             logger.error(f"Response: {error_detail[:500]}")
-            
+
             # Provide helpful error messages
             if response.status_code == 401:
                 logger.error(
@@ -138,7 +139,7 @@ class CoinbaseDataProvider(DataProviderInterface):
                     "4. API key is not expired or revoked\n"
                     "5. IP whitelisting includes your IP address"
                 )
-            
+
             response.raise_for_status()
 
         return response.json()
@@ -198,23 +199,19 @@ class CoinbaseDataProvider(DataProviderInterface):
 
             if not candles:
                 logger.warning(f"No candles returned for {symbol} {interval}")
-                return pd.DataFrame(
-                    columns=["timestamp", "open", "high", "low", "close", "volume"]
-                )
+                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
             # Convert to DataFrame
             # Coinbase returns list of dicts: [{"start": "...", "low": "...", "high": "...", "open": "...", "close": "...", "volume": "..."}, ...]
             df = pd.DataFrame(candles)
-            
+
             # Convert timestamp from 'start' field (Unix timestamp as string)
             if "start" in df.columns:
                 df["timestamp"] = pd.to_datetime(df["start"].astype(int), unit="s", utc=True)
             else:
                 logger.error("Missing 'start' field in candle data")
-                return pd.DataFrame(
-                    columns=["timestamp", "open", "high", "low", "close", "volume"]
-                )
-            
+                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
             # Convert OHLCV values from strings to floats
             numeric_cols = ["open", "high", "low", "close", "volume"]
             for col in numeric_cols:
@@ -225,7 +222,7 @@ class CoinbaseDataProvider(DataProviderInterface):
                     return pd.DataFrame(
                         columns=["timestamp", "open", "high", "low", "close", "volume"]
                     )
-            
+
             # Select and reorder columns
             df = df[["timestamp", "open", "high", "low", "close", "volume"]]
             df = df.sort_values("timestamp").reset_index(drop=True)

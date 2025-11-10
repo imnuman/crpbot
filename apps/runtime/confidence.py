@@ -1,5 +1,4 @@
 """Confidence scoring system (basic implementation, enhanced in Phase 5)."""
-from typing import Any
 
 from loguru import logger
 
@@ -100,4 +99,3 @@ def apply_tier_hysteresis(
                 return "medium"
 
     return new_tier
-

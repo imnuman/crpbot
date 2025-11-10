@@ -1,6 +1,5 @@
 """Database retention policy and archival utilities."""
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 from loguru import logger
 
@@ -117,4 +116,3 @@ def export_to_parquet(
         df = pd.DataFrame(data)
         df.to_parquet(output_path, index=False)
         logger.info(f"Exported {len(df)} trades to {output_path}")
-

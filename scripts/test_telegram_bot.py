@@ -10,7 +10,7 @@ sys.path.insert(0, str(project_root))
 
 from loguru import logger
 
-from apps.runtime.telegram_bot import TelegramBot, init_bot
+from apps.runtime.telegram_bot import init_bot
 from libs.config.config import Settings
 
 
@@ -90,7 +90,7 @@ async def test_telegram_bot():
     except Exception as e:
         logger.error(f"❌ Telegram bot test FAILED: {e}")
         logger.exception(e)
-        
+
         # Provide troubleshooting tips
         logger.error("\n💡 Troubleshooting:")
         logger.error("1. Verify TELEGRAM_TOKEN is correct (from @BotFather)")
@@ -98,7 +98,7 @@ async def test_telegram_bot():
         logger.error("3. Start a chat with your bot first")
         logger.error("4. Get your chat ID from: https://api.telegram.org/bot<TOKEN>/getUpdates")
         logger.error("5. Check bot permissions and that it's not blocked")
-        
+
         return False
 
 

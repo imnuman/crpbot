@@ -1,18 +1,17 @@
 """Enhanced confidence scoring with calibration, hysteresis, and boosters."""
 from collections import deque
 from datetime import datetime
-from typing import Any
 
 import numpy as np
 from loguru import logger
 
 from apps.trainer.features import get_trading_session
 from libs.confidence.scaling import (
+    SKLEARN_AVAILABLE,
     IsotonicScaling,
     PlattScaling,
     calculate_calibration_error,
     should_apply_calibration,
-    SKLEARN_AVAILABLE,
 )
 
 
@@ -69,7 +68,9 @@ class TierHysteresis:
                     # Check if confidence change is significant enough
                     if self._is_significant_change(confidence, target_tier):
                         self.current_tier = target_tier
-                        logger.debug(f"Tier changed: {self.current_tier} (confidence: {confidence:.2%})")
+                        logger.debug(
+                            f"Tier changed: {self.current_tier} (confidence: {confidence:.2%})"
+                        )
                     else:
                         logger.debug(
                             f"Tier change prevented by hysteresis: {target_tier} (confidence: {confidence:.2%})"
@@ -132,7 +133,12 @@ class EnhancedConfidenceScorer:
             enable_hysteresis: Enable tier hysteresis
             enable_boosters: Enable FREE boosters
         """
-        self.ensemble_weights = ensemble_weights or {"lstm": 0.35, "transformer": 0.40, "rl": 0.25, "sentiment": 0.0}
+        self.ensemble_weights = ensemble_weights or {
+            "lstm": 0.35,
+            "transformer": 0.40,
+            "rl": 0.25,
+            "sentiment": 0.0,
+        }
         self.conservative_bias = conservative_bias
         self.enable_calibration = enable_calibration
         self.calibration_threshold = calibration_threshold
@@ -231,7 +237,9 @@ class EnhancedConfidenceScorer:
             # Adjust confidence based on historical pattern performance
             pattern_adjustment = (pattern_win_rate - 0.5) * 0.1  # Scale adjustment
             confidence += pattern_adjustment
-            logger.debug(f"Pattern adjustment applied: {pattern_adjustment:.2%} (win_rate: {pattern_win_rate:.2%})")
+            logger.debug(
+                f"Pattern adjustment applied: {pattern_adjustment:.2%} (win_rate: {pattern_win_rate:.2%})"
+            )
 
         # Apply conservative bias
         confidence = max(0.0, min(1.0, confidence + self.conservative_bias))
@@ -270,10 +278,14 @@ class EnhancedConfidenceScorer:
         logger.info(f"Calibration error: {calibration_error:.2%}")
 
         # Determine if calibration needed
-        should_apply, method = should_apply_calibration(calibration_error, self.calibration_threshold)
+        should_apply, method = should_apply_calibration(
+            calibration_error, self.calibration_threshold
+        )
 
         if not should_apply:
-            logger.info(f"Calibration not needed (error: {calibration_error:.2%} <= {self.calibration_threshold:.2%})")
+            logger.info(
+                f"Calibration not needed (error: {calibration_error:.2%} <= {self.calibration_threshold:.2%})"
+            )
             return
 
         # Fit calibration model
@@ -314,4 +326,3 @@ class EnhancedConfidenceScorer:
                 return "medium"
             else:
                 return "low"
-

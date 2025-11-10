@@ -1,17 +1,16 @@
 """Database models for trading system."""
 from datetime import datetime, timezone
-from typing import Any
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
     Float,
+    Index,
     Integer,
     String,
     Text,
-    Index,
-    JSON,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker

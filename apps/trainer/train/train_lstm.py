@@ -3,15 +3,14 @@ import argparse
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
-
 from loguru import logger
+from torch.utils.data import DataLoader
 
 from apps.trainer.data_pipeline import (
     create_walk_forward_splits,
     load_features_from_parquet,
 )
-from apps.trainer.features import engineer_features, normalize_features
+from apps.trainer.features import normalize_features
 from apps.trainer.models.lstm import LSTMDirectionModel
 from apps.trainer.train.dataset import TradingDataset
 from apps.trainer.train.trainer import train_model
@@ -76,7 +75,16 @@ def train_lstm_for_coin(
     logger.info("✅ Feature quality validated")
 
     # Get feature columns (exclude OHLCV + timestamp)
-    exclude_cols = ["timestamp", "open", "high", "low", "close", "volume", "session", "volatility_regime"]
+    exclude_cols = [
+        "timestamp",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "session",
+        "volatility_regime",
+    ]
     feature_columns = [col for col in df.columns if col not in exclude_cols]
     logger.info(f"Using {len(feature_columns)} features: {feature_columns[:5]}...")
 
@@ -94,9 +102,15 @@ def train_lstm_for_coin(
     # Normalize features (fit on train, apply to val/test)
     if use_normalized:
         logger.info("Normalizing features...")
-        train_df, norm_params = normalize_features(train_df, feature_columns=feature_columns, method="standard")
-        val_df, _ = normalize_features(val_df, feature_columns=feature_columns, method="standard", fit_data=train_df)
-        test_df, _ = normalize_features(test_df, feature_columns=feature_columns, method="standard", fit_data=train_df)
+        train_df, norm_params = normalize_features(
+            train_df, feature_columns=feature_columns, method="standard"
+        )
+        val_df, _ = normalize_features(
+            val_df, feature_columns=feature_columns, method="standard", fit_data=train_df
+        )
+        test_df, _ = normalize_features(
+            test_df, feature_columns=feature_columns, method="standard", fit_data=train_df
+        )
         logger.info("✅ Features normalized")
 
     # Create datasets
@@ -185,4 +199,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
