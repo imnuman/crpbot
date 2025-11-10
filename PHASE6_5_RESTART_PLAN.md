@@ -1,239 +1,177 @@
-# Phase 6.5 Restart - Training Pipeline Execution
+# Phase 6.5 Restart – Training Pipeline Plan
 
-**Date**: 2025-11-10
-**Status**: IN PROGRESS - Data fetched, feature engineering running
-**Branch**: `claude/phase-6.5-checklist-011CUyHzB8ZnJdnENDyCMDUQ`
-
----
-
-## 🎯 Objective
-
-Complete Phase 6.5 restart with **REAL TRAINED MODELS** instead of empty observation.
-
-**Problem Identified**: Phase 6.5 was running observation with 0 signals because:
-- ❌ No data fetched
-- ❌ No models trained
-- ❌ Runtime had nothing to load
-
-**Solution**: Execute complete training pipeline (Phase 2 + 3 execution), then restart Phase 6.5.
+**Date**: 2025-11-10  
+**Status**: PLANNED (no execution yet)  
+**Owner Branch**: `claude/phase-6.5-checklist-011CUyHzB8ZnJdnENDyCMDUQ`
 
 ---
 
-## ✅ Completed Steps
+## 🎯 Goal
 
-### 1. Data Infrastructure (COMPLETED)
-- ✅ Created synthetic data provider (realistic crypto price generation)
-- ✅ Added CCXT provider (Binance/Kraken public APIs - for future)
-- ✅ Added YFinance provider (free crypto data - for future)
-- ✅ Updated environment to use synthetic provider (network restrictions workaround)
-
-### 2. Data Generation (COMPLETED)
-**Generated 3.08M candles per coin** (2020-2025, 1-minute intervals):
-
-| Coin | File Size | Candles | Date Range |
-|------|-----------|---------|------------|
-| BTC-USD | 144MB | 3,081,668 | 2020-01-01 to 2025-11-10 |
-| ETH-USD | 144MB | 3,081,668 | 2020-01-01 to 2025-11-10 |
-| BNB-USD | 144MB | 3,081,668 | 2020-01-01 to 2025-11-10 |
-| **Total** | **430MB** | **~9.2M candles** | - |
-
-**Data Quality**:
-- ✅ Realistic price movements (geometric brownian motion + cycles)
-- ✅ Proper OHLCV structure
-- ✅ Session-based patterns (Tokyo/London/NY)
-- ✅ Cleaned and validated (outliers removed, gaps filled)
+Observation in Phase 6.5 produced zero signals because we never trained or promoted models.  
+This document is a coordinated plan to generate data, train models, and restart the silent observation with meaningful output.
 
 ---
 
-## 🔄 In Progress
+## 🧭 Checklist Overview
 
-### 3. Feature Engineering (IN PROGRESS)
-**Started**: 2025-11-10 01:13 UTC
-**Estimated Time**: 30-60 minutes for all coins
-**Running in Parallel**:
-- BTC features: Processing 3.08M rows
-- ETH features: Processing 3.08M rows
-- BNB features: Processing 3.08M rows
+| Step | Description | Owner | Status |
+|------|-------------|-------|--------|
+| 1 | Data provider infrastructure (synthetic/yfinance/ccxt) | Claude → Cursor | ☐ |
+| 2 | Generate raw datasets (synthetic or external) | Cursor | ☐ |
+| 3 | Engineer features (`scripts/engineer_features.py`) | Cursor | ☐ |
+| 4 | Train models (per-coin LSTM + global transformer) | Cursor | ☐ |
+| 5 | Evaluate & promote models (Phase 3 gates) | Claude | ☐ |
+| 6 | Point runtime at promoted models, smoke-test | Cursor | ☐ |
+| 7 | Restart Phase 6.5 observation (3–5 days) | Cursor + Claude | ☐ |
+| 8 | Observation summary & go/no-go for Phase 7 | Claude + Amazon Q | ☐ |
 
-**Features Being Engineered**:
-- Session features (Tokyo/London/NY, day of week, weekend flag)
-- Technical indicators (ATR, RSI, MACD, Bollinger Bands)
-- Spread & slippage estimates
-- Volume features
-- Volatility regime classification
-- Normalization (standard scaling)
+> Update the status column as each step is completed.  
+> Nothing in this list has been performed yet.
 
 ---
 
-## 📋 Remaining Steps
+## 1. Data Infrastructure
 
-### 4. Model Training (NEXT - ~4-12 hours)
+- [ ] Choose provider via `.env` (`DATA_PROVIDER=synthetic` recommended until network access is confirmed).
+- [ ] Optional dependencies (install only if using those providers):
+  ```bash
+  uv pip install yfinance
+  uv pip install ccxt
+  ```
+- [ ] Verify synthetic fallback works:
+  ```bash
+  uv run python - <<'PY'
+  from libs.data.provider import create_data_provider
+  provider = create_data_provider("synthetic")
+  assert provider.test_connection()
+  PY
+  ```
 
-**LSTM Models** (per coin):
+---
+
+## 2. Dataset Generation
+
+- [ ] Fetch per-symbol data (repeat for BTC-USD, ETH-USD, etc.):
+  ```bash
+  uv run python scripts/fetch_data.py \
+      --provider synthetic \
+      --symbol BTC-USD \
+      --interval 1m \
+      --days 365
+  ```
+- [ ] Store outputs in `data/raw/` (parquet files).
+- [ ] Document datasets (rows, date range) in `reports/data_inventory.md`.
+
+---
+
+## 3. Feature Engineering
+
+- [ ] Generate engineered features:
+  ```bash
+  uv run python scripts/engineer_features.py --symbol BTC-USD --interval 1m
+  ```
+- [ ] Validate results:
+  ```bash
+  uv run python scripts/validate_data_quality.py --symbol BTC-USD
+  ```
+- [ ] Confirm artifacts in `data/features/`.
+
+---
+
+## 4. Model Training
+
+| Model | Command | Notes |
+|-------|---------|-------|
+| LSTM (per coin) | `make train COIN=BTC EPOCHS=10` (repeat for ETH, BNB) | GPU: 2–4h, CPU: 6–8h |
+| Transformer | `uv run python apps/trainer/main.py --task transformer --epochs 10` | GPU: 4–8h, CPU: 12–16h |
+
+Record metrics/plots under `reports/training/`.
+
+---
+
+## 5. Evaluation & Promotion
+
+- [ ] Evaluate each checkpoint against promotion gates:
+  ```bash
+  uv run python scripts/evaluate_model.py \
+      --model models/checkpoints/lstm_BTC-USD_best.pt \
+      --symbol BTC-USD \
+      --model-type lstm \
+      --min-accuracy 0.68 \
+      --max-calibration-error 0.05
+  ```
+- [ ] If a model passes:
+  - Symlink/copy to `models/promoted/`
+  - Update `models/registry.json`
+  - Log results in `reports/models/phase6_5_evaluation.md`
+
+---
+
+## 6. Runtime Integration
+
+- [ ] Update runtime settings (env or config) to reference promoted models.
+- [ ] Smoke test locally:
+  ```bash
+  uv run python apps/runtime/main.py --mode dryrun --iterations 20 --sleep-seconds 1
+  ```
+- [ ] Confirm signals are persisted with non-zero confidence.
+
+---
+
+## 7. Phase 6.5 Observation Restart
+
+- [ ] Launch observation loop: `make run-dry`
+- [ ] Daily automation:
+  ```bash
+  make phase6_5-daily DAY=day0
+  ```
+- [ ] Capture metrics & notes in `reports/phase6_5/dayX.md` and `automation_log.md`.
+- [ ] Claude reviews daily snapshots; Amazon Q checks CloudWatch on Day 1 & Day 3.
+
+**Exit Criteria**
+
+- ≥72h runtime without crash or Sev‑1 alarm  
+- FTMO guardrail simulation blocked successfully  
+- Telegram notifications delivered for high-tier signals  
+- Win-rate & tier distributions within ±5% of backtest baseline  
+- Observation summary approved (`reports/phase6_5/summary.md`)
+
+---
+
+## 8. Phase 7 Preparation (in parallel)
+
+- [ ] Confirm FTMO demo/challenge credentials (`docs/CREDENTIALS_CHECKLIST.md`).
+- [ ] Review execution-model calibration plan (`docs/EXECUTION_MODEL.md`).
+- [ ] Re-test kill-switch, rate limiter, rollback procedures.
+
+---
+
+## Reference Commands
+
 ```bash
-# BTC LSTM (~2-4 hours with GPU, 6-8 hours CPU)
+# Fetch data
+uv run python scripts/fetch_data.py --provider synthetic --symbol BTC-USD --interval 1m --days 365
+
+# Engineer features
+uv run python scripts/engineer_features.py --symbol BTC-USD --interval 1m
+
+# Train models
 make train COIN=BTC EPOCHS=10
+uv run python apps/trainer/main.py --task transformer --epochs 10
 
-# ETH LSTM (~2-4 hours)
-make train COIN=ETH EPOCHS=10
+# Evaluate
+uv run python scripts/evaluate_model.py --model models/checkpoints/lstm_BTC-USD_best.pt --symbol BTC-USD --model-type lstm
 
-# BNB LSTM (~2-4 hours)
-make train COIN=BNB EPOCHS=10
+# Observation automation
+make run-dry
+make phase6_5-daily DAY=day1
 ```
 
-**Transformer Model** (multi-coin):
-```bash
-# Transformer (~4-8 hours with GPU, 12-16 hours CPU)
-python apps/trainer/main.py --task transformer --epochs 10
-```
-
-**Total Training Time Estimate**:
-- With GPU: 6-12 hours
-- CPU only: 18-32 hours
-
-### 5. Model Evaluation & Promotion (~1 hour)
-
-**Promotion Gates** (MUST PASS):
-- ✅ Accuracy ≥ 68% (per coin, time-split validation)
-- ✅ Calibration error ≤ 5% (tier MAE)
-- ✅ No data leakage detected
-
-**Evaluation Commands**:
-```bash
-python scripts/evaluate_model.py \
-  --model models/checkpoints/lstm_BTC-USD_best.pt \
-  --symbol BTC-USD \
-  --model-type lstm \
-  --min-accuracy 0.68 \
-  --max-calibration-error 0.05
-```
-
-**If models pass gates**:
-- Create symlinks in `models/promoted/`
-- Update model registry JSON
-- Tag with version (v1.0.0)
-
-### 6. Runtime Integration (~30 min)
-
-**Update Runtime**:
-1. Modify `apps/runtime/main.py` to load promoted models
-2. Test signal generation with real predictions
-3. Verify confidence scoring works
-4. Validate FTMO rules enforcement
-
-### 7. Phase 6.5 Restart (3-5 days)
-
-**Launch Dry-Run Observation**:
-```bash
-make run-dry  # Infinite loop with 2-min scan cycle
-```
-
-**Daily Monitoring** (T+1 to T+5):
-- Export metrics: `make export-metrics WINDOW=24 OUT=reports/phase6_5/dayX_metrics.json`
-- Automated snapshot: `make phase6_5-daily DAY=dayX`
-- Monitor Telegram notifications
-- Check CloudWatch dashboards
-- Review structured logs for errors
-
-**Exit Criteria**:
-- ✅ ≥72h continuous runtime (zero crashes)
-- ✅ FTMO guardrails enforced in simulated breach
-- ✅ Telegram notifications delivered for all high-tier signals
-- ✅ Observed win-rate within ±5% of backtest baseline
-- ✅ Summary report approved → GO for Phase 7
-
 ---
 
-## 🚀 Phase 7 Preparation (Parallel to Observation)
+## Notes
 
-While Phase 6.5 observation runs, prepare for micro-lot testing:
-
-1. **FTMO Account Setup**:
-   - Start with demo account (free) for execution metrics
-   - Purchase 10K challenge account before Phase 7 starts ($155)
-
-2. **Execution Model Calibration**:
-   - Measure real spreads/slippage from FTMO demo
-   - Update `data/execution_metrics.json`
-   - Validate execution model accuracy
-
-3. **Final Checklist Review**:
-   - Verify all tests passing
-   - Confirm model rollback procedure works
-   - Test kill-switch and rate limiting
-   - Validate Telegram command responsiveness
-
----
-
-## 📊 Timeline Summary
-
-| Phase | Duration | Status |
-|-------|----------|--------|
-| Data Infrastructure | ~1 hour | ✅ COMPLETE |
-| Data Generation | ~30 min | ✅ COMPLETE |
-| Feature Engineering | ~30-60 min | 🔄 IN PROGRESS |
-| **Model Training** | **4-12 hours** | ⏳ **NEXT** |
-| Model Evaluation | ~1 hour | ⏳ Pending |
-| Runtime Integration | ~30 min | ⏳ Pending |
-| **Phase 6.5 Observation** | **3-5 days** | ⏳ Pending |
-| **TOTAL TO READY** | **1-2 days dev + 3-5 days observation** | **= 4-7 days** |
-
----
-
-## 💾 Git Status
-
-**Branch**: `claude/phase-6.5-checklist-011CUyHzB8ZnJdnENDyCMDUQ`
-**Commits**:
-1. `feat: add synthetic data provider for offline training`
-2. `data: generate synthetic training data for all coins`
-
-**Pushed**: ✅ Yes
-**Ready for PR**: After observation completes with models trained
-
----
-
-## 🔧 Configuration
-
-**Environment** (.env):
-```bash
-DATA_PROVIDER=synthetic  # Using synthetic for development
-DB_URL=sqlite:///tradingai.db  # Local SQLite database
-CONFIDENCE_THRESHOLD=0.75
-ENSEMBLE_WEIGHTS=0.35,0.40,0.25  # LSTM, Transformer, RL
-KILL_SWITCH=false
-MAX_SIGNALS_PER_HOUR=10
-MAX_SIGNALS_PER_HOUR_HIGH=5
-```
-
-**Models Path**:
-- Checkpoints: `models/checkpoints/`
-- Promoted: `models/promoted/` (symlinks)
-- Registry: `models/registry.json`
-
----
-
-## ⚠️ Important Notes
-
-1. **Synthetic Data**: Currently using synthetic data due to network restrictions. Once deployed to VPS with internet access, switch to real data providers (ccxt or yfinance).
-
-2. **GPU Acceleration**: Training will be much faster with GPU. If CPU-only, expect 18-32 hours for all models.
-
-3. **Parallel Training**: Can train LSTM models in parallel (one per coin) to save time.
-
-4. **Model Versions**: All models will be tagged as v1.0.0 initially. Subsequent retraining increments version.
-
-5. **Observation Must Complete**: Do NOT skip Phase 6.5 observation. It's critical for validating system stability before risking real capital in Phase 7.
-
----
-
-## 📞 Next Action
-
-**CURRENT**: Wait for feature engineering to complete (~20 more minutes)
-**THEN**: Start LSTM model training for BTC (first model)
-**MONITOR**: Track training loss and validation accuracy
-**EVALUATE**: Check if model passes promotion gates (≥68% accuracy)
-
----
-
-**Last Updated**: 2025-11-10 01:15 UTC
-**By**: Claude (Automated Training Pipeline)
+- Synthetic provider gives offline coverage; switch to `yfinance` or `ccxt` when network access & dependencies are available.
+- Optional dependencies (`yfinance`, `ccxt`) are not pinned in `uv.lock`; install only if required.
+- Treat this file as the single source of truth for the restart effort and update the checklist as progress is made.
