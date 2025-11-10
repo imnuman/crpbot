@@ -198,6 +198,13 @@ Uses LAMBDA_ARN from environment (set by Amazon Q)
 Refs: aws/lambda-setup commit abc123"
 ```
 
+### Automated Review (Bugbot)
+
+- Install the [Bugbot GitHub App](https://github.com/apps/bugbot) on the repository (admin required).
+- When you open a PR, comment `@Bugbot review` to trigger an automated defect scan.
+- Claude follows up on Bugbot findings, Cursor applies fixes, and Amazon Q handles any AWS concerns.
+- Full setup details live in `docs/BUGBOT_SETUP.md`.
+
 ### Avoiding Conflicts Checklist
 
 Before starting work with ANY tool:
