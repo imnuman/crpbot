@@ -30,14 +30,27 @@ def create_data_provider(provider: str, **kwargs) -> "DataProviderInterface":
             private_key=private_key,
         )
     elif provider in ["ccxt", "binance", "kraken"]:
-        from libs.data.ccxt_provider import CCXTDataProvider
+        try:
+            from libs.data.ccxt_provider import CCXTDataProvider
 
-        # Use provider name as exchange, default to binance if 'ccxt' generic
-        exchange = provider if provider != "ccxt" else "binance"
-        return CCXTDataProvider(exchange=exchange)
+            # Use provider name as exchange, default to binance if 'ccxt' generic
+            exchange = provider if provider != "ccxt" else "binance"
+            return CCXTDataProvider(exchange=exchange)
+        except ModuleNotFoundError:
+            logger.warning("ccxt not installed, falling back to synthetic provider")
+            from libs.data.synthetic_provider import SyntheticDataProvider
+
+            return SyntheticDataProvider(seed=kwargs.get("seed", 42))
     elif provider == "yfinance":
-        from libs.data.yfinance_provider import YFinanceDataProvider
-        return YFinanceDataProvider()
+        try:
+            from libs.data.yfinance_provider import YFinanceDataProvider
+
+            return YFinanceDataProvider()
+        except ModuleNotFoundError:
+            logger.warning("yfinance not installed, falling back to synthetic provider")
+            from libs.data.synthetic_provider import SyntheticDataProvider
+
+            return SyntheticDataProvider(seed=kwargs.get("seed", 42))
     elif provider == "synthetic":
         from libs.data.synthetic_provider import SyntheticDataProvider
         return SyntheticDataProvider(seed=kwargs.get("seed", 42))
