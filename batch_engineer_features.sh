@@ -7,7 +7,7 @@ set -e  # Exit on error
 SYMBOLS=("BTC-USD" "ETH-USD" "SOL-USD")
 INTERVAL="1m"
 START="2023-11-10"
-END="2025-11-10"
+END="2025-11-13"
 
 echo "========================================="
 echo "Feature Engineering - Phase 6.5"

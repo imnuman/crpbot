@@ -87,14 +87,21 @@ def evaluate_model(
 
     # Load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
     if model_type == "lstm":
         model = LSTMDirectionModel(input_size=len(feature_columns))
     else:
         model = TransformerTrendModel(input_size=len(feature_columns))
 
-    model.load_state_dict(checkpoint["model_state_dict"])
+    # Handle both checkpoint formats:
+    # - Local training: dict with "model_state_dict" key
+    # - GPU/Colab: direct state_dict
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        # Direct state_dict (GPU/Colab format)
+        model.load_state_dict(checkpoint)
     model.to(device)
 
     # Evaluate
