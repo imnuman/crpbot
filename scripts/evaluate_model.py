@@ -26,6 +26,9 @@ def evaluate_model(
     confidence_threshold: float = 0.5,
     min_accuracy: float = 0.68,
     max_calibration_error: float = 0.05,
+    hidden_size: int = 128,
+    num_layers: int = 3,
+    bidirectional: bool = True,
 ) -> bool:
     """
     Evaluate a model and check promotion gates.
@@ -99,7 +102,12 @@ def evaluate_model(
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
     if model_type == "lstm":
-        model = LSTMDirectionModel(input_size=len(feature_columns))
+        model = LSTMDirectionModel(
+            input_size=len(feature_columns),
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            bidirectional=bidirectional,
+        )
     else:
         model = TransformerTrendModel(input_size=len(feature_columns))
 
@@ -167,6 +175,9 @@ def main():
     parser.add_argument(
         "--max-calibration-error", type=float, default=0.05, help="Maximum calibration error threshold"
     )
+    parser.add_argument("--hidden-size", type=int, default=128, help="LSTM hidden size (64 for old models, 128 for new)")
+    parser.add_argument("--num-layers", type=int, default=3, help="Number of LSTM layers (2 for old models, 3 for new)")
+    parser.add_argument("--no-bidirectional", action="store_true", help="Disable bidirectional LSTM (for old models)")
 
     args = parser.parse_args()
 
@@ -178,6 +189,9 @@ def main():
         confidence_threshold=args.confidence_threshold,
         min_accuracy=args.min_accuracy,
         max_calibration_error=args.max_calibration_error,
+        hidden_size=args.hidden_size,
+        num_layers=args.num_layers,
+        bidirectional=not args.no_bidirectional,
     )
 
     exit(0 if passed else 1)
