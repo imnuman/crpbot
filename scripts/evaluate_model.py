@@ -32,7 +32,7 @@ def evaluate_model(
 
     Args:
         model_path: Path to model file
-        symbol: Trading pair symbol
+        symbol: Trading pair symbol (can be "BTC" or "BTC-USD" format)
         interval: Time interval
         model_type: Type of model ('lstm' or 'transformer')
         confidence_threshold: Confidence threshold for signals
@@ -42,6 +42,13 @@ def evaluate_model(
     Returns:
         True if model passes promotion gates, False otherwise
     """
+    # Normalize symbol format: convert short symbols to full format
+    # BTC -> BTC-USD, ETH -> ETH-USD, SOL -> SOL-USD
+    if symbol in ["BTC", "ETH", "SOL"]:
+        full_symbol = f"{symbol}-USD"
+        logger.info(f"Converting short symbol '{symbol}' to full format '{full_symbol}'")
+        symbol = full_symbol
+
     logger.info(f"Evaluating {model_type} model for {symbol}")
 
     # Load features
