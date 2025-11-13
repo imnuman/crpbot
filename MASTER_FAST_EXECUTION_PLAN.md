@@ -67,43 +67,54 @@ We have 4 versions. Current focus: **V4 with GPU acceleration**
 |-------|----------|--------------|-------|-------|
 | **User (You)** | Control center | Decision maker, Colab runner | Google Colab Pro | Manual |
 | **Cloud Claude** | Cloud server | Developer, Code writer | Python, Git | Fast |
-| **Local Claude (QC)** | Local machine | Reviewer, Documenter | Git, Testing | Fast |
+| **Local Claude (QC)** | Local machine | Reviewer, Documenter, Planner | Git, Testing | Fast |
+| **Amazon Q** | Both (local + cloud) | AWS Infrastructure Specialist | AWS CLI, Q CLI | Very Fast |
 
 ### Collaboration Flow:
 
 ```
-┌─────────────────────┐
-│  USER               │
-│  - Runs Colab       │
-│  - Makes decisions  │
-│  - Reviews results  │
-└──────┬──────────────┘
-       │
-       ├─────────────────────────────┐
-       ▼                             ▼
-┌──────────────┐            ┌─────────────────┐
-│ CLOUD CLAUDE │            │ LOCAL CLAUDE    │
-│ (Developer)  │◄──Git──────┤ (QC Reviewer)   │
-│              │            │                 │
-│ - Write code │            │ - Review work   │
-│ - Debug      │            │ - Document      │
-│ - Prepare    │            │ - Test locally  │
-│   Colab jobs │            │ - Create plans  │
-└──────────────┘            └─────────────────┘
-       │
-       ▼
-┌──────────────┐
-│ GITHUB       │
-│ (Sync Point) │
-└──────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                        USER                             │
+│                  (Decision Maker)                       │
+│  - Runs Google Colab jobs                              │
+│  - Makes go/no-go decisions                            │
+│  - Approves deployments                                │
+└────────────┬───────────────────────────┬────────────────┘
+             │                           │
+    ┌────────▼─────────┐        ┌───────▼─────────┐
+    │  CLOUD CLAUDE    │        │  LOCAL CLAUDE   │
+    │  (Developer)     │◄──Git──┤  (QC/Planner)   │
+    │                  │        │                 │
+    │ - Write code     │        │ - Review work   │
+    │ - Debug issues   │        │ - Document      │
+    │ - Prepare Colab  │        │ - Create plans  │
+    └────────┬─────────┘        └───────┬─────────┘
+             │                           │
+             │         ┌─────────────────┘
+             │         │
+             ▼         ▼
+    ┌────────────────────────────┐
+    │      AMAZON Q              │
+    │   (AWS Specialist)         │
+    │                            │
+    │ Both: Local + Cloud        │
+    │ - S3 operations            │
+    │ - RDS management           │
+    │ - EC2 deployment           │
+    │ - CloudWatch monitoring    │
+    │ - Cost optimization        │
+    └────────────────────────────┘
 ```
 
 ### Communication Protocol:
 
 1. **Cloud Claude**: Writes code, preps Colab files, commits to GitHub
 2. **Local Claude**: Pulls, reviews, documents, pushes back
-3. **User**: Runs Colab jobs, provides results, makes decisions
-4. **Loop**: Repeat until goal achieved
+3. **Amazon Q**: Handles ALL AWS operations (S3, RDS, EC2, monitoring)
+4. **User**: Runs Colab jobs, provides results, makes decisions
+5. **Loop**: Repeat until goal achieved
+
+**Key Rule**: AWS task? → Amazon Q handles it (not Cloud Claude or Local Claude)
 
 ---
 
@@ -206,14 +217,31 @@ We have 4 versions. Current focus: **V4 with GPU acceleration**
    - Test ensemble prediction
    - Verify FTMO rules work
    - Check rate limiting
+```
 
-3. Deploy to Production [60 min]
-   - Update runtime configuration
-   - Deploy to cloud server
-   - Start dry-run mode
+**Amazon Q Tasks** (AWS Infrastructure):
+```
+1. Upload models to S3 [5 min]
+   q "Upload models/promoted/*.pt to s3://crpbot-models/production/"
 
+2. Deploy to Production EC2 [15 min]
+   q "Deploy latest code to production EC2 instance"
+   q "Copy promoted models to EC2 runtime directory"
+   q "Restart crpbot systemd service"
+
+3. Configure Monitoring [10 min]
+   q "Setup CloudWatch alarms for runtime errors"
+   q "Configure CloudWatch dashboard for trading signals"
+
+4. Verify Deployment [10 min]
+   q "Check crpbot service status on EC2"
+   q "Tail latest runtime logs from EC2"
+```
+
+**Cloud Claude Tasks** (Post-Deployment):
+```
 4. Monitor Initial Performance [20 min]
-   - Observe first signals
+   - Observe first signals (via Amazon Q logs)
    - Validate accuracy
    - Check for errors
 ```

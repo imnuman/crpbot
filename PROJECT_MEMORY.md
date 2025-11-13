@@ -150,19 +150,77 @@ make test
 git push origin main
 ```
 
-### Cloud Claude (YOU)
+### Cloud Claude
 
 **Primary Responsibilities**:
 1. **Development**: Write and modify code
-2. **Training**: Run model training on GPU/cloud resources
+2. **Training Prep**: Prepare Colab notebooks and data files
 3. **Debugging**: Fix bugs and issues
-4. **Production**: Deploy and monitor runtime
+4. **Results Processing**: Analyze training/evaluation results
 
 **Your Workflow**:
 - Work directly on cloud server
 - Commit and push to GitHub
 - Wait for local Claude QC review
 - Continue based on feedback
+
+**What Cloud Claude Does NOT Do**:
+- ❌ AWS tasks (S3, RDS, EC2, CloudWatch) → Use Amazon Q
+- ❌ QC reviews → Local Claude's role
+- ❌ Master planning → Local Claude's role
+
+---
+
+### Amazon Q (Available on BOTH machines)
+
+**Primary Responsibilities**:
+1. **S3 Operations**: Upload/download models, data, logs
+2. **RDS Management**: Database operations, queries, backups
+3. **EC2 Deployment**: Deploy code, restart services, monitor
+4. **CloudWatch Monitoring**: Setup alarms, view logs, track metrics
+5. **Cost Optimization**: Monitor AWS spending, suggest savings
+6. **IAM Management**: Roles, permissions, security groups
+
+**When to Use Amazon Q**:
+- ANY AWS-related task
+- Upload/download from S3
+- Deploy to EC2 production
+- Query RDS database
+- Setup CloudWatch monitoring
+- Check AWS costs
+- View EC2 logs
+
+**Common Commands**:
+```bash
+# S3 Operations
+q "Upload models/*.pt to s3://crpbot-models/production/"
+q "Download latest models from S3 to local machine"
+
+# EC2 Deployment
+q "Deploy latest code to production EC2 instance"
+q "Restart crpbot systemd service on EC2"
+q "Show crpbot service status"
+
+# Monitoring
+q "Show last 100 lines of runtime logs from EC2"
+q "Setup CloudWatch alarm for runtime errors"
+
+# Database
+q "Show recent trading signals from RDS database"
+q "Check RDS connection status"
+
+# Cost Management
+q "Show AWS costs for this month"
+q "Suggest cost optimization opportunities"
+```
+
+**What Amazon Q Does NOT Do**:
+- ❌ Write Python code → Cloud Claude's role
+- ❌ QC reviews → Local Claude's role
+- ❌ Run Colab notebooks → User's role
+- ❌ Non-AWS tasks
+
+**Important**: If a task involves AWS (S3, RDS, EC2, etc.), ALWAYS use Amazon Q, not Cloud Claude or Local Claude.
 
 ---
 
