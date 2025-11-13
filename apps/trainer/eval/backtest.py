@@ -303,8 +303,8 @@ class BacktestEngine:
         total_pnl = sum(t.pnl for t in closed_trades)
         avg_pnl = total_pnl / total_trades if total_trades > 0 else 0.0
 
-        # Drawdown calculation
-        balances = [b for _, b in sorted(self.balance_history)]
+        # Drawdown calculation (balance_history is already chronological, no need to sort)
+        balances = [b for _, b in self.balance_history]
         if len(balances) > 1:
             peak = balances[0]
             drawdowns = []
