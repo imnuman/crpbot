@@ -59,6 +59,29 @@ class TradingDataset(Dataset):
         # Remove sequences that would go beyond data boundaries
         self.valid_indices = self._get_valid_indices()
 
+        # Store timestamps and prices for evaluation
+        self.timestamps = []
+        self.entry_prices = []
+        self.exit_prices = []
+
+        for idx in self.valid_indices:
+            # label_idx is where prediction happens (end of sequence)
+            label_idx = idx + self.sequence_length - 1
+            exit_idx = label_idx + self.horizon
+
+            # Get timestamp at entry (where we make prediction)
+            self.timestamps.append(self.df.iloc[label_idx]["timestamp"])
+
+            # Get entry price (close at label_idx)
+            self.entry_prices.append(self.df.iloc[label_idx]["close"])
+
+            # Get exit price (close at exit_idx, horizon ahead)
+            self.exit_prices.append(self.df.iloc[exit_idx]["close"])
+
+        self.timestamps = np.array(self.timestamps)
+        self.entry_prices = np.array(self.entry_prices, dtype=np.float32)
+        self.exit_prices = np.array(self.exit_prices, dtype=np.float32)
+
         logger.info(
             f"Created dataset: {len(self.valid_indices)} sequences, "
             f"{len(feature_columns)} features, prediction_type={prediction_type}"
@@ -123,7 +146,7 @@ class TradingDataset(Dataset):
             idx: Index in valid_indices
 
         Returns:
-            Dictionary with 'features' and 'label' tensors
+            Dictionary with 'features', 'label', 'timestamp', 'entry_price', 'exit_price'
         """
         start_idx = self.valid_indices[idx]
         end_idx = start_idx + self.sequence_length
@@ -137,5 +160,11 @@ class TradingDataset(Dataset):
         features_tensor = torch.FloatTensor(sequence)
         label_tensor = torch.FloatTensor([label])
 
-        return {"features": features_tensor, "label": label_tensor}
+        return {
+            "features": features_tensor,
+            "label": label_tensor,
+            "timestamp": self.timestamps[idx],
+            "entry_price": torch.FloatTensor([self.entry_prices[idx]]),
+            "exit_price": torch.FloatTensor([self.exit_prices[idx]]),
+        }
 

@@ -87,6 +87,11 @@ class ModelEvaluator:
                 features = sample["features"].unsqueeze(0).to(device)
                 label = sample["label"].item()
 
+                # Get real data from dataset
+                entry_time = sample["timestamp"]
+                entry_price = sample["entry_price"].item()
+                exit_price = sample["exit_price"].item()
+
                 # Measure inference latency
                 start_time = time.time()
                 output = model(features)
@@ -118,13 +123,7 @@ class ModelEvaluator:
 
                 # Only trade on high/medium confidence
                 if tier in ["high", "medium"]:
-                    # Get timestamp and price from dataset (if available)
-                    # In real implementation, these should come from the dataset
-                    # For now, use placeholder values
-                    entry_time = datetime.now()  # Should be from dataset timestamp column
-                    entry_price = 50000.0  # Should be from dataset close price
-
-                    # Execute trade
+                    # Execute trade with REAL data from dataset
                     trade = backtest_engine.execute_trade(
                         entry_time=entry_time,
                         entry_price=entry_price,
@@ -135,11 +134,8 @@ class ModelEvaluator:
                         latency_ms=latency_ms,
                     )
 
-                    # Simulate exit (in real backtest, use TP/SL logic)
-                    # For now, close after fixed period
+                    # Close trade with REAL exit price from dataset
                     exit_time = entry_time + pd.Timedelta(minutes=15)
-                    exit_price = entry_price * (1.01 if direction == "long" else 0.99)  # Placeholder
-
                     backtest_engine.close_trade(trade, exit_time, exit_price, reason="tp")
 
         # Calculate metrics

@@ -1,7 +1,7 @@
 """Backtest engine with empirical FTMO execution model."""
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import numpy as np
@@ -146,7 +146,7 @@ class BacktestEngine:
         self.rr_ratio = rr_ratio
 
         self.trades: list[Trade] = []
-        self.balance_history: list[tuple[datetime, float]] = [(datetime.now(), initial_balance)]
+        self.balance_history: list[tuple[datetime, float]] = [(datetime.now(timezone.utc), initial_balance)]
         self.current_balance = initial_balance
 
     def execute_trade(
