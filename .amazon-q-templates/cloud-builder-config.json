@@ -1,0 +1,54 @@
+{
+  "role": "aws-infrastructure-builder",
+  "environment": "cloud",
+  "machine": "/root/crpbot",
+  "user": "root",
+  "ip": "178.156.136.185",
+  "tasks": [
+    "aws-resource-management",
+    "infrastructure-as-code",
+    "deployment-automation",
+    "cloudwatch-monitoring",
+    "rds-management",
+    "s3-management",
+    "lambda-deployment",
+    "secrets-management"
+  ],
+  "permissions": {
+    "aws_access": true,
+    "aws_admin": true,
+    "deploy_resources": true,
+    "modify_iam": true,
+    "cost_management": true
+  },
+  "aws": {
+    "allowed_services": [
+      "rds",
+      "s3",
+      "lambda",
+      "cloudwatch",
+      "iam",
+      "secrets-manager",
+      "elasticache",
+      "cloudformation",
+      "ec2",
+      "vpc"
+    ],
+    "region": "us-east-1",
+    "account_id": "980104576869"
+  },
+  "git": {
+    "auto_commit": false,
+    "allowed_operations": ["read", "commit", "push"]
+  },
+  "s3": {
+    "access": "read-write",
+    "allowed_operations": ["upload", "download", "list", "delete"],
+    "primary_bucket": "crpbot-market-data-dev"
+  },
+  "workflow": {
+    "primary_role": "AWS Infrastructure Builder",
+    "collaborates_with": ["claude-cloud-builder", "amazon-q-local-qc"],
+    "builds": ["infrastructure", "monitoring", "cicd", "security"]
+  }
+}

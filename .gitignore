@@ -39,6 +39,12 @@ env/
 .env
 .env.local
 
+# Cloud server configuration (dual environment)
+.cloud_server
+.ssh_key
+.rds_connection_info
+.db_password
+
 # Data & models (use DVC/LFS if desired)
 data/**
 models/**
@@ -86,4 +92,9 @@ Thumbs.db
 # Phase 6.5 observation artifacts
 tradingai.db
 reports/phase6_5/*_metrics.json
+
+# Amazon Q configurations (environment-specific)
+.amazon-q/
+.amazonq/
+amazonq/
 

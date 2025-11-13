@@ -1,0 +1,36 @@
+{
+  "role": "quality-control",
+  "environment": "local",
+  "machine": "/home/numan/crpbot",
+  "user": "numan",
+  "tasks": [
+    "code-review",
+    "security-audit",
+    "documentation-validation",
+    "test-verification",
+    "metrics-analysis",
+    "approval-gating"
+  ],
+  "permissions": {
+    "aws_access": true,
+    "aws_read_only": true,
+    "aws_write": false,
+    "read_only_code": false,
+    "approve_deployments": true,
+    "approve_model_promotions": true
+  },
+  "git": {
+    "auto_commit": false,
+    "require_approval": true,
+    "allowed_operations": ["read", "commit", "push"]
+  },
+  "s3": {
+    "access": "read-only",
+    "allowed_operations": ["download", "list"]
+  },
+  "workflow": {
+    "primary_role": "Quality Control",
+    "collaborates_with": ["claude-cloud-builder", "amazon-q-cloud-aws"],
+    "review_artifacts": ["models", "data-quality", "test-results", "metrics"]
+  }
+}
