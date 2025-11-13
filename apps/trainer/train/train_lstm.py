@@ -21,12 +21,12 @@ from libs.data.quality import validate_feature_quality
 def train_lstm_for_coin(
     symbol: str,
     interval: str = "1m",
-    epochs: int = 10,
+    epochs: int = 50,
     batch_size: int = 32,
     sequence_length: int = 60,
     horizon: int = 15,
-    hidden_size: int = 64,
-    num_layers: int = 2,
+    hidden_size: int = 128,
+    num_layers: int = 3,
     learning_rate: float = 0.001,
     device: torch.device | None = None,
     data_dir: Path | str = "data/features",
@@ -154,12 +154,12 @@ def main():
     parser = argparse.ArgumentParser(description="Train LSTM model for cryptocurrency trading")
     parser.add_argument("--symbol", required=True, help="Trading pair (e.g., BTC-USD)")
     parser.add_argument("--interval", default="1m", help="Time interval (default: 1m)")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
+    parser.add_argument("--epochs", type=int, default=50, help="Number of epochs (improved)")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     parser.add_argument("--sequence-length", type=int, default=60, help="Input sequence length")
     parser.add_argument("--horizon", type=int, default=15, help="Prediction horizon (time steps)")
-    parser.add_argument("--hidden-size", type=int, default=64, help="LSTM hidden size")
-    parser.add_argument("--num-layers", type=int, default=2, help="Number of LSTM layers")
+    parser.add_argument("--hidden-size", type=int, default=128, help="LSTM hidden size (improved)")
+    parser.add_argument("--num-layers", type=int, default=3, help="Number of LSTM layers (improved)")
     parser.add_argument("--learning-rate", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--no-normalize", action="store_true", help="Disable feature normalization")
     parser.add_argument("--data-dir", default="data/features", help="Directory with feature files")

@@ -17,20 +17,20 @@ class LSTMDirectionModel(nn.Module):
     def __init__(
         self,
         input_size: int,
-        hidden_size: int = 64,
-        num_layers: int = 2,
-        dropout: float = 0.2,
-        bidirectional: bool = False,
+        hidden_size: int = 128,
+        num_layers: int = 3,
+        dropout: float = 0.35,
+        bidirectional: bool = True,
     ):
         """
-        Initialize LSTM model.
+        Initialize LSTM model with improved architecture.
 
         Args:
-            input_size: Number of input features
-            hidden_size: LSTM hidden state size
-            num_layers: Number of LSTM layers
-            dropout: Dropout probability
-            bidirectional: Whether to use bidirectional LSTM
+            input_size: Number of input features (31 for our feature set)
+            hidden_size: LSTM hidden state size (128 for better capacity)
+            num_layers: Number of LSTM layers (3 for deeper learning)
+            dropout: Dropout probability (0.35 for better regularization)
+            bidirectional: Whether to use bidirectional LSTM (True for better context)
         """
         super().__init__()
 
