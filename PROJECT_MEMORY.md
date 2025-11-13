@@ -4,10 +4,11 @@
 **CRPBot** is an AI-powered cryptocurrency trading bot designed for FTMO-compliant trading with ensemble machine learning models.
 
 ### Key Details
-- **Location**: `/home/numan/crpbot`
+- **Location**: `/root/crpbot`
 - **Language**: Python 3.10+
 - **Current Phase**: Phase 6.5 - Training Pipeline Restart
-- **Status**: Step 4 in progress (3/4 models trained)
+- **Status**: 🔴 **BLOCKED** - Feature mismatch discovered (50 vs 31)
+- **Critical Issue**: Colab models incompatible with local evaluation
 
 ## Architecture
 
@@ -86,9 +87,32 @@ crpbot/
 4. PR review required
 5. CI/CD via GitHub Actions
 
+## ⚠️ CRITICAL BLOCKER (2025-11-13)
+
+**Issue**: Feature dimension mismatch between Colab training and local evaluation
+
+**Impact**: Cannot evaluate or use Colab-trained models
+- Colab models: 50 input features
+- Local pipeline: 31 input features
+- Error: `RuntimeError: size mismatch [512, 50] vs [512, 31]`
+
+**Root Cause**: Colab environment used 19 additional features (likely multi-TF) not in local feature files
+
+**Solution**: Retrain on Colab with correct 31-feature parquet files
+- Files ready: `data/features/*.parquet` (210MB, 200MB, 184MB)
+- Estimated time: ~57 minutes GPU training
+- See: `COLAB_RETRAINING_INSTRUCTIONS.md` for step-by-step guide
+
+**Documentation**:
+- Problem report: `reports/phase6_5/CRITICAL_FEATURE_MISMATCH_REPORT.md`
+- Retraining guide: `COLAB_RETRAINING_INSTRUCTIONS.md`
+- Commits: e25b970, befdeb2
+
 ## Next Steps
-1. Complete Transformer training
-2. Evaluate all models against Phase 3 gates
-3. Promote best models to production
-4. Restart observation with meaningful signals
-5. Prepare for Phase 7 deployment
+1. 🔴 **URGENT**: Upload feature files to Google Drive & retrain on Colab (manual)
+2. Download and evaluate retrained models
+3. Complete Transformer training
+4. Evaluate all models against Phase 3 gates (68% accuracy, 5% calibration)
+5. Promote best models to production
+6. Restart Phase 6.5 observation with meaningful signals
+7. Prepare for Phase 7 deployment
