@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚨 IMPORTANT: Dual Environment Setup
+
+**READ FIRST**: We operate in a **dual-environment setup**:
+- **Local Machine** (`/home/numan/crpbot`): Local Claude for QC review & testing
+- **Cloud Server** (`~/crpbot`): Cloud Claude for development & training
+
+**Before proceeding, read**: `PROJECT_MEMORY.md` for session continuity and role definitions.
+
+Both environments sync via Git (GitHub: `imnuman/crpbot`). Always check `git log` and `PROJECT_MEMORY.md` when starting a new chat to understand the current context.
+
+---
+
 ## Project Overview
 
 **CRPBot** is a cryptocurrency trading AI system designed for FTMO challenge compliance. It uses an ensemble of machine learning models (LSTM + Transformer + RL) to generate high-confidence trading signals with strict risk management for BTC-USD, ETH-USD, and SOL-USD.
