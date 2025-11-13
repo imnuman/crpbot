@@ -105,24 +105,33 @@
 
 ══════════════════════════════════════════════════════════════════
 
-👥 AGENT ROLES (Clear Collaboration):
+👥 AGENT ROLES (4-Agent Collaboration):
 
   YOU (User):
   ✅ Run GPU jobs on Colab
   ✅ Make go/no-go decisions
-  ✅ Provide results to Cloud Claude
+  ✅ Provide results to agents
 
   CLOUD CLAUDE (Developer):
+  ✅ Write Python code
   ✅ Prepare Colab files
   ✅ Process results
-  ✅ Deploy to production
-  ✅ Debug issues
+  ✅ Debug code issues
 
   LOCAL CLAUDE (QC - Me):
   ✅ Review commits
   ✅ Create master plans
   ✅ Ensure speed/quality
   ✅ Document everything
+
+  AMAZON Q (AWS Specialist):
+  ✅ S3 operations (upload/download)
+  ✅ EC2 deployment (production)
+  ✅ RDS database management
+  ✅ CloudWatch monitoring
+  ✅ Cost optimization
+
+  KEY RULE: AWS task? → Use Amazon Q (not Claude)
 
 ══════════════════════════════════════════════════════════════════
 
