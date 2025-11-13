@@ -75,6 +75,7 @@ def evaluate_model(
             sequence_length=60,
             horizon=15,
             prediction_type="direction",
+            return_metadata=True,  # Enable metadata for evaluation (timestamps, prices)
         )
     else:
         test_dataset = TradingDataset(
@@ -83,6 +84,7 @@ def evaluate_model(
             sequence_length=100,
             horizon=15,
             prediction_type="trend",
+            return_metadata=True,  # Enable metadata for evaluation (timestamps, prices)
         )
 
     # Load model

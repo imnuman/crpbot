@@ -24,6 +24,7 @@ class TradingDataset(Dataset):
         sequence_length: int = 60,
         horizon: int = 15,
         prediction_type: str = "direction",
+        return_metadata: bool = False,
     ):
         """
         Initialize dataset.
@@ -35,12 +36,14 @@ class TradingDataset(Dataset):
             sequence_length: Number of time steps to use as input
             horizon: Number of time steps ahead to predict (default: 15 for 15-min horizon)
             prediction_type: Type of prediction ('direction' or 'trend')
+            return_metadata: Whether to return timestamps and prices (True for eval, False for training)
         """
         self.df = df.sort_values("timestamp").reset_index(drop=True)
         self.feature_columns = feature_columns
         self.sequence_length = sequence_length
         self.horizon = horizon
         self.prediction_type = prediction_type
+        self.return_metadata = return_metadata
 
         # Extract features
         if not all(col in df.columns for col in feature_columns):
@@ -59,28 +62,29 @@ class TradingDataset(Dataset):
         # Remove sequences that would go beyond data boundaries
         self.valid_indices = self._get_valid_indices()
 
-        # Store timestamps and prices for evaluation
-        self.timestamps = []
-        self.entry_prices = []
-        self.exit_prices = []
+        # Store timestamps and prices for evaluation (only if needed)
+        if self.return_metadata:
+            self.timestamps = []
+            self.entry_prices = []
+            self.exit_prices = []
 
-        for idx in self.valid_indices:
-            # label_idx is where prediction happens (end of sequence)
-            label_idx = idx + self.sequence_length - 1
-            exit_idx = label_idx + self.horizon
+            for idx in self.valid_indices:
+                # label_idx is where prediction happens (end of sequence)
+                label_idx = idx + self.sequence_length - 1
+                exit_idx = label_idx + self.horizon
 
-            # Get timestamp at entry (where we make prediction)
-            self.timestamps.append(self.df.iloc[label_idx]["timestamp"])
+                # Get timestamp at entry (where we make prediction)
+                self.timestamps.append(self.df.iloc[label_idx]["timestamp"])
 
-            # Get entry price (close at label_idx)
-            self.entry_prices.append(self.df.iloc[label_idx]["close"])
+                # Get entry price (close at label_idx)
+                self.entry_prices.append(self.df.iloc[label_idx]["close"])
 
-            # Get exit price (close at exit_idx, horizon ahead)
-            self.exit_prices.append(self.df.iloc[exit_idx]["close"])
+                # Get exit price (close at exit_idx, horizon ahead)
+                self.exit_prices.append(self.df.iloc[exit_idx]["close"])
 
-        self.timestamps = np.array(self.timestamps)
-        self.entry_prices = np.array(self.entry_prices, dtype=np.float32)
-        self.exit_prices = np.array(self.exit_prices, dtype=np.float32)
+            self.timestamps = np.array(self.timestamps)
+            self.entry_prices = np.array(self.entry_prices, dtype=np.float32)
+            self.exit_prices = np.array(self.exit_prices, dtype=np.float32)
 
         logger.info(
             f"Created dataset: {len(self.valid_indices)} sequences, "
@@ -146,7 +150,7 @@ class TradingDataset(Dataset):
             idx: Index in valid_indices
 
         Returns:
-            Dictionary with 'features', 'label', 'timestamp', 'entry_price', 'exit_price'
+            Dictionary with 'features' and 'label' (+ metadata if return_metadata=True)
         """
         start_idx = self.valid_indices[idx]
         end_idx = start_idx + self.sequence_length
@@ -160,11 +164,18 @@ class TradingDataset(Dataset):
         features_tensor = torch.FloatTensor(sequence)
         label_tensor = torch.FloatTensor([label])
 
-        return {
+        result = {
             "features": features_tensor,
             "label": label_tensor,
-            "timestamp": self.timestamps[idx],
-            "entry_price": torch.FloatTensor([self.entry_prices[idx]]),
-            "exit_price": torch.FloatTensor([self.exit_prices[idx]]),
         }
+
+        # Add metadata only if requested (for evaluation)
+        if self.return_metadata:
+            result.update({
+                "timestamp": self.timestamps[idx],
+                "entry_price": torch.FloatTensor([self.entry_prices[idx]]),
+                "exit_price": torch.FloatTensor([self.exit_prices[idx]]),
+            })
+
+        return result
 

@@ -107,6 +107,7 @@ def train_lstm_for_coin(
         sequence_length=sequence_length,
         horizon=horizon,
         prediction_type="direction",
+        return_metadata=False,  # No metadata during training (avoids collate errors)
     )
     val_dataset = TradingDataset(
         val_df,
@@ -114,6 +115,7 @@ def train_lstm_for_coin(
         sequence_length=sequence_length,
         horizon=horizon,
         prediction_type="direction",
+        return_metadata=False,  # No metadata during training (avoids collate errors)
     )
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
