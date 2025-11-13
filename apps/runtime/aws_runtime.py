@@ -8,13 +8,14 @@ import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any
 
 import boto3
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from .signal import SignalGenerator
+from .trading_signal import SignalGenerator
 from .telegram_bot import TelegramBot
 from .ftmo_rules import FTMORules
 from .confidence import ConfidenceCalibrator
@@ -22,6 +23,8 @@ from .confidence import ConfidenceCalibrator
 class AWSRuntime:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        # Find project root dynamically (works in both /home/numan/crpbot and /root/crpbot)
+        self.project_root = Path(__file__).resolve().parent.parent.parent
         self.setup_aws_clients()
         self.db_conn = None
         self.telegram_bot = None
@@ -66,8 +69,9 @@ class AWSRuntime:
     def connect_database(self):
         """Connect to RDS PostgreSQL"""
         try:
-            # Read password from local file (temporary)
-            with open('/home/numan/crpbot/.db_password', 'r') as f:
+            # Read password from local file (works in both local and cloud)
+            db_password_file = self.project_root / '.db_password'
+            with open(db_password_file, 'r') as f:
                 password = f.read().strip()
                 
             self.db_conn = psycopg2.connect(
@@ -113,9 +117,9 @@ class AWSRuntime:
     def load_local_models(self):
         """Fallback to local CPU-trained models"""
         local_models = []
-        models_dir = '/home/numan/crpbot/models'
-        
-        if os.path.exists(models_dir):
+        models_dir = self.project_root / 'models'
+
+        if models_dir.exists():
             for file in os.listdir(models_dir):
                 if file.endswith('.pkl') or file.endswith('.pt'):
                     local_models.append(os.path.join(models_dir, file))
