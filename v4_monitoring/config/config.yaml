@@ -1,0 +1,52 @@
+# V4 Monitoring System Configuration
+
+# V3 ML Models
+models:
+  path: /path/to/v3/models/onnx/
+  ensemble_models:
+    - xgboost_model.pkl
+    - lightgbm_model.pkl
+    - catboost_model.pkl
+  meta_learner: meta_learner.pkl
+
+# Bybit API
+bybit:
+  api_key: YOUR_BYBIT_API_KEY
+  api_secret: YOUR_BYBIT_API_SECRET
+  testnet: false
+
+# Telegram
+telegram:
+  bot_token: YOUR_TELEGRAM_BOT_TOKEN
+  chat_id: YOUR_TELEGRAM_CHAT_ID
+
+# Database (your existing RDS)
+database:
+  host: crpbot-rds-postgres-db.cyjcoys82evx.us-east-1.rds.amazonaws.com
+  port: 5432
+  database: crpbot
+  user: crpbot_admin
+  password: ${DB_PASSWORD}  # From .db_password file
+
+# Trading Parameters
+trading:
+  max_signals_per_day: 12
+  min_confidence: 0.77
+  min_volume_ratio: 2.0
+  min_risk_reward: 2.0
+  base_risk_per_trade: 0.015  # 1.5%
+  
+# Controller Thresholds (Traffic Light)
+controller:
+  red_wr_threshold: 0.65
+  yellow_wr_threshold: 0.70
+  red_daily_loss: 0.04
+  red_consecutive_losses: 5
+  red_ece_threshold: 0.08
+  red_volatility_multiplier: 5.0
+
+# Dashboard
+dashboard:
+  port: 8501
+  password: changeme123
+  refresh_interval: 60

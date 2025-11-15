@@ -2,7 +2,8 @@
 
 **Purpose**: This file ensures continuity between Claude sessions by documenting our dual-environment development setup and current project state.
 
-**Last Updated**: 2025-11-15
+**Last Updated**: 2025-11-14
+**Last Session**: V5 Planning & Data Strategy
 
 ---
 
@@ -92,40 +93,29 @@ ls -lt QC_REVIEW_*.md | head -3
 
 ## 🔄 Current Project Status
 
-### Phase: V5 - Data Upgrade & Microstructure Features
+### Phase: V5 - Premium Data Upgrade
 
-**Last Major Update**: 2025-11-15 (CRITICAL PIVOT)
-
-**🚨 MAJOR STRATEGIC DECISION**:
-- ❌ **V4 OBSOLETE**: 50% accuracy ceiling due to noisy free Coinbase data
-- ✅ **V5 PIVOT**: Upgrade to Tardis.dev professional market data
-- ✅ **UPGRADE STRATEGY**: 10% change (data layer), 90% reuse (architecture, runtime, FTMO rules)
+**Last Major Update**: 2025-11-14
 
 **Current Situation**:
-- 🔴 **V4 Models**: Stuck at 50% accuracy - ROOT CAUSE: Free data too noisy
-- 🟢 **V5 Solution**: Professional tick data + order book from Tardis.dev
-- 🟡 **Budget Approved**: $197/month Phase 1 (validation), $549/month Phase 2 (live trading)
-- ⏸️ **BLOCKED**: Waiting for Tardis.dev subscription
-
-**V5 Phase 1 Timeline (4 weeks)**:
-- Week 1: Download Tardis historical data (2+ years, tick-level)
-- Week 2: Build 53 features (33 existing + 20 microstructure)
-- Week 3: Train models with professional data
-- Week 4: Validate (target: 65-75% accuracy vs V4's 50%)
+- ✅ V4 models evaluated: 50% accuracy (data quality ceiling identified)
+- ✅ Root cause found: Free Coinbase data too noisy
+- ✅ V5 strategy decided: Upgrade data source (not rebuild)
+- ✅ Budget approved: <$200/month Phase 1
+- ✅ Data provider selected: Tardis.dev Historical ($147/month)
+- ⏸️ **READY TO START**: Waiting for Tardis subscription
 
 **Next Action**:
-1. 🚀 Subscribe to Tardis.dev Historical - $147/month
-   - URL: https://tardis.dev/pricing
-   - Plan: Historical (3 exchanges: Binance, Coinbase, Kraken)
-   - Get: Tick data, order book, 2+ years historical
-2. Create V5 data pipeline integration
-3. Engineer 20 new microstructure features (bid-ask spread dynamics, order flow imbalance, etc.)
-4. Retrain models with professional data
+- User subscribes to Tardis.dev Historical ($147/month)
+- Builder Claude creates tardis_client.py
+- Download 2 years tick data (BTC/ETH/SOL)
+- Start V5 Week 1 execution
 
 **Key Files to Check**:
-1. `V5_PHASE1_PLAN.md` - V5 roadmap (to be created)
-2. `CLAUDE.md` - Updated with V5 strategy
-3. `PROJECT_MEMORY.md` - This file
+1. `V5_SIMPLE_PLAN.md` - Primary execution plan
+2. `V5_CONTEXT_AND_PLAN.md` - Complete context
+3. `SESSION_SUMMARY_2025-11-14.md` - Latest session
+4. `DATA_STRATEGY_COMPLETE.md` - Data roadmap
 
 ---
 
@@ -163,19 +153,77 @@ make test
 git push origin main
 ```
 
-### Cloud Claude (YOU)
+### Cloud Claude
 
 **Primary Responsibilities**:
 1. **Development**: Write and modify code
-2. **Training**: Run model training on GPU/cloud resources
+2. **Training Prep**: Prepare Colab notebooks and data files
 3. **Debugging**: Fix bugs and issues
-4. **Production**: Deploy and monitor runtime
+4. **Results Processing**: Analyze training/evaluation results
 
 **Your Workflow**:
 - Work directly on cloud server
 - Commit and push to GitHub
 - Wait for local Claude QC review
 - Continue based on feedback
+
+**What Cloud Claude Does NOT Do**:
+- ❌ AWS tasks (S3, RDS, EC2, CloudWatch) → Use Amazon Q
+- ❌ QC reviews → Local Claude's role
+- ❌ Master planning → Local Claude's role
+
+---
+
+### Amazon Q (Available on BOTH machines)
+
+**Primary Responsibilities**:
+1. **S3 Operations**: Upload/download models, data, logs
+2. **RDS Management**: Database operations, queries, backups
+3. **EC2 Deployment**: Deploy code, restart services, monitor
+4. **CloudWatch Monitoring**: Setup alarms, view logs, track metrics
+5. **Cost Optimization**: Monitor AWS spending, suggest savings
+6. **IAM Management**: Roles, permissions, security groups
+
+**When to Use Amazon Q**:
+- ANY AWS-related task
+- Upload/download from S3
+- Deploy to EC2 production
+- Query RDS database
+- Setup CloudWatch monitoring
+- Check AWS costs
+- View EC2 logs
+
+**Common Commands**:
+```bash
+# S3 Operations
+q "Upload models/*.pt to s3://crpbot-models/production/"
+q "Download latest models from S3 to local machine"
+
+# EC2 Deployment
+q "Deploy latest code to production EC2 instance"
+q "Restart crpbot systemd service on EC2"
+q "Show crpbot service status"
+
+# Monitoring
+q "Show last 100 lines of runtime logs from EC2"
+q "Setup CloudWatch alarm for runtime errors"
+
+# Database
+q "Show recent trading signals from RDS database"
+q "Check RDS connection status"
+
+# Cost Management
+q "Show AWS costs for this month"
+q "Suggest cost optimization opportunities"
+```
+
+**What Amazon Q Does NOT Do**:
+- ❌ Write Python code → Cloud Claude's role
+- ❌ QC reviews → Local Claude's role
+- ❌ Run Colab notebooks → User's role
+- ❌ Non-AWS tasks
+
+**Important**: If a task involves AWS (S3, RDS, EC2, etc.), ALWAYS use Amazon Q, not Cloud Claude or Local Claude.
 
 ---
 
@@ -264,41 +312,17 @@ Before pushing:
 
 ## 📊 Current Technical Context
 
-### V5 Data Strategy
-
-**Data Sources**:
-- ✅ **Phase 1 (NOW)**: Tardis.dev Historical - $147/month
-  - Tick-level data (all trades)
-  - Full order book snapshots
-  - 2+ years historical (Binance, Coinbase, Kraken)
-- ✅ **Real-time**: Coinbase API - Free (already integrated)
-- 🟡 **Phase 3-5 (Later)**: On-chain (Glassnode), News (CryptoPanic), Sentiment (LunarCrush)
-
-**Feature Set Evolution**:
-- ❌ **V4**: 31-50 features (free OHLCV data) → 50% accuracy ceiling
-- ✅ **V5**: 53 features (professional tick data) → Target 65-75% accuracy
-  - 33 existing features (OHLCV, technicals, sessions)
-  - 20 NEW microstructure features:
-    - Bid-ask spread dynamics
-    - Order flow imbalance
-    - Volume-weighted metrics
-    - Order book pressure
-    - Tick-level volatility
-    - Market microstructure indicators
-
 ### Models
 
-**Architecture** (90% UNCHANGED):
-- **LSTM**: 128/3/bidirectional (1M+ params) - REUSABLE
-- **Transformer**: Multi-coin, 4-layer - REUSABLE
-- **RL Agent**: PPO stub - REUSABLE
-- **Ensemble**: 35/40/25 weights - REUSABLE
+**Architecture**:
+- **Old**: LSTM 64/2/False (62K params) - OBSOLETE
+- **New**: LSTM 128/3/True (1M+ params) - TARGET
 
-**What Changes in V5**:
-- ✅ Input features: 31-50 → 53 features (microstructure additions)
-- ✅ Data source: Free Coinbase → Tardis.dev professional
-- ❌ Architecture: NO CHANGE (models stay the same)
-- ❌ Runtime/FTMO: NO CHANGE (90% code reuse)
+**Current Models**:
+- 3 old models trained (incompatible - 50 features)
+- Need retraining with 31-feature files
+
+**Feature Set**: 31 features (see CLAUDE.md for details)
 
 ### Data
 
@@ -420,8 +444,6 @@ git diff --cached | grep -i "api_key\|password\|secret\|token"
 | 2025-11-13 | Added dual environment documentation | Local Claude (QC) |
 | 2025-11-13 | Documented current feature mismatch status | Local Claude (QC) |
 | 2025-11-13 | Resolved merge conflict, updated cloud path | Cloud Claude |
-| 2025-11-15 | **CRITICAL PIVOT**: V4→V5 data upgrade strategy | QC Claude → Cloud Claude |
-| 2025-11-15 | Updated status: Tardis.dev integration, 53 features, $197/mo budget | Cloud Claude |
 
 ---
 

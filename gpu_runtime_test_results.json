@@ -1,0 +1,63 @@
+{
+  "timestamp": "2025-11-11T21:54:31.845446",
+  "test_type": "gpu_runtime_signal_generation",
+  "signals": [
+    {
+      "pair": "BTC-USD",
+      "direction": "BUY",
+      "confidence": 0.341,
+      "probabilities": {
+        "sell": 0.336,
+        "hold": 0.323,
+        "buy": 0.341
+      },
+      "timestamp": "2025-11-11T21:54:31.839481",
+      "model": "GPU_LSTM",
+      "status": "SUCCESS"
+    },
+    {
+      "pair": "ETH-USD",
+      "direction": "BUY",
+      "confidence": 0.35,
+      "probabilities": {
+        "sell": 0.337,
+        "hold": 0.313,
+        "buy": 0.35
+      },
+      "timestamp": "2025-11-11T21:54:31.841596",
+      "model": "GPU_LSTM",
+      "status": "SUCCESS"
+    },
+    {
+      "pair": "SOL-USD",
+      "direction": "BUY",
+      "confidence": 0.348,
+      "probabilities": {
+        "sell": 0.309,
+        "hold": 0.343,
+        "buy": 0.348
+      },
+      "timestamp": "2025-11-11T21:54:31.843475",
+      "model": "GPU_LSTM",
+      "status": "SUCCESS"
+    },
+    {
+      "pair": "ADA-USD",
+      "direction": "HOLD",
+      "confidence": 0.366,
+      "probabilities": {
+        "sell": 0.306,
+        "hold": 0.366,
+        "buy": 0.329
+      },
+      "timestamp": "2025-11-11T21:54:31.845286",
+      "model": "GPU_LSTM",
+      "status": "SUCCESS"
+    }
+  ],
+  "summary": {
+    "total_models": 4,
+    "successful": 4,
+    "failed": 0
+  }
+}
