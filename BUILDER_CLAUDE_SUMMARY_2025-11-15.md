@@ -14,7 +14,7 @@
 **Critical Decision**:
 - ❌ V4 models stuck at 50% accuracy (coin flip level)
 - 🔍 Root cause: Free Coinbase data too noisy
-- ✅ Solution: V5 with Tardis.dev professional data ($147-549/month)
+- ✅ Solution: V5 with Tardis.dev professional data ($98-549/month, Canada-compliant)
 - ✅ Strategy: UPGRADE (10% change), not rebuild (90% reuse)
 
 ### My Response (Builder Claude)
@@ -38,7 +38,7 @@
 - Data strategy (Tardis.dev integration)
 - 53-feature engineering plan
 - Week-by-week timeline
-- Budget breakdown ($197/month Phase 1)
+- Budget breakdown ($148/month Phase 1, Canada-compliant)
 - Success criteria (65-75% accuracy target)
 - Risk mitigation and rollback plan
 
@@ -153,7 +153,7 @@
 ## 🎯 Current Status
 
 ### Immediate Next Action (User)
-🚀 **Subscribe to Tardis.dev Historical** - $147/month
+🚀 **Subscribe to Tardis.dev Historical** - $98/month
 - URL: https://tardis.dev/pricing
 - Plan: Historical (2 exchanges: Coinbase, Kraken - Canada-compliant)
 - Data: Tick data + order book, 2+ years
@@ -207,11 +207,11 @@ V4 Results:
 - Root cause: Free Coinbase OHLCV too noisy
 
 V5 Strategy:
-- Data: Tardis.dev Historical ($147/month)
+- Data: Tardis.dev Historical ($98/month, Canada-compliant)
 - Features: 53 total (33 reused + 20 microstructure)
 - Target: 65-75% accuracy
 - Timeline: 4 weeks validation
-- Budget: $197/month Phase 1, $549/month Phase 2 (if successful)
+- Budget: $148/month Phase 1, $549/month Phase 2 (if successful)
 
 Changes:
 - Added V5_PHASE1_PLAN.md - Complete 4-week roadmap

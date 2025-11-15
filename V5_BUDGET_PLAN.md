@@ -158,7 +158,7 @@ If accuracy <65%: Investigate without wasting $500/month
 
 **3. Clean Upgrade Path**
 ```
-Phase 1: $147/month (historical)
+Phase 1: $98/month (historical, 2 exchanges)
         ↓ (models proven to work)
 Phase 2: $499/month (+ real-time)
         ↓ (FTMO challenge started)
@@ -168,21 +168,23 @@ Phase 3: ROI positive (data pays for itself)
 **4. No Wasted Money**
 ```
 Don't pay for real-time until models are validated
-$147/month buys same quality as $499
-Save $352/month during validation phase
+$98/month buys same quality as $499 (just historical)
+Save $401/month during validation phase
 ```
 
 ---
 
 ## 📋 Phased Execution Plan
 
-### Phase 1: Validation ($147/month) - 3-4 weeks
+### Phase 1: Validation ($98/month) - 3-4 weeks
 
 **Week 1: Subscribe & Download**
 ```
 Day 1: Subscribe to Tardis.dev Historical
-       - 3 exchanges × $49 = $147/month
-       - Select: Binance (BTC/ETH/SOL)
+       - 2 exchanges × $49 = $98/month (Canada-compliant)
+       - ❌ ~~Binance~~ (BANNED IN CANADA - excluded)
+       - Select: Coinbase (BTC/ETH/SOL)
+       - Select: Kraken (BTC/ETH/SOL)
 
 Day 2-3: Download historical data
          - 2 years tick data
@@ -229,7 +231,7 @@ Day 26-28: Decision point
            ❌ If models <60%: INVESTIGATE
 ```
 
-**Phase 1 Cost**: $147/month × 1 month = $147
+**Phase 1 Cost**: $98/month × 1 month = $98 (Canada-compliant)
 
 **Phase 1 Outcome**: **Know with certainty if quality data solves the problem**
 
@@ -242,7 +244,7 @@ Day 26-28: Decision point
 **Week 5: Upgrade to Real-Time**
 ```
 Day 29: Upgrade Tardis.dev: Historical → Premium
-        Cost increase: +$352/month
+        Cost increase: +$401/month
         New total: $499/month
 
 Day 30-31: Setup real-time pipeline
@@ -287,14 +289,14 @@ If successful: Data pays for itself quickly
 
 ## 💰 Total Budget Breakdown
 
-### Option 1: Start with Historical ($147/month) ⭐ RECOMMENDED
+### Option 1: Start with Historical ($98/month) ⭐ RECOMMENDED (Canada-compliant)
 
 **Month 1: Validation Phase**
 ```
-Tardis.dev Historical: $147/month
+Tardis.dev Historical: $98/month (Coinbase + Kraken, no Binance)
 AWS (EC2/RDS/S3):      ~$50/month
 ────────────────────────────────
-Total:                 ~$197/month ✅ Under $200!
+Total:                 ~$148/month ✅ Under $200!
 ```
 
 **Month 2+: If Validated, Upgrade to Live**
@@ -305,7 +307,7 @@ AWS:                   ~$50/month
 Total:                 ~$549/month
 ```
 
-**Total Investment to Validation**: ~$200 × 1 month = $200
+**Total Investment to Validation**: ~$148 × 1 month = $148
 
 ---
 
@@ -343,7 +345,7 @@ Cons: Rate limited, aggregated data
 
 | Provider | Monthly Cost | Quality | Real-time | Best For | Risk |
 |----------|-------------|---------|-----------|----------|------|
-| **Tardis Historical** | **$147** | ⭐⭐⭐⭐⭐ | ❌ | Validation | LOW ⭐ |
+| **Tardis Historical** | **$98** | ⭐⭐⭐⭐⭐ | ❌ | Validation | LOW ⭐ |
 | Tardis Premium | $499 | ⭐⭐⭐⭐⭐ | ✅ | Live trading | LOW |
 | Polygon.io | $89 | ⭐⭐⭐ | ✅ | Multi-asset | MEDIUM |
 | CoinAPI | $79 | ⭐⭐⭐ | ✅ | Coverage | MEDIUM |
@@ -353,19 +355,20 @@ Cons: Rate limited, aggregated data
 
 ## ✅ My Recommendation: 2-Phase Approach
 
-### **Phase 1: Tardis.dev Historical ($147/month)**
+### **Phase 1: Tardis.dev Historical ($98/month)** (Canada-compliant)
 
 **Why Start Here**:
 1. ✅ Same quality as $499 Premium
 2. ✅ Validates models work before live trading
 3. ✅ Under $200 budget
 4. ✅ No wasted money on real-time you can't use yet
+5. ✅ Canada-compliant (Coinbase + Kraken, no Binance)
 5. ✅ Clean upgrade path when ready
 
 **Timeline**: 3-4 weeks
-**Cost**: $147/month
+**Cost**: $98/month
 **Outcome**: Know if 65-75% accuracy is achievable
-**Risk**: LOW (only $147 to find out)
+**Risk**: LOW (only $98 to find out)
 
 ---
 
@@ -395,13 +398,13 @@ THEN upgrade to real-time
 
 ### Today (Under $200 Budget):
 
-**Option A: Start Smart** ⭐ RECOMMENDED
+**Option A: Start Smart** ⭐ RECOMMENDED (Canada-compliant)
 ```
 1. Subscribe: Tardis.dev Historical
-   - Binance (BTC/ETH/SOL): $49/month
+   - ❌ ~~Binance~~ (BANNED IN CANADA - excluded)
    - Coinbase (BTC/ETH/SOL): $49/month
    - Kraken (BTC/ETH/SOL): $49/month
-   Total: $147/month
+   Total: $98/month
 
 2. Get API credentials
 
@@ -431,22 +434,22 @@ THEN upgrade to real-time
 ### Risk Mitigation:
 ```
 ❌ Don't spend $500/month before proving it works
-✅ Spend $147/month to validate
+✅ Spend $98/month to validate
 ✅ Only upgrade when success is proven
-✅ Save $352/month during validation
+✅ Save $401/month during validation
 
-Total risk: $147 (vs $500)
-Potential waste: $147 (vs $500)
+Total risk: $98 (vs $500)
+Potential waste: $98 (vs $500)
 Smart business decision: ✅
 ```
 
 ### Cost vs Value:
 ```
 Free Coinbase: $0 → 50% accuracy (worthless)
-Tardis Historical: $147 → 65-75% accuracy (validated)
+Tardis Historical: $98 → 65-75% accuracy (validated)
 Tardis Premium: $499 → 65-75% + live trading
 
-Step 1: Prove quality data fixes problem ($147)
+Step 1: Prove quality data fixes problem ($98)
 Step 2: Deploy for real ($499)
 Step 3: ROI positive (FTMO wins)
 ```
@@ -455,16 +458,16 @@ Step 3: ROI positive (FTMO wins)
 
 ## 📋 Quick Comparison: Tardis Historical vs Premium
 
-| Feature | Historical ($147) | Premium ($499) | Difference |
+| Feature | Historical ($98) | Premium ($499) | Difference |
 |---------|------------------|----------------|------------|
 | **Tick Data** | ✅ Full | ✅ Full | Same |
 | **Order Book** | ✅ L2/L3 | ✅ L2/L3 | Same |
 | **Quality** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Same |
-| **Exchanges** | ✅ 30+ | ✅ 30+ | Same |
+| **Exchanges** | ✅ 2 (CA-compliant) | ✅ 30+ | Limited |
 | **Historical** | ✅ 2+ years | ✅ 2+ years | Same |
-| **Real-time** | ❌ No | ✅ Yes | **Only difference** |
+| **Real-time** | ❌ No | ✅ Yes | **Main difference** |
 | **Use Case** | Backtest, train | Live trading | - |
-| **Cost** | $147/month | $499/month | +$352 |
+| **Cost** | $98/month | $499/month | +$401 |
 
 **Bottom Line**: Same quality data, only missing real-time. Perfect for validation phase.
 
@@ -474,22 +477,23 @@ Step 3: ROI positive (FTMO wins)
 
 **Your Budget**: <$200/month
 
-**Best Option**: Tardis.dev Historical ($147/month)
+**Best Option**: Tardis.dev Historical ($98/month) - Canada-compliant
 - ✅ Best quality under $200
 - ✅ Validates approach before live trading
 - ✅ Clean upgrade path to real-time
 - ✅ No wasted money
+- ✅ Canada-compliant (no Binance)
 
 **Upgrade Path**:
 ```
-Month 1: $147/month (validate)
+Month 1: $98/month (validate)
        ↓ (models proven ≥68%)
 Month 2+: $499/month (go live)
        ↓ (FTMO challenge)
 ROI: Positive (data pays for itself)
 ```
 
-**Alternative if $147 too high**:
+**Alternative if $98 too high**:
 - Polygon.io ($89) or CoinAPI ($79)
 - Lower quality, but real-time included
 - May still not solve 50% accuracy problem
@@ -497,7 +501,7 @@ ROI: Positive (data pays for itself)
 
 ---
 
-**My vote: Start with Tardis.dev Historical ($147/month)**
+**My vote: Start with Tardis.dev Historical ($98/month)**
 
 **Prove it works, then scale to Premium when ready to trade.**
 
@@ -505,6 +509,6 @@ ROI: Positive (data pays for itself)
 
 **File**: `V5_BUDGET_PLAN.md`
 **Status**: Ready for decision
-**Recommended**: Tardis.dev Historical $147/month
+**Recommended**: Tardis.dev Historical $98/month (Canada-compliant)
 **Timeline**: 3-4 weeks to validation
 **Next**: Your approval to subscribe

@@ -39,7 +39,7 @@ d) Real-time Market Data:
 ```
 
 **Phase 1 (Now)**:
-- Historical: Tardis.dev ($147/month) ✅
+- Historical: Tardis.dev ($98/month, 2 exchanges - Canada-compliant) ✅
 - Real-time: Coinbase (free) ✅
 
 **Phase 2 (After validation)**:
@@ -214,10 +214,10 @@ Only relevant if you add stocks to your system later.
 ### **Phase 1: Market Data Only** (Weeks 1-4) 🔴
 ```
 Focus: Get core market data working
-Budget: $197/month
+Budget: $148/month (Canada-compliant)
 
 Add:
-✅ Tardis.dev Historical ($147) - tick + order book
+✅ Tardis.dev Historical ($98) - tick + order book (Coinbase + Kraken, no Binance)
 ✅ Coinbase real-time (free) - runtime testing
 
 Goal: Train models to 65-75% accuracy
@@ -301,13 +301,13 @@ Status: Much later (not priority)
 
 | Phase | Focus | Monthly Cost | Incremental | Timeline |
 |-------|-------|--------------|-------------|----------|
-| **1** | Market (historical) | $197 | +$197 | Week 1-4 |
-| **2** | Market (real-time) | $549 | +$352 | Week 5-8 |
+| **1** | Market (historical) | $148 | +$148 | Week 1-4 |
+| **2** | Market (real-time) | $549 | +$401 | Week 5-8 |
 | **3** | On-chain data | $699 | +$150 | Week 9-12 |
 | **4** | News & events | $799 | +$100 | Week 13-16 |
 | **5** | Sentiment | $999 | +$200 | Month 6+ |
 
-**Start**: $197/month (just market data)
+**Start**: $148/month (just market data, Canada-compliant)
 **Scale**: Add data types as you prove ROI
 **Max**: ~$1,000/month (full professional setup)
 
@@ -355,7 +355,7 @@ Impact: 75% → 78% accuracy (marginal)
 ```
 What: Tick data, order book, clean OHLCV
 Provider: Tardis.dev
-Cost: $147-499/month
+Cost: $98-499/month (Canada-compliant: 2 exchanges)
 Phase: 1-2 (NOW)
 Priority: CRITICAL 🔴
 ```
@@ -527,7 +527,7 @@ Budget: +$100-200/month
 **"How many different types of data do we need?"**
 
 ### Essential (Now):
-1. **Premium market data** - Tardis Historical ($147) 🔴
+1. **Premium market data** - Tardis Historical ($98, Canada-compliant) 🔴
 2. **Real-time data** - Coinbase (free) 🔴
 
 ### Important (Later):

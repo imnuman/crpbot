@@ -18,11 +18,12 @@
 
 ### What We Add:
 ```
-🆕 Tardis.dev Historical ($147/month)
+🆕 Tardis.dev Historical ($98/month)
    - High-quality tick data for TRAINING
    - Order book depth
    - 2 years historical data
    - Use to train models to 65-75% accuracy
+   - 2 exchanges: Coinbase + Kraken (Canada-compliant)
 ```
 
 ### What We Keep:
@@ -39,10 +40,11 @@
 
 ```
 TRAINING:
-└── Tardis.dev Historical ($147/month)
+└── Tardis.dev Historical ($98/month)
     ├── Tick data (every trade)
     ├── Order book (L2/L3 depth)
-    └── 2+ years historical
+    ├── 2+ years historical
+    └── 2 exchanges: Coinbase + Kraken (no Binance - Canada ban)
 
 RUNTIME TESTING:
 └── Coinbase API (FREE, already have)
@@ -160,10 +162,10 @@ IF models <60%:
 ## 🎯 Bottom Line:
 
 **Phase 1**:
-- Add: Tardis Historical ($147)
+- Add: Tardis Historical ($98)
 - Keep: Coinbase real-time (free)
 - Validate: Models can achieve 65-75%
-- Cost: $197/month
+- Cost: $148/month
 - Timeline: 4 weeks
 
 **Phase 2** (only if Phase 1 succeeds):
@@ -172,7 +174,7 @@ IF models <60%:
 - Start: FTMO challenge
 - Cost: $549/month
 
-**Total at-risk**: $147 (just Tardis subscription)
+**Total at-risk**: $98 (just Tardis subscription)
 
 ---
 
@@ -194,7 +196,7 @@ IF models <60%:
 
 ---
 
-**Ready to subscribe to Tardis.dev Historical ($147/month)?**
+**Ready to subscribe to Tardis.dev Historical ($98/month)?**
 
 ---
 
