@@ -43,15 +43,28 @@ class EnsemblePredictor:
             return
 
         logger.info(f"Loading LSTM: {lstm_path.name}")
-        
+
         checkpoint = torch.load(lstm_path, map_location=self.device)
         input_size = checkpoint.get('input_size', 80)
-        
-        self.lstm_model = LSTMDirectionModel(input_size=input_size, hidden_size=128, num_layers=3, dropout=0.3)
+
+        # V5 uses standard PyTorch LSTM (non-bidirectional, 3 layers)
+        import torch.nn as nn
+
+        class SimpleV5LSTM(nn.Module):
+            def __init__(self, input_size, hidden_size=128, num_layers=3, dropout=0.2):
+                super().__init__()
+                self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=dropout, batch_first=True)
+                self.fc = nn.Linear(hidden_size, 1)
+
+            def forward(self, x):
+                lstm_out, _ = self.lstm(x)
+                return self.fc(lstm_out[:, -1, :])
+
+        self.lstm_model = SimpleV5LSTM(input_size=input_size)
         self.lstm_model.load_state_dict(checkpoint['model_state_dict'])
         self.lstm_model.to(self.device)
         self.lstm_model.eval()
-        
+
         logger.info(f"✅ LSTM loaded: {input_size} features")
 
     def predict(self, df):

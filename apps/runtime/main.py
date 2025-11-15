@@ -10,8 +10,9 @@ from datetime import datetime
 
 from loguru import logger
 
-from apps.runtime.ensemble import predict_signals
-from apps.runtime.data_fetcher import fetch_live_data
+from apps.runtime.ensemble import load_ensemble
+from apps.runtime.data_fetcher import get_data_fetcher
+from apps.trainer.features import engineer_features
 from apps.runtime.ftmo_rules import (
     check_daily_loss_limit,
     check_position_size,
@@ -60,6 +61,23 @@ class TradingRuntime:
         # Database
         create_tables(self.config.db_url)
         logger.info(f"✅ Database initialized: {self.config.db_url}")
+
+        # Market data fetcher
+        self.data_fetcher = get_data_fetcher(self.config)
+        logger.info("✅ Market data fetcher initialized")
+
+        # Load V5 FIXED ensemble models
+        self.symbols = ["BTC-USD", "ETH-USD", "SOL-USD"]
+        self.ensembles = {}
+
+        logger.info("Loading V5 FIXED models...")
+        for symbol in self.symbols:
+            try:
+                ensemble = load_ensemble(symbol, model_dir="models/promoted")
+                self.ensembles[symbol] = ensemble
+                logger.info(f"✅ Loaded {symbol}")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to load {symbol}: {e}")
 
     def classify_tier(self, confidence: float) -> str:
         """
