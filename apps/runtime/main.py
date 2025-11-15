@@ -104,17 +104,23 @@ class TradingRuntime:
             Dictionary containing signal information
         """
         try:
-            # Fetch live market data
+            # Get live market data using data fetcher
+            from apps.runtime.data_fetcher import get_data_fetcher
             logger.info("Fetching live market data...")
-            features = fetch_live_data()
+            
+            fetcher = get_data_fetcher()
+            features = fetcher.get_live_features()
             
             if not features:
                 logger.warning("No live data available, skipping signal generation")
                 return None
             
-            # Get ensemble prediction
+            # Get ensemble prediction using ensemble system
+            from apps.runtime.ensemble import get_ensemble
             logger.info("Running V5 ensemble inference...")
-            result = predict_signals(features)
+            
+            ensemble = get_ensemble()
+            result = ensemble.get_ensemble_signal(features)
             
             if result['signal'] == 'HOLD':
                 logger.info("Ensemble recommends HOLD, no signal generated")
