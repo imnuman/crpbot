@@ -119,8 +119,8 @@ Time: 14:30 (24-hour format)
 
 ### ✅ Good Date References
 ```markdown
-**Last Updated**: 2025-11-15
-**Created**: 2025-11-15 14:30 EST
+**Last Updated**: 2025-11-15 13:20 EST (Toronto)
+**Created**: 2025-11-15 14:30 EST (Toronto)
 **Session Date**: November 15, 2025 (2025-11-15)
 **Modified**: 2025-11-15T14:30:00-05:00
 ```
@@ -132,6 +132,13 @@ Time: 14:30 (24-hour format)
 **Session Date**: Last week
 **Modified**: Yesterday
 ```
+
+### 🌍 Timezone Standard
+**All timestamps use Toronto time (America/Toronto timezone)**
+- Winter: EST (UTC-5)
+- Summer: EDT (UTC-4)
+- Always include timezone: `EST (Toronto)` or `EDT (Toronto)`
+- Get current time: `TZ="America/Toronto" date "+%Y-%m-%d %H:%M %Z"`
 
 ---
 
@@ -164,7 +171,8 @@ Some documents are updated frequently and don't need dates in filename:
 ```markdown
 # {Document Title}
 
-**Date**: 2025-11-15
+**Created**: 2025-11-15 14:30 EST (Toronto)
+**Last Updated**: 2025-11-15 14:30 EST (Toronto)
 **Author**: {Claude Role} (QC/Builder/Amazon Q)
 **Status**: {Draft/Review/Complete/Obsolete}
 **Version**: {If applicable}
@@ -177,10 +185,24 @@ Some documents are updated frequently and don't need dates in filename:
 ```markdown
 # AWS Setup Checklist
 
-**Date**: 2025-11-15
+**Created**: 2025-11-15 13:45 EST (Toronto)
+**Last Updated**: 2025-11-15 13:45 EST (Toronto)
 **Author**: QC Claude
 **Status**: Ready for Execution
 **Purpose**: Complete AWS infrastructure setup for V5 deployment
+
+---
+```
+
+### For Living Documents (Frequently Updated)
+```markdown
+# Project Memory
+
+**Created**: 2025-11-13 10:00 EST (Toronto)
+**Last Updated**: 2025-11-15 13:11 EST (Toronto)
+**Author**: Multiple (QC Claude, Builder Claude)
+**Status**: Living Document
+**Purpose**: Persistent memory for Claude instances
 
 ---
 ```
@@ -270,11 +292,13 @@ git commit -m "refactor: archive old plans"
 ## 🔍 Quick Checklist Before Creating New Document
 
 - [ ] Does filename include ISO date if document is date-specific?
-- [ ] Does header include "Date" and "Last Updated"?
+- [ ] Does header include "Created" timestamp (YYYY-MM-DD HH:MM TZ)?
+- [ ] Does header include "Last Updated" timestamp?
 - [ ] Are all date references using ISO format (YYYY-MM-DD)?
 - [ ] No words like "today", "yesterday", "tomorrow"?
 - [ ] If living document, includes update log?
 - [ ] Git commit message includes date if relevant?
+- [ ] Author clearly identified?
 
 ---
 
@@ -304,13 +328,15 @@ git commit -m "refactor: archive old plans"
 
 1. **Always use ISO dates**: `YYYY-MM-DD`
 2. **Never use relative dates**: "today", "yesterday", etc.
-3. **Include timestamps**: When time matters
-4. **Update logs**: Track all changes
-5. **Archive properly**: Keep history organized
+3. **Include creation timestamp**: `Created: YYYY-MM-DD HH:MM TZ` in every document header
+4. **Include last updated**: `Last Updated: YYYY-MM-DD HH:MM TZ` in every document header
+5. **Update logs**: Track all changes in living documents
+6. **Archive properly**: Keep history organized
 
 ---
 
 **This document**: `DOCUMENTATION_STANDARDS.md`
-**Last Updated**: 2025-11-15
+**Created**: 2025-11-15 13:50 EST (Toronto)
+**Last Updated**: 2025-11-15 13:20 EST (Toronto)
 **Author**: QC Claude
 **Status**: Living Document (update as needed)
