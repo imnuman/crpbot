@@ -2,7 +2,7 @@
 
 **Purpose**: This file ensures continuity between Claude sessions by documenting our dual-environment development setup and current project state.
 
-**Last Updated**: 2025-11-13
+**Last Updated**: 2025-11-15
 
 ---
 
@@ -92,27 +92,40 @@ ls -lt QC_REVIEW_*.md | head -3
 
 ## 🔄 Current Project Status
 
-### Phase: 6.5 - Model Training & Evaluation
+### Phase: V5 - Data Upgrade & Microstructure Features
 
-**Last Major Update**: 2025-11-13
+**Last Major Update**: 2025-11-15 (CRITICAL PIVOT)
+
+**🚨 MAJOR STRATEGIC DECISION**:
+- ❌ **V4 OBSOLETE**: 50% accuracy ceiling due to noisy free Coinbase data
+- ✅ **V5 PIVOT**: Upgrade to Tardis.dev professional market data
+- ✅ **UPGRADE STRATEGY**: 10% change (data layer), 90% reuse (architecture, runtime, FTMO rules)
 
 **Current Situation**:
-- ✅ Feature mismatch discovered (50 vs 31 features)
-- ✅ Cloud Claude identified and documented the issue
-- ✅ Solution created: Retrain with 31-feature files
-- ✅ Local Claude (QC) reviewed and APPROVED
-- ⏸️ **BLOCKED**: Waiting for manual Colab retraining
+- 🔴 **V4 Models**: Stuck at 50% accuracy - ROOT CAUSE: Free data too noisy
+- 🟢 **V5 Solution**: Professional tick data + order book from Tardis.dev
+- 🟡 **Budget Approved**: $197/month Phase 1 (validation), $549/month Phase 2 (live trading)
+- ⏸️ **BLOCKED**: Waiting for Tardis.dev subscription
+
+**V5 Phase 1 Timeline (4 weeks)**:
+- Week 1: Download Tardis historical data (2+ years, tick-level)
+- Week 2: Build 53 features (33 existing + 20 microstructure)
+- Week 3: Train models with professional data
+- Week 4: Validate (target: 65-75% accuracy vs V4's 50%)
 
 **Next Action**:
-- User must download feature files from cloud server
-- Upload to Google Drive
-- Run Colab training (~57 minutes for 3 models)
-- After training: Evaluate and promote models
+1. 🚀 Subscribe to Tardis.dev Historical - $147/month
+   - URL: https://tardis.dev/pricing
+   - Plan: Historical (3 exchanges: Binance, Coinbase, Kraken)
+   - Get: Tick data, order book, 2+ years historical
+2. Create V5 data pipeline integration
+3. Engineer 20 new microstructure features (bid-ask spread dynamics, order flow imbalance, etc.)
+4. Retrain models with professional data
 
 **Key Files to Check**:
-1. `reports/phase6_5/CRITICAL_FEATURE_MISMATCH_REPORT.md`
-2. `COLAB_RETRAINING_INSTRUCTIONS.md`
-3. `QC_REVIEW_CLOUD_CLAUDE_2025-11-13.md`
+1. `V5_PHASE1_PLAN.md` - V5 roadmap (to be created)
+2. `CLAUDE.md` - Updated with V5 strategy
+3. `PROJECT_MEMORY.md` - This file
 
 ---
 
@@ -251,17 +264,41 @@ Before pushing:
 
 ## 📊 Current Technical Context
 
+### V5 Data Strategy
+
+**Data Sources**:
+- ✅ **Phase 1 (NOW)**: Tardis.dev Historical - $147/month
+  - Tick-level data (all trades)
+  - Full order book snapshots
+  - 2+ years historical (Binance, Coinbase, Kraken)
+- ✅ **Real-time**: Coinbase API - Free (already integrated)
+- 🟡 **Phase 3-5 (Later)**: On-chain (Glassnode), News (CryptoPanic), Sentiment (LunarCrush)
+
+**Feature Set Evolution**:
+- ❌ **V4**: 31-50 features (free OHLCV data) → 50% accuracy ceiling
+- ✅ **V5**: 53 features (professional tick data) → Target 65-75% accuracy
+  - 33 existing features (OHLCV, technicals, sessions)
+  - 20 NEW microstructure features:
+    - Bid-ask spread dynamics
+    - Order flow imbalance
+    - Volume-weighted metrics
+    - Order book pressure
+    - Tick-level volatility
+    - Market microstructure indicators
+
 ### Models
 
-**Architecture**:
-- **Old**: LSTM 64/2/False (62K params) - OBSOLETE
-- **New**: LSTM 128/3/True (1M+ params) - TARGET
+**Architecture** (90% UNCHANGED):
+- **LSTM**: 128/3/bidirectional (1M+ params) - REUSABLE
+- **Transformer**: Multi-coin, 4-layer - REUSABLE
+- **RL Agent**: PPO stub - REUSABLE
+- **Ensemble**: 35/40/25 weights - REUSABLE
 
-**Current Models**:
-- 3 old models trained (incompatible - 50 features)
-- Need retraining with 31-feature files
-
-**Feature Set**: 31 features (see CLAUDE.md for details)
+**What Changes in V5**:
+- ✅ Input features: 31-50 → 53 features (microstructure additions)
+- ✅ Data source: Free Coinbase → Tardis.dev professional
+- ❌ Architecture: NO CHANGE (models stay the same)
+- ❌ Runtime/FTMO: NO CHANGE (90% code reuse)
 
 ### Data
 
@@ -383,6 +420,8 @@ git diff --cached | grep -i "api_key\|password\|secret\|token"
 | 2025-11-13 | Added dual environment documentation | Local Claude (QC) |
 | 2025-11-13 | Documented current feature mismatch status | Local Claude (QC) |
 | 2025-11-13 | Resolved merge conflict, updated cloud path | Cloud Claude |
+| 2025-11-15 | **CRITICAL PIVOT**: V4→V5 data upgrade strategy | QC Claude → Cloud Claude |
+| 2025-11-15 | Updated status: Tardis.dev integration, 53 features, $197/mo budget | Cloud Claude |
 
 ---
 
