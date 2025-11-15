@@ -61,11 +61,11 @@ LIVE TRADING (Phase 2):
 
 ### Phase 1 (Validation):
 ```
-Tardis Historical: $147/month
-Coinbase:          $0/month (already have)
+Tardis Historical: $98/month (2 exchanges: Coinbase + Kraken)
+Coinbase real-time: $0/month (already have)
 AWS:               ~$50/month
 ────────────────────────────────────
-Total:             $197/month ✅
+Total:             $148/month ✅ (Canada-compliant, no Binance)
 ```
 
 ### Phase 2 (Live Trading - if validation succeeds):
@@ -82,9 +82,10 @@ Total:             $549/month
 
 ### Week 1: Download Data
 ```
-Day 1: Subscribe Tardis Historical ($147)
-Day 2-3: Download tick data (BTC/ETH/SOL)
+Day 1: Subscribe Tardis Historical ($98 - Coinbase + Kraken only)
+Day 2-3: Download tick data (BTC/ETH/SOL, 2 exchanges)
 Day 4-7: Validate data quality
+Note: Binance excluded (banned in Canada)
 ```
 
 ### Week 2: Build Features
@@ -119,10 +120,10 @@ Decision: Upgrade to Premium if ≥68% accuracy
 **Plan**: Historical (not Premium)
 
 **Cost**: $49/month per exchange
-- Choose: Binance BTC/ETH/SOL ($49)
+- ❌ ~~Binance~~ (BANNED IN CANADA - excluded)
 - Choose: Coinbase BTC/ETH/SOL ($49)
 - Choose: Kraken BTC/ETH/SOL ($49)
-- **Total**: $147/month
+- **Total**: $98/month (2 exchanges only - Canada-compliant)
 
 **What you get**:
 - Full tick data (historical)

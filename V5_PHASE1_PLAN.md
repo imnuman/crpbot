@@ -2,7 +2,7 @@
 
 **Created**: November 15, 2025
 **Duration**: 4 weeks (validation period)
-**Budget**: $197/month
+**Budget**: $148/month (Canada-compliant)
 **Goal**: Achieve 65-75% model accuracy (vs V4's 50% ceiling)
 
 ---
@@ -22,7 +22,7 @@
 **Strategy**: UPGRADE, not rebuild
 - ✅ **10% change**: Data layer only (Tardis.dev professional data)
 - ✅ **90% reuse**: Architecture, training pipeline, runtime, FTMO rules
-- ✅ **Budget-conscious**: $197/month validation, scale to $549/month only if successful
+- ✅ **Budget-conscious**: $148/month validation, scale to $549/month only if successful
 - ✅ **Clear metrics**: 65-75% accuracy target in 4 weeks
 
 ---
@@ -31,15 +31,16 @@
 
 ### Phase 1 Data Sources (NOW)
 
-**Primary**: Tardis.dev Historical - **$147/month**
+**Primary**: Tardis.dev Historical - **$98/month**
 - **What**: Professional tick-level market data
-- **Coverage**: 3 exchanges (Binance, Coinbase, Kraken)
+- **Coverage**: 2 exchanges (Coinbase, Kraken) - Canada-compliant
 - **Depth**:
   - All trades (tick-by-tick)
   - Full order book snapshots
   - 2+ years historical data
 - **Symbols**: BTC-USD, ETH-USD, SOL-USD
 - **Subscribe**: https://tardis.dev/pricing
+- **Note**: Binance excluded (banned in Canada)
 
 **Secondary**: Coinbase Advanced Trade API - **Free**
 - **What**: Real-time OHLCV + orderbook
@@ -56,7 +57,7 @@ If Phase 1 succeeds, add:
 3. **Social sentiment** (LunarCrush) - ~$100/month
    - Twitter/Reddit volume, engagement metrics
 
-**Phase 1 Total**: $197/month ($147 Tardis + $50 AWS)
+**Phase 1 Total**: $148/month ($98 Tardis + $50 AWS - Canada-compliant)
 
 ---
 
@@ -139,11 +140,12 @@ def engineer_v5_features(tardis_data: pd.DataFrame) -> pd.DataFrame:
 **Objective**: Download and validate Tardis historical data
 
 **Tasks**:
-1. ✅ Subscribe to Tardis.dev Historical ($147/month)
+1. ✅ Subscribe to Tardis.dev Historical ($98/month)
 2. 📥 Download tick data for BTC-USD, ETH-USD, SOL-USD
    - Timeframe: 2 years (Nov 2023 - Nov 2025)
-   - Exchanges: Binance, Coinbase, Kraken
+   - Exchanges: Coinbase, Kraken (Canada-compliant only)
    - Data types: Trades + Order book snapshots
+   - Note: Binance excluded (banned in Canada)
 3. 📊 Validate data quality:
    - Check for gaps, missing timestamps
    - Verify tick counts, order book depth
@@ -267,12 +269,12 @@ def engineer_v5_features(tardis_data: pd.DataFrame) -> pd.DataFrame:
 
 | Item | Cost | Notes |
 |------|------|-------|
-| Tardis Historical | $147/month | Tick data + order book, 3 exchanges |
+| Tardis Historical | $98/month | Tick data + order book, 2 exchanges (Coinbase + Kraken) |
 | Coinbase API | $0/month | Already have, real-time data |
 | AWS EC2 (training) | ~$20/month | Or use Colab GPU (free) |
 | AWS S3 (storage) | ~$10/month | ~100 GB storage |
 | AWS RDS (database) | ~$20/month | PostgreSQL for signals |
-| **Phase 1 Total** | **~$197/month** | ✅ Under $200 budget |
+| **Phase 1 Total** | **~$148/month** | ✅ Under $200 budget (Canada-compliant) |
 
 ### Phase 2 (Live Trading) - Only if Phase 1 Succeeds
 
@@ -292,7 +294,7 @@ def engineer_v5_features(tardis_data: pd.DataFrame) -> pd.DataFrame:
 ## 📋 Implementation Checklist
 
 ### Pre-Phase 1 (NOW)
-- [ ] Subscribe to Tardis.dev Historical ($147/month)
+- [ ] Subscribe to Tardis.dev Historical ($98/month)
 - [ ] Set up Tardis API credentials in `.env`
 - [ ] Create data storage directories
 - [ ] Update PROJECT_MEMORY.md (✅ Done)
@@ -436,7 +438,7 @@ Input: (batch_size, 100, 53)     # Fixed 53 features
 
 **If V5 fails (<65% accuracy)**:
 1. Cancel Tardis subscription (no long-term commitment)
-2. Total sunk cost: ~$197 (4 weeks validation)
+2. Total sunk cost: ~$148 (4 weeks validation)
 3. Keep V5 code (may be useful later)
 4. Consider alternatives:
    - Try different data provider (e.g., CryptoCompare, Kaiko)
@@ -473,10 +475,10 @@ Input: (batch_size, 100, 53)     # Fixed 53 features
 
 ## 🚀 Next Immediate Actions
 
-1. **NOW**: Subscribe to Tardis.dev Historical ($147/month)
+1. **NOW**: Subscribe to Tardis.dev Historical ($98/month)
    - URL: https://tardis.dev/pricing
    - Plan: Historical
-   - Exchanges: Binance, Coinbase, Kraken
+   - Exchanges: Coinbase, Kraken (Canada-compliant, no Binance)
 
 2. **Week 1**: Download data
    - Create `scripts/download_tardis_data.py`

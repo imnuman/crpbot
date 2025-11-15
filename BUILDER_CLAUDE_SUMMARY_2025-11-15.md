@@ -155,8 +155,9 @@
 ### Immediate Next Action (User)
 🚀 **Subscribe to Tardis.dev Historical** - $147/month
 - URL: https://tardis.dev/pricing
-- Plan: Historical (3 exchanges: Binance, Coinbase, Kraken)
+- Plan: Historical (2 exchanges: Coinbase, Kraken - Canada-compliant)
 - Data: Tick data + order book, 2+ years
+- Note: Binance excluded (banned in Canada)
 
 ### Blocked Until
 - 🔴 Tardis.dev subscription active

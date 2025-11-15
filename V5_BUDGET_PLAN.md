@@ -9,13 +9,14 @@
 
 ## 🎯 Phased Budget Strategy
 
-### Phase 1: PROVE IT WORKS ($150/month) - 3-4 weeks
+### Phase 1: PROVE IT WORKS ($148/month) - 3-4 weeks
 ```
 Goal: Validate that quality data solves the problem
 Data: Historical only (backtest)
-Budget: $147-150/month
+Budget: $98 Tardis + $50 AWS = $148/month (Canada-compliant)
 Outcome: Models achieve 65-75% accuracy in backtesting
 Decision: If proven, upgrade to real-time for live trading
+Note: 2 exchanges only (Binance excluded - banned in Canada)
 ```
 
 ### Phase 2: GO LIVE ($500/month) - After validation
@@ -31,14 +32,14 @@ ROI: One FTMO win pays for data for months
 
 ## 📊 Best Options Under $200
 
-### **RECOMMENDED: Tardis.dev Historical** - $147/month ⭐
+### **RECOMMENDED: Tardis.dev Historical** - $98/month ⭐ (Canada-compliant)
 
 **What You Get**:
 ```
 ✅ Full tick data (every single trade)
 ✅ Complete order book depth (L2/L3)
-✅ 3 exchanges: $49/month × 3 = $147/month
-   - Binance (BTC/ETH/SOL)
+✅ 2 exchanges: $49/month × 2 = $98/month (Canada-compliant)
+   - ❌ ~~Binance~~ (BANNED IN CANADA - excluded)
    - Coinbase Pro (BTC/ETH/SOL)
    - Kraken (BTC/ETH/SOL)
 ✅ 2+ years historical data
@@ -52,13 +53,13 @@ ROI: One FTMO win pays for data for months
 - Proving the approach works
 - Building features offline
 
-**Cost**: $147/month (3 symbols, best quality)
+**Cost**: $98/month (2 exchanges, Canada-compliant, best quality)
 
 **Upgrade Path**:
 ```
 When ready for live trading:
-$147/month → $499/month (adds real-time)
-Total increase: +$352/month
+$98/month → $499/month (adds real-time)
+Total increase: +$401/month
 ```
 
 **Link**: https://tardis.dev/pricing
@@ -134,7 +135,7 @@ Total increase: +$352/month
 
 ---
 
-## 🎯 My Recommendation: Tardis.dev Historical ($147/month)
+## 🎯 My Recommendation: Tardis.dev Historical ($98/month - Canada-compliant)
 
 ### Why This is Perfect:
 
