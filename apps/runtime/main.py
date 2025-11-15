@@ -10,6 +10,8 @@ from datetime import datetime
 
 from loguru import logger
 
+from apps.runtime.ensemble import predict_signals
+from apps.runtime.data_fetcher import fetch_live_data
 from apps.runtime.ftmo_rules import (
     check_daily_loss_limit,
     check_position_size,
@@ -76,41 +78,70 @@ class TradingRuntime:
         else:
             return "low"
 
-    def generate_mock_signal(self) -> dict:
+    def generate_v5_signal(self) -> dict:
         """
-        Generate a mock trading signal.
-
-        TODO: Replace this with actual model inference in production.
-
+        Generate trading signal using V5 FIXED models.
+        
         Returns:
             Dictionary containing signal information
         """
-        import random
-
-        symbols = ["BTC-USD", "ETH-USD"]
-        symbol = random.choice(symbols)
-
-        # Mock model predictions (TODO: Replace with real model inference)
-        lstm_pred = random.uniform(0.50, 0.85)
-        transformer_pred = random.uniform(0.50, 0.85)
-        rl_pred = random.uniform(0.50, 0.85)
-
-        # Ensemble prediction (weighted average)
-        ensemble = lstm_pred * 0.35 + transformer_pred * 0.40 + rl_pred * 0.25
-
-        direction = "long" if ensemble >= 0.5 else "short"
-        tier = self.classify_tier(ensemble)
-
-        return {
-            "symbol": symbol,
-            "confidence": ensemble,
-            "tier": tier,
-            "direction": direction,
-            "lstm_prediction": lstm_pred,
-            "transformer_prediction": transformer_pred,
-            "rl_prediction": rl_pred,
-            "entry_price": 50000.0 if symbol == "BTC-USD" else 3000.0,  # Mock price
-        }
+        try:
+            # Fetch live market data
+            logger.info("Fetching live market data...")
+            features = fetch_live_data()
+            
+            if not features:
+                logger.warning("No live data available, skipping signal generation")
+                return None
+            
+            # Get ensemble prediction
+            logger.info("Running V5 ensemble inference...")
+            result = predict_signals(features)
+            
+            if result['signal'] == 'HOLD':
+                logger.info("Ensemble recommends HOLD, no signal generated")
+                return None
+            
+            # Select primary symbol (highest confidence prediction)
+            best_symbol = None
+            best_confidence = 0.0
+            
+            if 'predictions' in result:
+                for symbol, pred in result['predictions'].items():
+                    if pred['confidence'] > best_confidence:
+                        best_confidence = pred['confidence']
+                        best_symbol = symbol
+            
+            if not best_symbol:
+                logger.warning("No confident predictions available")
+                return None
+            
+            # Get current price (mock for now - would integrate with real price feed)
+            mock_prices = {"BTC-USD": 50000.0, "ETH-USD": 3000.0, "SOL-USD": 150.0}
+            entry_price = mock_prices.get(best_symbol, 1000.0)
+            
+            # Format signal
+            direction = "long" if result['signal'] == 'BUY' else "short"
+            tier = self.classify_tier(result['confidence'])
+            
+            signal_data = {
+                "symbol": best_symbol,
+                "confidence": result['confidence'],
+                "tier": tier,
+                "direction": direction,
+                "lstm_prediction": result['predictions'][best_symbol]['probability'],
+                "transformer_prediction": 0.0,  # V5 only has LSTM
+                "rl_prediction": 0.0,  # V5 only has LSTM
+                "entry_price": entry_price,
+                "ensemble_result": result
+            }
+            
+            logger.info(f"Generated V5 signal: {best_symbol} {direction.upper()} @ {result['confidence']:.1%}")
+            return signal_data
+            
+        except Exception as e:
+            logger.error(f"V5 signal generation failed: {e}")
+            return None
 
     def check_ftmo_rules(self) -> bool:
         """
@@ -207,8 +238,12 @@ class TradingRuntime:
             logger.warning("🛑 Kill-switch is ACTIVE - no signals will be emitted")
             return
 
-        # Generate signal (TODO: Replace with actual model inference)
-        signal_data = self.generate_mock_signal()
+        # Generate signal using V5 FIXED models
+        signal_data = self.generate_v5_signal()
+        
+        if signal_data is None:
+            logger.info("No signal generated this cycle")
+            return
 
         logger.info(
             f"📡 Generated signal: {signal_data['symbol']} {signal_data['direction']} "
