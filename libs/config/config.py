@@ -77,10 +77,10 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
-    # Data Provider (supports multiple: coinbase, kraken, cryptocompare, binance)
+    # Data Provider (supports multiple: coinbase, kraken, cryptocompare, coingecko, binance)
     data_provider: str = Field(
         default="coinbase",
-        description="Data provider: coinbase, kraken, cryptocompare, binance"
+        description="Data provider: coinbase, kraken, cryptocompare, coingecko, binance"
     )
     data_provider_api_key: str = ""
     data_provider_api_secret: str = ""
@@ -97,7 +97,8 @@ class Settings(BaseSettings):
     kraken_api_key: str = ""
     kraken_api_secret: str = ""
     cryptocompare_api_key: str = ""
-    
+    coingecko_api_key: str = ""
+
     # Legacy Binance support (for backward compatibility)
     binance_api_key: str = ""
     binance_api_secret: str = ""
@@ -116,6 +117,8 @@ class Settings(BaseSettings):
             return self.kraken_api_key
         if self.data_provider == "cryptocompare" and self.cryptocompare_api_key:
             return self.cryptocompare_api_key
+        if self.data_provider == "coingecko" and self.coingecko_api_key:
+            return self.coingecko_api_key
         if self.binance_api_key:  # Legacy support
             return self.binance_api_key
         return ""

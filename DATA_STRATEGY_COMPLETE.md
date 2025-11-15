@@ -38,12 +38,14 @@ d) Real-time Market Data:
    - Low latency (<100ms)
 ```
 
-**Phase 1 (Now)**:
-- Historical: Tardis.dev ($98/month, 2 exchanges - Canada-compliant) ✅
+**Phase 1 (Now)** - REVISED:
+- Historical: CoinGecko Analyst ($129/month, OHLCV data) ✅
 - Real-time: Coinbase (free) ✅
+- Note: Tardis.dev actual minimum is $300-350+/month (not $98 as previously stated)
 
 **Phase 2 (After validation)**:
-- Everything: Tardis Premium ($499/month)
+- Option A: Continue with CoinGecko ($129/month) if OHLCV sufficient
+- Option B: Upgrade to Tardis Premium ($499/month) if tick data + order book needed & ROI proven
 
 ---
 
@@ -214,10 +216,10 @@ Only relevant if you add stocks to your system later.
 ### **Phase 1: Market Data Only** (Weeks 1-4) 🔴
 ```
 Focus: Get core market data working
-Budget: $148/month (Canada-compliant)
+Budget: $154/month ✅
 
 Add:
-✅ Tardis.dev Historical ($98) - tick + order book (Coinbase + Kraken, no Binance)
+✅ CoinGecko Analyst ($129) - OHLCV historical data (Canada-compliant)
 ✅ Coinbase real-time (free) - runtime testing
 
 Goal: Train models to 65-75% accuracy
@@ -231,8 +233,9 @@ Status: CURRENT PHASE
 Focus: Upgrade for live trading
 Budget: $549/month (+$352)
 
-Upgrade:
-✅ Tardis Premium ($499) - add real-time
+Upgrade (only if Phase 1 succeeds AND ROI proven):
+✅ Option A: Continue CoinGecko ($129) - if OHLCV sufficient
+✅ Option B: Tardis Premium ($499) - if tick data needed & profit >$500/mo
 ✅ AWS scaling (~$50)
 
 Goal: Deploy to production, start FTMO
@@ -301,13 +304,13 @@ Status: Much later (not priority)
 
 | Phase | Focus | Monthly Cost | Incremental | Timeline |
 |-------|-------|--------------|-------------|----------|
-| **1** | Market (historical) | $148 | +$148 | Week 1-4 |
+| **1** | Market (historical) | $154 | +$154 | Week 1-4 |
 | **2** | Market (real-time) | $549 | +$401 | Week 5-8 |
 | **3** | On-chain data | $699 | +$150 | Week 9-12 |
 | **4** | News & events | $799 | +$100 | Week 13-16 |
 | **5** | Sentiment | $999 | +$200 | Month 6+ |
 
-**Start**: $148/month (just market data, Canada-compliant)
+**Start**: $154/month (CoinGecko + AWS)
 **Scale**: Add data types as you prove ROI
 **Max**: ~$1,000/month (full professional setup)
 
@@ -354,8 +357,10 @@ Impact: 75% → 78% accuracy (marginal)
 ### ✅ Premium Data (Market Data):
 ```
 What: Tick data, order book, clean OHLCV
-Provider: Tardis.dev
-Cost: $98-499/month (Canada-compliant: 2 exchanges)
+Provider Phase 1: CoinGecko Analyst
+Cost Phase 1: $129/month
+Provider Phase 2: Tardis.dev (if ROI proven)
+Cost Phase 2: $300-499/month
 Phase: 1-2 (NOW)
 Priority: CRITICAL 🔴
 ```
@@ -364,7 +369,7 @@ Priority: CRITICAL 🔴
 ```
 What: Live market updates, WebSocket
 Provider Phase 1: Coinbase (free)
-Provider Phase 2: Tardis Premium ($499)
+Provider Phase 2+: Tardis Premium ($499) - only if CoinGecko proves concept & ROI justifies
 Phase: 1-2 (NOW)
 Priority: CRITICAL 🔴
 ```
@@ -403,7 +408,7 @@ Priority: LOW 🔵 (Later, as you said)
 ### Phase 1-2 (Now - Week 8):
 ```
 Market Data:
-├── Tardis.dev Premium ($499)
+├── CoinGecko Analyst ($129) or Tardis Premium ($499 if ROI proven)
 │   ├── Tick data
 │   ├── Order book
 │   ├── Historical
@@ -414,7 +419,7 @@ Market Data:
 ### Phase 3 (Week 9-12):
 ```
 Market + On-Chain:
-├── Tardis.dev Premium ($499)
+├── CoinGecko Analyst ($129) or Tardis Premium ($499 if ROI proven)
 ├── Glassnode Starter ($99)
 │   ├── Whale tracking
 │   ├── Exchange flows
@@ -425,7 +430,7 @@ Market + On-Chain:
 ### Phase 4 (Week 13-16):
 ```
 Market + On-Chain + News:
-├── Tardis.dev Premium ($499)
+├── CoinGecko Analyst ($129) or Tardis Premium ($499 if ROI proven)
 ├── Glassnode ($99)
 ├── CryptoPanic Pro ($19)
 └── Economic Calendar API ($50)
@@ -435,7 +440,7 @@ Market + On-Chain + News:
 ### Phase 5+ (Month 6+):
 ```
 Full Stack:
-├── Tardis.dev Premium ($499)
+├── CoinGecko Analyst ($129) or Tardis Premium ($499 if ROI proven)
 ├── Glassnode ($99)
 ├── CryptoPanic ($19)
 ├── Economic Calendar ($50)
@@ -479,8 +484,8 @@ Example:
 
 ### Minimum Viable (Phase 1-2):
 ```
-1. ✅ Premium market data (Tardis)
-2. ✅ Real-time market data (Tardis/Coinbase)
+1. ✅ Premium market data (CoinGecko or Tardis if ROI proven)
+2. ✅ Real-time market data (Coinbase free)
 
 That's it! This gets you to 70% accuracy.
 Budget: $200-550/month
@@ -508,7 +513,7 @@ Budget: +$100-200/month
 ## 🎯 Your Current Plan (Phase 1):
 
 **Data Types Needed NOW**:
-1. ✅ Premium historical market data → Tardis Historical ($147)
+1. ✅ Premium historical market data → CoinGecko Analyst ($129)
 2. ✅ Real-time market data → Coinbase (free)
 
 **Data Types to Add LATER**:
@@ -527,7 +532,7 @@ Budget: +$100-200/month
 **"How many different types of data do we need?"**
 
 ### Essential (Now):
-1. **Premium market data** - Tardis Historical ($98, Canada-compliant) 🔴
+1. **Premium market data** - CoinGecko Analyst ($129) 🔴
 2. **Real-time data** - Coinbase (free) 🔴
 
 ### Important (Later):
