@@ -2,7 +2,8 @@
 
 **Purpose**: This file ensures continuity between Claude sessions by documenting our dual-environment development setup and current project state.
 
-**Last Updated**: 2025-11-13
+**Last Updated**: 2025-11-14
+**Last Session**: V5 Planning & Data Strategy
 
 ---
 
@@ -92,27 +93,29 @@ ls -lt QC_REVIEW_*.md | head -3
 
 ## 🔄 Current Project Status
 
-### Phase: 6.5 - Model Training & Evaluation
+### Phase: V5 - Premium Data Upgrade
 
-**Last Major Update**: 2025-11-13
+**Last Major Update**: 2025-11-14
 
 **Current Situation**:
-- ✅ Feature mismatch discovered (50 vs 31 features)
-- ✅ Cloud Claude identified and documented the issue
-- ✅ Solution created: Retrain with 31-feature files
-- ✅ Local Claude (QC) reviewed and APPROVED
-- ⏸️ **BLOCKED**: Waiting for manual Colab retraining
+- ✅ V4 models evaluated: 50% accuracy (data quality ceiling identified)
+- ✅ Root cause found: Free Coinbase data too noisy
+- ✅ V5 strategy decided: Upgrade data source (not rebuild)
+- ✅ Budget approved: <$200/month Phase 1
+- ✅ Data provider selected: Tardis.dev Historical ($147/month)
+- ⏸️ **READY TO START**: Waiting for Tardis subscription
 
 **Next Action**:
-- User must download feature files from cloud server
-- Upload to Google Drive
-- Run Colab training (~57 minutes for 3 models)
-- After training: Evaluate and promote models
+- User subscribes to Tardis.dev Historical ($147/month)
+- Builder Claude creates tardis_client.py
+- Download 2 years tick data (BTC/ETH/SOL)
+- Start V5 Week 1 execution
 
 **Key Files to Check**:
-1. `reports/phase6_5/CRITICAL_FEATURE_MISMATCH_REPORT.md`
-2. `COLAB_RETRAINING_INSTRUCTIONS.md`
-3. `QC_REVIEW_CLOUD_CLAUDE_2025-11-13.md`
+1. `V5_SIMPLE_PLAN.md` - Primary execution plan
+2. `V5_CONTEXT_AND_PLAN.md` - Complete context
+3. `SESSION_SUMMARY_2025-11-14.md` - Latest session
+4. `DATA_STRATEGY_COMPLETE.md` - Data roadmap
 
 ---
 

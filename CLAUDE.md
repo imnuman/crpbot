@@ -24,7 +24,8 @@ Both environments sync via Git (GitHub: `imnuman/crpbot`). Always check `git log
 
 1. **Per-Coin LSTM Models** (35% weight)
    - Binary direction prediction (up/down) for 15-minute horizon
-   - 60-minute lookback window, 2-layer bidirectional LSTM
+   - 60-minute lookback window, bidirectional LSTM
+   - Configurable architecture: 128 hidden units, 3 layers (current target)
    - Separate models trained for each symbol
    - Model files: `lstm_{SYMBOL}_1m_*.pt`
 
@@ -43,7 +44,7 @@ Both environments sync via Git (GitHub: `imnuman/crpbot`). Always check `git log
 ```
 Coinbase API → Raw OHLCV (1m candles, parquet)
   ↓
-Feature Engineering (50+ indicators: ATR, RSI, MACD, sessions, volatility regime)
+Feature Engineering (31 features: ATR, RSI, MACD, sessions, volatility regime)
   ↓
 Walk-Forward Splits (70% train, 15% val, 15% test)
   ↓
@@ -89,7 +90,7 @@ uv run python scripts/fetch_data.py \
     --start 2023-11-10 \
     --output data/raw
 
-# Engineer features (39 columns: 5 OHLCV + 31 features + 3 categorical)
+# Engineer features (36 columns: 5 OHLCV + 31 features)
 uv run python scripts/engineer_features.py \
     --input data/raw/BTC-USD_1m_2023-11-10_2025-11-10.parquet \
     --symbol BTC-USD \
@@ -115,14 +116,6 @@ uv run python apps/trainer/main.py --task transformer --epochs=15
 # Train RL Agent (stub - needs implementation)
 make rl STEPS=8000000
 ```
-
-**Current Training Status** (as of Phase 6.5 Restart):
-- ✅ **LSTM Models**: All 3 models trained (BTC, ETH, SOL)
-  - Model files: `models/lstm_{SYMBOL}_USD_1m_a7aff5c4.pt`
-  - Training completed: 2025-11-10
-  - Ready for evaluation against promotion gates
-- ⏹️ **Transformer Model**: Queued for training (~40 min estimated)
-- 🔄 **Multi-TF Features**: Module created, data fetching in progress
 
 ### Model Evaluation & Promotion
 ```bash
@@ -198,6 +191,8 @@ DB_URL=sqlite:///tradingai.db
 
 ### Feature Engineering (31 Features)
 
+The feature set consists of 31 technical indicators computed from raw OHLCV data:
+
 - **Session Features** (5): Tokyo/London/NY sessions, day_of_week, is_weekend
 - **Spread Features** (4): spread, spread_pct, ATR, spread_atr_ratio
 - **Volume Features** (3): volume_ma, volume_ratio, volume_trend
@@ -205,7 +200,11 @@ DB_URL=sqlite:///tradingai.db
 - **Technical Indicators** (8): RSI, MACD×3, Bollinger Bands×4
 - **Volatility Regime** (3): low/medium/high classification (one-hot)
 
-Features are stored in parquet format: `data/features/features_{SYMBOL}_1m_latest.parquet`
+**Feature File Format**: Parquet files with 36 columns total:
+- 5 OHLCV columns (open, high, low, close, volume)
+- 31 feature columns (listed above)
+
+Features are stored in: `data/features/features_{SYMBOL}_1m_*.parquet`
 
 ### Multi-Timeframe Features (Phase 3.5 / V2)
 
@@ -252,21 +251,26 @@ Test:        2025-07-10 06:55:21+00:00 onwards
 ### LSTM Model Architecture Details
 
 ```python
-# Per-coin LSTM structure (example for BTC-USD)
+# Current target architecture (configurable)
 Input: (batch_size, 60, 31)  # 60 timesteps, 31 features
-LSTM Layer 1: bidirectional, hidden_size=64 → output (batch, 60, 128)
-LSTM Layer 2: bidirectional, hidden_size=64 → output (batch, 60, 128)
-Dropout: 0.2
-FC Layers: 128 → 64 → 1
+LSTM Layers: bidirectional, num_layers=3, hidden_size=128
+  - Layer 1: 31 → 256 (bidirectional)
+  - Layer 2: 256 → 256 (bidirectional)
+  - Layer 3: 256 → 256 (bidirectional)
+Dropout: 0.35 (between LSTM layers and in FC)
+FC Layers: 256 → 128 → 1
 Sigmoid: Output probability [0, 1]
 
 # Training params
 - Batch size: 32
-- Optimizer: Adam
+- Optimizer: Adam (lr typically 0.001)
 - Loss: Binary Cross Entropy
 - Early stopping: patience=5 epochs
-- Total params: ~62,337
+- Total params: ~1M+ (depends on configuration)
 ```
+
+**Note**: Architecture is configurable via constructor parameters. Default configuration uses:
+- `hidden_size=128`, `num_layers=3`, `bidirectional=True`, `dropout=0.35`
 
 ### Transformer Model Architecture Details
 
@@ -299,7 +303,7 @@ Sigmoid: Trend strength [0, 1]
 3. Get predictions from each model:
    - lstm_pred = lstm_model(features[-60:])  # Last 60 minutes
    - trans_pred = transformer_model(features[-100:])  # Last 100 minutes
-   - rl_pred = rl_agent(features, portfolio_state)  # Stub
+   - rl_pred = rl_agent(features, portfolio_state)  # Stub (currently mock)
 4. Combine with weights:
    ensemble = lstm*0.35 + trans*0.40 + rl*0.25
 5. Apply confidence calibration (Platt scaling)
@@ -308,6 +312,8 @@ Sigmoid: Trend strength [0, 1]
 8. Check rate limits: hour-based signal caps
 9. Log to database + emit signal (Telegram planned)
 ```
+
+**Current Implementation Note**: Runtime currently uses mock predictions (`generate_mock_signal` in `apps/runtime/main.py:78-112`). Replace this with actual model inference for production.
 
 ### Promotion Gates (Phase 3)
 
@@ -328,8 +334,9 @@ Promotion command automatically checks gates and copies to `models/promoted/`.
 2. Modify `FEATURE_COLUMNS` list to include new feature
 3. Update feature engineering script to compute new indicator
 4. Re-run feature engineering: `./batch_engineer_features.sh`
-5. Re-train models with new features
-6. Update documentation in `FEATURE_ENGINEERING_WORKFLOW.md`
+5. Update model `input_size` parameter if feature count changes
+6. Re-train models with new features
+7. Update documentation in this file and `FEATURE_ENGINEERING_WORKFLOW.md`
 
 ### Adding New Model Type
 
@@ -337,7 +344,7 @@ Promotion command automatically checks gates and copies to `models/promoted/`.
 2. Add training logic in `apps/trainer/train/train_*.py`
 3. Update `apps/trainer/main.py` to support new `--task` option
 4. Add evaluation logic in `scripts/evaluate_model.py`
-5. Update ensemble weights in `apps/runtime/ensemble.py`
+5. Update ensemble weights in `apps/runtime/main.py` (or create dedicated ensemble module)
 6. Update `ENSEMBLE_WEIGHTS` configuration
 
 ### Debugging Training Issues
@@ -358,9 +365,10 @@ pytest tests/unit/test_models.py -v -s
 
 ### Modifying FTMO Rules
 
-FTMO rules are centralized in `libs/constants/ftmo.py`:
+FTMO rules are centralized in `apps/runtime/ftmo_rules.py`:
 
 ```python
+# Check the module for current constants
 FTMO_DAILY_LOSS_LIMIT = 0.05  # 5% daily loss
 FTMO_TOTAL_LOSS_LIMIT = 0.10  # 10% total loss
 FTMO_MIN_TRADING_DAYS = 4     # Minimum trading days
@@ -377,65 +385,20 @@ Changes require updating tests in `tests/unit/test_ftmo_rules.py`.
 
 Run all: `make test` (should complete in <2 minutes)
 
-## Current Project Status (Phase 6.5)
-
-- **Data Pipeline**: ✅ Complete (fetch → features → validation)
-- **Model Architecture**: ✅ Complete (LSTM + Transformer)
-- **Training Pipeline**: ✅ Complete (automated batch training)
-- **Runtime Engine**: ✅ Complete (dry-run functional)
-- **Model Evaluation**: ✅ Complete (promotion gates implemented)
-- **Production Deployment**: 🚧 In Progress (AWS infrastructure 20% complete)
-
-### Training Progress (Phase 6.5 Restart)
-
-**Status**: 🔄 **In Execution** - Steps 1-3 Complete, Step 4 In Progress
-
-**Completed**:
-- ✅ **Data Infrastructure**: Coinbase API configured with JWT authentication
-- ✅ **Dataset Generation**: 2 years of 1-minute OHLCV data (2023-11-10 to 2025-11-10)
-  - BTC-USD: 1,030,512 rows (35 MB)
-  - ETH-USD: 1,030,512 rows (32 MB)
-  - SOL-USD: 1,030,513 rows (23 MB)
-- ✅ **Feature Engineering**: 39 columns (5 OHLCV + 31 features + 3 categorical)
-  - All 3 symbols: features files generated and validated
-- ✅ **LSTM Training**: All 3 per-coin models trained (15 epochs each)
-  - `lstm_BTC_USD_1m_a7aff5c4.pt` (249 KB)
-  - `lstm_ETH_USD_1m_a7aff5c4.pt` (249 KB)
-  - `lstm_SOL_USD_1m_a7aff5c4.pt` (249 KB)
-  - Validation accuracy: ~50% (baseline, ready for evaluation gates)
-
-**In Progress**:
-- ⏹️ **Transformer Training**: Multi-coin transformer queued (~40 min estimated)
-- 🔄 **Phase 3.5 (Multi-TF)**: Multi-timeframe feature engineering module created
-  - Module: `apps/trainer/multi_tf_features.py`
-  - Scripts: `scripts/fetch_multi_tf_data.sh`, `scripts/test_multi_tf.py`
-  - Supports: 1m, 5m, 15m, 1h timeframes
-  - Features: Cross-TF alignment, volatility regime classification
-
-**Next Steps**:
-1. Complete Transformer training
-2. Evaluate all models against promotion gates (68% accuracy, 5% calibration error)
-3. Promote qualifying models to `models/promoted/`
-4. Integrate promoted models into runtime
-5. Restart Phase 6.5 observation period (3-5 days)
-6. Phase 7: Micro-lot testing on FTMO account
-
-**Reference**: See `PHASE6_5_RESTART_PLAN.md` for detailed checklist and progress tracking.
-
 ## File Locations Reference
 
 ```
-Configuration:     .env, libs/config/settings.py
+Configuration:     .env, libs/config/
 Data:              data/raw/, data/features/
 Models:            models/, models/promoted/
-Training:          apps/trainer/main.py
+Training:          apps/trainer/main.py, apps/trainer/models/, apps/trainer/train/
   Multi-TF:        apps/trainer/multi_tf_features.py
-Runtime:           apps/runtime/main.py
-Scripts:           scripts/fetch_data.py, scripts/engineer_features.py
+Runtime:           apps/runtime/main.py, apps/runtime/ftmo_rules.py, apps/runtime/rate_limiter.py
+Scripts:           scripts/fetch_data.py, scripts/engineer_features.py, scripts/evaluate_model.py
   Multi-TF:        scripts/fetch_multi_tf_data.sh, scripts/test_multi_tf.py
 Tests:             tests/unit/, tests/integration/, tests/smoke/
 Infrastructure:    infra/aws/, infra/docker/
-Documentation:     docs/, PHASE6_5_RESTART_PLAN.md
+Documentation:     docs/, PHASE6_5_RESTART_PLAN.md, PROJECT_MEMORY.md
 Reports:           reports/phase6_5/
 ```
 
@@ -459,3 +422,45 @@ make sync
 ```
 
 Dependencies are defined in `pyproject.toml` and locked in `uv.lock`.
+
+## Project Structure
+
+```
+crpbot/
+├── apps/
+│   ├── trainer/          # Model training (LSTM, Transformer, RL)
+│   │   ├── models/       # Model architectures (lstm.py, transformer.py)
+│   │   ├── train/        # Training loops
+│   │   ├── eval/         # Evaluation & versioning
+│   │   ├── features.py   # Feature engineering logic
+│   │   └── main.py       # Training entry point
+│   ├── runtime/          # Production runtime
+│   │   ├── main.py       # Runtime loop
+│   │   ├── ftmo_rules.py # FTMO compliance checks
+│   │   ├── rate_limiter.py # Signal rate limiting
+│   │   └── confidence.py # Confidence calibration
+│   ├── mt5_bridge/       # MT5/FTMO connectors
+│   └── kafka/            # Kafka streaming (optional)
+├── libs/
+│   ├── config/           # Configuration management
+│   ├── data/             # Data providers (Coinbase, synthetic)
+│   ├── db/               # Database models & operations
+│   ├── constants/        # Trading constants & FTMO rules
+│   ├── confidence/       # Confidence scaling utilities
+│   └── rl_env/           # RL environment (PPO)
+├── scripts/              # Utility scripts
+│   ├── fetch_data.py     # Data fetching
+│   ├── engineer_features.py # Feature engineering
+│   └── evaluate_model.py # Model evaluation
+├── tests/                # Test suite
+│   ├── unit/             # Unit tests
+│   ├── integration/      # Integration tests
+│   └── smoke/            # Smoke tests
+├── infra/                # Infrastructure
+│   ├── docker/           # Dockerfiles
+│   ├── aws/              # AWS deployment
+│   └── scripts/          # Deployment scripts
+├── data/                 # Data directory (gitignored)
+├── models/               # Model weights (gitignored)
+└── reports/              # Progress reports
+```

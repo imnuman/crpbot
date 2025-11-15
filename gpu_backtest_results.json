@@ -1,0 +1,17 @@
+{
+  "timestamp": "2025-11-11T21:00:17.153612",
+  "test_period_days": 30,
+  "models_tested": 3,
+  "individual_results": [
+    {
+      "symbol": "BTC-USD",
+      "accuracy": 0.24108678473481152,
+      "total_predictions": 43026,
+      "total_trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": 0,
+      "total_pnl": 0,
+      "sharpe_ratio": 0,
+      "avg_confidence": 0.3427928100824799,
+      "high_conf_signals": 
