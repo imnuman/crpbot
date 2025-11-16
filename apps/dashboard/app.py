@@ -18,6 +18,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from libs.config.config import Settings
 from libs.db.models import Signal, create_tables, get_session
 
+# Import data fetcher for live prices
+try:
+    from apps.runtime.data_fetcher import fetch_latest_candles
+except ImportError:
+    fetch_latest_candles = None
+
 app = Flask(__name__)
 CORS(app)
 
@@ -218,6 +224,52 @@ def api_live_predictions():
         return jsonify(latest_signals)
     finally:
         session.close()
+
+
+@app.route('/api/market/live')
+def api_live_market():
+    """Get live market prices from Coinbase."""
+    try:
+        market_data = {}
+
+        if fetch_latest_candles:
+            for symbol in ['BTC-USD', 'ETH-USD', 'SOL-USD']:
+                try:
+                    df = fetch_latest_candles(symbol, limit=1)
+                    if not df.empty:
+                        latest = df.iloc[-1]
+                        market_data[symbol] = {
+                            'price': float(latest['close']),
+                            'open': float(latest['open']),
+                            'high': float(latest['high']),
+                            'low': float(latest['low']),
+                            'volume': float(latest['volume']),
+                            'change_pct': ((float(latest['close']) - float(latest['open'])) / float(latest['open'])) * 100,
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+                except Exception as e:
+                    # Fallback placeholder data
+                    market_data[symbol] = {
+                        'price': 0.0,
+                        'open': 0.0,
+                        'high': 0.0,
+                        'low': 0.0,
+                        'volume': 0.0,
+                        'change_pct': 0.0,
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'error': str(e)
+                    }
+        else:
+            # Placeholder when data fetcher not available
+            market_data = {
+                'BTC-USD': {'price': 0.0, 'change_pct': 0.0},
+                'ETH-USD': {'price': 0.0, 'change_pct': 0.0},
+                'SOL-USD': {'price': 0.0, 'change_pct': 0.0}
+            }
+
+        return jsonify(market_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

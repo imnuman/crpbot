@@ -101,6 +101,57 @@ body {
     font-weight: 600;
 }
 
+/* Market Grid */
+.market-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.market-card {
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.market-card h3 {
+    color: var(--accent-blue);
+    margin-bottom: 12px;
+    font-size: 18px;
+}
+
+.market-price {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.market-change {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.market-change.positive {
+    color: var(--accent-green);
+}
+
+.market-change.negative {
+    color: var(--accent-red);
+}
+
+.market-details {
+    display: flex;
+    justify-content: space-around;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
 /* Overview Grid */
 .overview-grid {
     display: grid;

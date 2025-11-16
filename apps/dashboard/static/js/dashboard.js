@@ -64,6 +64,7 @@ async function fetchAllData() {
     try {
         await Promise.all([
             fetchSystemStatus(),
+            fetchLiveMarket(),
             fetchLivePredictions(),
             fetchSignalStats(),
             fetchRecentSignals()
@@ -130,6 +131,49 @@ function updateDataSource(name, source) {
     typeEl.textContent = `Type: ${source.type}`;
     intervalEl.textContent = `Interval: ${source.interval}`;
     descEl.textContent = source.description;
+}
+
+// Fetch live market prices
+async function fetchLiveMarket() {
+    try {
+        const response = await fetch('/api/market/live');
+        const data = await response.json();
+
+        Object.keys(data).forEach(symbol => {
+            const market = data[symbol];
+            const symbolCode = symbol.split('-')[0];
+
+            // Update price
+            const priceEl = document.getElementById(`price${symbolCode}`);
+            if (priceEl && market.price) {
+                priceEl.textContent = `$${market.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            }
+
+            // Update change
+            const changeEl = document.getElementById(`change${symbolCode}`);
+            if (changeEl && market.change_pct !== undefined) {
+                const changePct = market.change_pct;
+                changeEl.textContent = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`;
+                changeEl.className = 'market-change ' + (changePct >= 0 ? 'positive' : 'negative');
+            }
+
+            // Update high/low/volume
+            if (market.high) {
+                const highEl = document.getElementById(`high${symbolCode}`);
+                if (highEl) highEl.textContent = `$${market.high.toFixed(2)}`;
+            }
+            if (market.low) {
+                const lowEl = document.getElementById(`low${symbolCode}`);
+                if (lowEl) lowEl.textContent = `$${market.low.toFixed(2)}`;
+            }
+            if (market.volume) {
+                const volEl = document.getElementById(`vol${symbolCode}`);
+                if (volEl) volEl.textContent = market.volume.toFixed(0);
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching live market data:', error);
+    }
 }
 
 // Fetch live predictions
