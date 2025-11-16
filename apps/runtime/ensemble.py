@@ -47,20 +47,49 @@ class EnsemblePredictor:
         checkpoint = torch.load(lstm_path, map_location=self.device)
         input_size = checkpoint.get('input_size', 80)
 
-        # V5 uses standard PyTorch LSTM (non-bidirectional, 3 layers)
+        # Detect model architecture from checkpoint
+        state_dict = checkpoint['model_state_dict']
+        first_weight_key = list(state_dict.keys())[0]
+        first_weight_shape = state_dict[first_weight_key].shape
+
+        # Check if V6 model (2-layer, bidirectional, hidden_size=64)
+        # V6: weight_ih_l0 shape is [256, 31] = 4 * 64 (bidirectional)
+        # V5: weight_ih_l0 shape is [512, 31] = 4 * 128 (non-bidirectional)
+        is_v6 = (first_weight_shape[0] == 256 and
+                 'lstm.weight_ih_l2' not in state_dict)
+
         import torch.nn as nn
 
-        class SimpleV5LSTM(nn.Module):
-            def __init__(self, input_size, hidden_size=128, num_layers=3, dropout=0.2):
-                super().__init__()
-                self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=dropout, batch_first=True)
-                self.fc = nn.Linear(hidden_size, 1)
+        if is_v6:
+            # V6 model: 2-layer non-bidirectional LSTM, hidden_size=64, no dropout
+            class V6LSTM(nn.Module):
+                def __init__(self, input_size, hidden_size=64, num_layers=2):
+                    super().__init__()
+                    self.lstm = nn.LSTM(input_size, hidden_size, num_layers,
+                                       batch_first=True, bidirectional=False)
+                    self.fc = nn.Linear(hidden_size, 1)
 
-            def forward(self, x):
-                lstm_out, _ = self.lstm(x)
-                return self.fc(lstm_out[:, -1, :])
+                def forward(self, x):
+                    lstm_out, _ = self.lstm(x)
+                    return self.fc(lstm_out[:, -1, :])
 
-        self.lstm_model = SimpleV5LSTM(input_size=input_size)
+            self.lstm_model = V6LSTM(input_size=input_size)
+            logger.info(f"Using V6 architecture: 2-layer non-bidirectional, hidden_size=64")
+        else:
+            # V5 model: 3-layer non-bidirectional LSTM, hidden_size=128
+            class SimpleV5LSTM(nn.Module):
+                def __init__(self, input_size, hidden_size=128, num_layers=3, dropout=0.2):
+                    super().__init__()
+                    self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=dropout, batch_first=True)
+                    self.fc = nn.Linear(hidden_size, 1)
+
+                def forward(self, x):
+                    lstm_out, _ = self.lstm(x)
+                    return self.fc(lstm_out[:, -1, :])
+
+            self.lstm_model = SimpleV5LSTM(input_size=input_size)
+            logger.info(f"Using V5 architecture: 3-layer non-bidirectional, hidden_size=128")
+
         self.lstm_model.load_state_dict(checkpoint['model_state_dict'])
         self.lstm_model.to(self.device)
         self.lstm_model.eval()
