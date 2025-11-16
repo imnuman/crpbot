@@ -56,17 +56,43 @@ class EnsemblePredictor:
         # Detect model architecture from checkpoint
         state_dict = checkpoint['model_state_dict']
         first_weight_key = list(state_dict.keys())[0]
-        first_weight_shape = state_dict[first_weight_key].shape
-
-        # Check if V6 model (2-layer, bidirectional, hidden_size=64)
-        # V6: weight_ih_l0 shape is [256, 31] = 4 * 64 (bidirectional)
-        # V5: weight_ih_l0 shape is [512, 31] = 4 * 128 (non-bidirectional)
-        is_v6 = (first_weight_shape[0] == 256 and
-                 'lstm.weight_ih_l2' not in state_dict)
 
         import torch.nn as nn
 
-        if is_v6:
+        # Check if V6 Enhanced FNN (feedforward network) - has fc1, fc2, fc3, fc4
+        is_v6_enhanced_fnn = ('fc1.weight' in state_dict and 'fc4.weight' in state_dict)
+
+        # Check if V6 LSTM model (2-layer, bidirectional, hidden_size=64)
+        # V6: weight_ih_l0 shape is [256, 31] = 4 * 64 (bidirectional)
+        # V5: weight_ih_l0 shape is [512, 31] = 4 * 128 (non-bidirectional)
+        is_v6_lstm = (not is_v6_enhanced_fnn and
+                      first_weight_key.startswith('lstm.') and
+                      state_dict[first_weight_key].shape[0] == 256 and
+                      'lstm.weight_ih_l2' not in state_dict)
+
+        if is_v6_enhanced_fnn:
+            # V6 Enhanced FNN: 4-layer feedforward network (72 -> 256 -> 128 -> 64 -> 3)
+            class V6EnhancedFNN(nn.Module):
+                def __init__(self, input_size=72):
+                    super().__init__()
+                    self.fc1 = nn.Linear(input_size, 256)
+                    self.fc2 = nn.Linear(256, 128)
+                    self.fc3 = nn.Linear(128, 64)
+                    self.fc4 = nn.Linear(64, 3)
+                    self.relu = nn.ReLU()
+
+                def forward(self, x):
+                    # Input: (batch, sequence, features) - take last timestep
+                    if len(x.shape) == 3:
+                        x = x[:, -1, :]  # (batch, features)
+                    x = self.relu(self.fc1(x))
+                    x = self.relu(self.fc2(x))
+                    x = self.relu(self.fc3(x))
+                    return self.fc4(x)  # (batch, 3) - logits for 3 classes
+
+            self.lstm_model = V6EnhancedFNN(input_size=input_size)
+            logger.info(f"Using V6 Enhanced FNN architecture: 4-layer feedforward (72→256→128→64→3)")
+        elif is_v6_lstm:
             # V6 model: 2-layer non-bidirectional LSTM, hidden_size=64, no dropout
             class V6LSTM(nn.Module):
                 def __init__(self, input_size, hidden_size=64, num_layers=2):
@@ -120,18 +146,29 @@ class EnsemblePredictor:
         ]
 
         # Check if this is a V6 model by inspecting loaded checkpoint
-        # V6 models have input_size=31 in checkpoint metadata
+        # V6 Enhanced FNN models have input_size=72
+        # V6 LSTM models have input_size=31 in checkpoint metadata
         checkpoint_input_size = getattr(self, '_checkpoint_input_size', None)
 
-        if checkpoint_input_size == 31:
-            # V6 model - use exact 31-feature set
+        if checkpoint_input_size == 72:
+            # V6 Enhanced FNN - use all 72 features
+            # Use all numeric features (Amazon Q's training used all available features)
+            exclude = ['timestamp']
+            features = [c for c in df.columns if c not in exclude and df[c].dtype in ['float64', 'float32', 'int64', 'int32']]
+
+            logger.debug(f"V6 Enhanced FNN detected - using {len(features)}/72 features")
+
+            if len(features) != 72:
+                logger.warning(f"Feature count mismatch: expected 72, got {len(features)}")
+        elif checkpoint_input_size == 31:
+            # V6 LSTM model - use exact 31-feature set
             features = [f for f in v6_feature_list if f in df.columns]
             missing_features = [f for f in v6_feature_list if f not in df.columns]
 
             if missing_features:
                 logger.warning(f"Missing V6 features: {missing_features}")
 
-            logger.debug(f"V6 model detected - using {len(features)}/31 features")
+            logger.debug(f"V6 LSTM detected - using {len(features)}/31 features")
         else:
             # V5 model or unknown - use all numeric features except excluded
             exclude = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session', 'volatility_regime']
@@ -151,9 +188,27 @@ class EnsemblePredictor:
             try:
                 seq = torch.FloatTensor(df[features].iloc[-60:].values).unsqueeze(0).to(self.device)
                 with torch.no_grad():
-                    lstm_pred = torch.sigmoid(self.lstm_model(seq)).item()
+                    output = self.lstm_model(seq)
+
+                    # Check if V6 Enhanced FNN (3-class output)
+                    if output.shape[-1] == 3:
+                        # V6 Enhanced FNN: 3 classes (Down, Neutral, Up)
+                        # Apply softmax to get probabilities
+                        probs = torch.softmax(output, dim=-1).squeeze()
+                        down_prob = probs[0].item()
+                        neutral_prob = probs[1].item()
+                        up_prob = probs[2].item()
+
+                        # Convert to binary: combine down+neutral vs up
+                        # or: up_prob > down_prob for long signal
+                        lstm_pred = up_prob  # Use up probability as confidence
+
+                        logger.debug(f"V6 Enhanced FNN output: Down={down_prob:.3f}, Neutral={neutral_prob:.3f}, Up={up_prob:.3f}")
+                    else:
+                        # Binary output (V5/V6 LSTM)
+                        lstm_pred = torch.sigmoid(output).item()
             except Exception as e:
-                logger.warning(f"LSTM inference failed: {e}")
+                logger.warning(f"Model inference failed: {e}")
         
         ensemble = lstm_pred
         direction = "long" if ensemble >= 0.5 else "short"
