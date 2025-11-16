@@ -375,9 +375,9 @@ class TradingRuntime:
             logger.warning("🛑 Kill-switch is ACTIVE - no signals will be emitted")
             return
 
-        # Generate signal using V6 Statistical models
-        signal_data = self.generate_v6_signal()
-        
+        # Generate signal using V5 FIXED models
+        signal_data = self.generate_v5_signal()
+
         if signal_data is None:
             logger.info("No signal generated this cycle")
             return

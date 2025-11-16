@@ -99,3 +99,8 @@ reports/phase6_5/*_metrics.json
 amazonq/
 
 .claude-context
+*.pyc
+.ruff_cache/
+gpu_*.json
+runtime_config.json
+investigation_results_*.txt
