@@ -72,10 +72,20 @@ class EnsemblePredictor:
         if len(df) < 60:
             raise ValueError(f"Need ≥60 rows, got {len(df)}")
 
-        # Exclude OHLCV columns and non-numeric columns
-        exclude = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session']
-        features = [c for c in df.columns if c not in exclude and df[c].dtype in ['float64', 'float32', 'int64', 'int32']]
-        
+        # Exclude same columns as training: timestamp, OHLCV, session, volatility_regime
+        # Training only uses one-hot encoded versions (session_tokyo, etc.)
+        exclude = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session', 'volatility_regime']
+        all_features = [c for c in df.columns if c not in exclude]
+        features = [c for c in all_features if df[c].dtype in ['float64', 'float32', 'int64', 'int32']]
+
+        # Debug logging
+        logger.debug(f"Total columns in DF: {len(df.columns)}")
+        logger.debug(f"After excluding: {len(all_features)} features")
+        logger.debug(f"Numeric features selected: {len(features)}")
+        non_numeric = [c for c in all_features if c not in features]
+        if non_numeric:
+            logger.debug(f"Non-numeric columns: {non_numeric} with types: {[(c, df[c].dtype) for c in non_numeric]}")
+
         lstm_pred = 0.5
         if self.lstm_model:
             try:
