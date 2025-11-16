@@ -151,15 +151,54 @@ class EnsemblePredictor:
         checkpoint_input_size = getattr(self, '_checkpoint_input_size', None)
 
         if checkpoint_input_size == 72:
-            # V6 Enhanced FNN - use all 72 features
-            # Use all numeric features (Amazon Q's training used all available features)
-            exclude = ['timestamp']
-            features = [c for c in df.columns if c not in exclude and df[c].dtype in ['float64', 'float32', 'int64', 'int32']]
+            # V6 Enhanced FNN - use Amazon Q's exact 72 features
+            from apps.trainer.amazon_q_features import engineer_amazon_q_features
 
-            logger.debug(f"V6 Enhanced FNN detected - using {len(features)}/72 features")
+            # Check if Amazon Q features are already engineered
+            amazon_q_features = [
+                'atr_14', 'bb_lower_20', 'bb_position_20', 'ema_10', 'rsi_14',
+                'macd_12_26', 'momentum_10', 'roc_10', 'stoch_k_14', 'williams_r_14'
+            ]
 
-            if len(features) != 72:
-                logger.warning(f"Feature count mismatch: expected 72, got {len(features)}")
+            if not all(f in df.columns for f in amazon_q_features[:5]):
+                # Need to engineer Amazon Q features from OHLCV
+                logger.info("Engineering Amazon Q's 72 features...")
+                df = engineer_amazon_q_features(df)
+
+            # Get exact 72 features in correct order
+            features = [
+                'atr_14',
+                'bb_lower_20', 'bb_lower_50',
+                'bb_position_20', 'bb_position_50',
+                'bb_upper_20', 'bb_upper_50',
+                'close_open_ratio',
+                'ema_10', 'ema_20', 'ema_200', 'ema_5', 'ema_50',
+                'high_low_ratio',
+                'log_returns',
+                'macd_12_26', 'macd_5_35',
+                'macd_histogram_12_26', 'macd_histogram_5_35',
+                'macd_signal_12_26', 'macd_signal_5_35',
+                'momentum_10', 'momentum_20', 'momentum_5', 'momentum_50',
+                'price_channel_high_20', 'price_channel_high_50',
+                'price_channel_low_20', 'price_channel_low_50',
+                'price_channel_position_20', 'price_channel_position_50',
+                'price_to_ema_10', 'price_to_ema_20', 'price_to_ema_200', 'price_to_ema_5', 'price_to_ema_50',
+                'price_to_sma_10', 'price_to_sma_20', 'price_to_sma_200', 'price_to_sma_5', 'price_to_sma_50',
+                'returns',
+                'returns_lag_1', 'returns_lag_2', 'returns_lag_3', 'returns_lag_5',
+                'roc_10', 'roc_20', 'roc_5', 'roc_50',
+                'rsi_14', 'rsi_21', 'rsi_30',
+                'sma_10', 'sma_20', 'sma_200', 'sma_5', 'sma_50',
+                'stoch_d_14', 'stoch_d_21',
+                'stoch_k_14', 'stoch_k_21',
+                'volatility_20', 'volatility_50',
+                'volume_lag_1', 'volume_lag_2', 'volume_lag_3', 'volume_lag_5',
+                'volume_price_trend',
+                'volume_ratio',
+                'williams_r_14', 'williams_r_21'
+            ]
+
+            logger.debug(f"V6 Enhanced FNN detected - using Amazon Q's 72 features")
         elif checkpoint_input_size == 31:
             # V6 LSTM model - use exact 31-feature set
             features = [f for f in v6_feature_list if f in df.columns]
