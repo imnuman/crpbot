@@ -26,9 +26,11 @@ class EnsemblePredictor:
 
     def _load_models(self):
         """Load LSTM model from promoted directory."""
+        # Prioritize V6 models, fallback to V5 FIXED models
         patterns = [
-            f"lstm_{self.symbol.replace('-', '_')}_*_FIXED.pt",
-            f"lstm_{self.symbol.replace('-', '-')}_*_FIXED.pt",
+            f"lstm_{self.symbol.replace('-', '-')}_*_v6_real.pt",  # V6 models (highest priority)
+            f"lstm_{self.symbol.replace('-', '_')}_*_FIXED.pt",    # V5 FIXED models
+            f"lstm_{self.symbol.replace('-', '-')}_*_FIXED.pt",    # V5 FIXED models (alt format)
         ]
 
         lstm_path = None
@@ -46,6 +48,9 @@ class EnsemblePredictor:
 
         checkpoint = torch.load(lstm_path, map_location=self.device)
         input_size = checkpoint.get('input_size', 80)
+
+        # Store input size for feature selection in predict()
+        self._checkpoint_input_size = input_size
 
         # Detect model architecture from checkpoint
         state_dict = checkpoint['model_state_dict']
@@ -101,19 +106,44 @@ class EnsemblePredictor:
         if len(df) < 60:
             raise ValueError(f"Need ≥60 rows, got {len(df)}")
 
-        # Exclude same columns as training: timestamp, OHLCV, session, volatility_regime
-        # Training only uses one-hot encoded versions (session_tokyo, etc.)
-        exclude = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session', 'volatility_regime']
-        all_features = [c for c in df.columns if c not in exclude]
-        features = [c for c in all_features if df[c].dtype in ['float64', 'float32', 'int64', 'int32']]
+        # V6 models use specific 31 features - select only those
+        v6_feature_list = [
+            'open', 'high', 'low', 'close', 'volume',
+            '5m_open', '5m_high', '5m_low', '5m_close', '5m_volume',
+            '15m_open', '15m_high', '15m_low', '15m_close', '15m_volume',
+            '1h_open', '1h_high', '1h_low', '1h_close', '1h_volume',
+            'tf_alignment_score', 'tf_alignment_direction', 'tf_alignment_strength',
+            'atr', 'atr_percentile',
+            'volatility_regime', 'volatility_low', 'volatility_medium', 'volatility_high',
+            'session', 'session_tokyo'
+        ]
+
+        # Check if this is a V6 model by inspecting loaded checkpoint
+        # V6 models have input_size=31 in checkpoint metadata
+        checkpoint_input_size = getattr(self, '_checkpoint_input_size', None)
+
+        if checkpoint_input_size == 31:
+            # V6 model - use exact 31-feature set
+            features = [f for f in v6_feature_list if f in df.columns]
+            missing_features = [f for f in v6_feature_list if f not in df.columns]
+
+            if missing_features:
+                logger.warning(f"Missing V6 features: {missing_features}")
+
+            logger.debug(f"V6 model detected - using {len(features)}/31 features")
+        else:
+            # V5 model or unknown - use all numeric features except excluded
+            exclude = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session', 'volatility_regime']
+            all_features = [c for c in df.columns if c not in exclude]
+            features = [c for c in all_features if df[c].dtype in ['float64', 'float32', 'int64', 'int32']]
+
+            logger.debug(f"V5 model - using {len(features)} numeric features")
 
         # Debug logging
         logger.debug(f"Total columns in DF: {len(df.columns)}")
-        logger.debug(f"After excluding: {len(all_features)} features")
-        logger.debug(f"Numeric features selected: {len(features)}")
-        non_numeric = [c for c in all_features if c not in features]
-        if non_numeric:
-            logger.debug(f"Non-numeric columns: {non_numeric} with types: {[(c, df[c].dtype) for c in non_numeric]}")
+        logger.debug(f"Features selected for inference: {len(features)}")
+        if len(features) < 31:
+            logger.warning(f"Feature count mismatch: expected 31, got {len(features)}")
 
         lstm_pred = 0.5
         if self.lstm_model:
