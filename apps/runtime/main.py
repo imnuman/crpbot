@@ -15,6 +15,7 @@ from apps.runtime.ensemble import load_ensemble
 from apps.runtime.data_fetcher import get_data_fetcher
 from apps.runtime.telegram_bot import init_bot, send_message
 from apps.runtime.runtime_features import engineer_runtime_features
+from apps.runtime.signal_formatter import SignalFormatter
 from apps.runtime.ftmo_rules import (
     check_daily_loss_limit,
     check_position_size,
@@ -89,6 +90,13 @@ class TradingRuntime:
             logger.info("✅ Telegram bot initialized")
         else:
             logger.warning("⚠️  Telegram bot not configured")
+
+        # Initialize signal formatter
+        self.signal_formatter = SignalFormatter(
+            initial_balance=self.initial_balance,
+            leverage=10  # 10x leverage
+        )
+        logger.info("✅ Signal formatter initialized")
 
     def classify_tier(self, confidence: float) -> str:
         """
@@ -351,20 +359,8 @@ class TradingRuntime:
             return
 
         try:
-            # Format signal message
-            message = (
-                f"🚨 **TRADING SIGNAL** 🚨\n\n"
-                f"**Symbol:** {signal_data['symbol']}\n"
-                f"**Direction:** {signal_data['direction'].upper()}\n"
-                f"**Confidence:** {signal_data['confidence']:.2%}\n"
-                f"**Tier:** {signal_data['tier'].upper()}\n"
-                f"**Entry Price:** ${signal_data.get('entry_price', 0):.2f}\n\n"
-                f"**Model Predictions:**\n"
-                f"• LSTM: {signal_data.get('lstm_prediction', 0):.3f}\n"
-                f"• Transformer: {signal_data.get('transformer_prediction', 0):.3f}\n"
-                f"• RL: {signal_data.get('rl_prediction', 0):.3f}\n\n"
-                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            # Format signal message with new detailed format
+            message = self.signal_formatter.format_telegram_signal(signal_data)
 
             await send_message(message, mode=self.runtime_mode)
             logger.info("✅ Telegram notification sent")

@@ -236,12 +236,9 @@ class EnsemblePredictor:
                         raw_logits = output.squeeze()
                         logger.debug(f"Raw logits: Down={raw_logits[0].item():.3f}, Neutral={raw_logits[1].item():.3f}, Up={raw_logits[2].item():.3f}")
 
-                        # Clamp logits to prevent extreme values
-                        # This forces more balanced probabilities
-                        # ±2.0 with T=2.0 gives ~79% max confidence (instead of 99%)
-                        clamped_logits = torch.clamp(output, min=-2.0, max=2.0)
-                        temperature = 2.0
-                        probs = torch.softmax(clamped_logits / temperature, dim=-1).squeeze()
+                        # Apply softmax directly to raw logits (no clamping, no temperature)
+                        # This preserves the model's confidence information
+                        probs = torch.softmax(output, dim=-1).squeeze()
                         down_prob = probs[0].item()
                         neutral_prob = probs[1].item()
                         up_prob = probs[2].item()
@@ -250,7 +247,7 @@ class EnsemblePredictor:
                         # or: up_prob > down_prob for long signal
                         lstm_pred = up_prob  # Use up probability as confidence
 
-                        logger.debug(f"V6 Enhanced FNN output (clamped ±2, T={temperature}): Down={down_prob:.3f}, Neutral={neutral_prob:.3f}, Up={up_prob:.3f}")
+                        logger.debug(f"V6 Enhanced FNN output (raw softmax): Down={down_prob:.3f}, Neutral={neutral_prob:.3f}, Up={up_prob:.3f}")
                     else:
                         # Binary output (V5/V6 LSTM)
                         lstm_pred = torch.sigmoid(output).item()
@@ -259,14 +256,20 @@ class EnsemblePredictor:
         
         ensemble = lstm_pred
         direction = "long" if ensemble >= 0.5 else "short"
-        
+
+        # Calculate confidence based on direction
+        # For LONG: confidence = ensemble (how much > 0.5)
+        # For SHORT: confidence = 1.0 - ensemble (how much < 0.5)
+        # This ensures high confidence for both directions
+        confidence = ensemble if direction == "long" else (1.0 - ensemble)
+
         return {
             'lstm_prediction': lstm_pred,
             'transformer_prediction': 0.5,
             'rl_prediction': 0.5,
             'ensemble_prediction': ensemble,
             'direction': direction,
-            'confidence': ensemble
+            'confidence': confidence
         }
 
 
