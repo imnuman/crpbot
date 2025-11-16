@@ -234,7 +234,7 @@ class EnsemblePredictor:
                         # V6 Enhanced FNN: 3 classes (Down, Neutral, Up)
                         # Apply temperature-scaled softmax to get more realistic probabilities
                         # Temperature > 1 makes distribution smoother, < 1 makes it sharper
-                        temperature = 2.5  # Higher temperature = softer probabilities
+                        temperature = 10.0  # Very high temperature to soften extreme logits
                         probs = torch.softmax(output / temperature, dim=-1).squeeze()
                         down_prob = probs[0].item()
                         neutral_prob = probs[1].item()
