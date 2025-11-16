@@ -210,6 +210,34 @@ done
 
 ---
 
+## ✅ Recent Fixes (2025-11-16 10:40 EST)
+
+### Fix: Multi-TF Timezone Alignment ✅ COMPLETE
+**Issue**: `incompatible merge keys dtype('<M8[ns]') and datetime64[ns, UTC]` error when merging multi-timeframe data
+
+**Root Cause**: Mixing timezone-naive and timezone-aware datetime objects in pandas merge operations
+
+**Solution Implemented**:
+- Modified `apps/runtime/multi_tf_fetcher.py` in `align_multi_tf_to_base()` function
+- Added UTC timezone conversion for both base_df and tf_df
+- Converts timezone-naive to timezone-aware using `.dt.tz_localize('UTC')`
+- Ensures all timestamps use `utc=True` parameter in `pd.to_datetime()`
+
+**Test Results**: ✅ PASSED
+```
+✅ Alignment successful!
+✅ Aligned DF shape: (10, 16)
+✅ Aligned DF timestamp dtype: datetime64[ns, UTC]
+✅ Found 10 multi-TF columns (5m_open, 5m_close, 15m_open, etc.)
+✅ No merge errors encountered
+```
+
+**Commit**: 9407962 - "fix: ensure UTC timezone-aware timestamps in multi-TF data alignment"
+
+**Status**: ✅ COMPLETE - Ready for production use
+
+---
+
 ## 🚨 Known Issues & Fixes
 
 ### Issue 1: Cloud Coinbase 401 Errors
