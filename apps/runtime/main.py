@@ -37,17 +37,19 @@ from libs.db.models import RiskBookSnapshot, Signal, create_tables, get_session
 class TradingRuntime:
     """Main trading runtime loop."""
 
-    def __init__(self, config: Settings | None = None):
+    def __init__(self, config: Settings | None = None, event_loop=None):
         """
         Initialize trading runtime.
 
         Args:
             config: Settings object (if None, loads from environment)
+            event_loop: Async event loop for Telegram notifications
         """
         self.config = config or Settings()
         self.kill_switch = self.config.kill_switch
         self.confidence_threshold = self.config.confidence_threshold
         self.runtime_mode = self.config.runtime_mode.lower().replace("-", "")
+        self.event_loop = event_loop  # Store event loop reference
 
         # Initialize rate limiter
         self.rate_limiter = RateLimiter(
@@ -417,15 +419,17 @@ class TradingRuntime:
         # Update rate limiter
         self.rate_limiter.record_signal(signal_data["tier"])
 
-        # Send Telegram notification (run in background thread to avoid blocking)
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(self.send_telegram_notification(signal_data))
-            else:
-                asyncio.run(self.send_telegram_notification(signal_data))
-        except Exception as e:
-            logger.warning(f"Could not send Telegram notification: {e}")
+        # Send Telegram notification (schedule in async event loop)
+        if self.event_loop and self.telegram_bot:
+            try:
+                # Schedule coroutine in the async event loop from synchronous context
+                future = asyncio.run_coroutine_threadsafe(
+                    self.send_telegram_notification(signal_data),
+                    self.event_loop
+                )
+                logger.debug("📤 Telegram notification scheduled")
+            except Exception as e:
+                logger.warning(f"Could not send Telegram notification: {e}")
 
         # TODO: Send to MT5 bridge
 
@@ -503,7 +507,9 @@ async def main_async():
     if args.log_level:
         os.environ["LOG_LEVEL"] = args.log_level
 
-    runtime = TradingRuntime()
+    # Get current event loop and pass to runtime
+    loop = asyncio.get_running_loop()
+    runtime = TradingRuntime(event_loop=loop)
 
     # Start Telegram bot
     if runtime.telegram_bot and runtime.telegram_bot.token:
