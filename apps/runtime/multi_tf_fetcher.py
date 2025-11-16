@@ -99,18 +99,24 @@ def align_multi_tf_to_base(
     """
     df = base_df.copy()
 
-    # Ensure timestamp is datetime
+    # Ensure timestamp is datetime with UTC timezone
     if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    elif df["timestamp"].dt.tz is None:
+        # Convert timezone-naive to timezone-aware (UTC)
+        df["timestamp"] = df["timestamp"].dt.tz_localize('UTC')
 
     for interval, tf_df in multi_tf_data.items():
         if interval == "1m":
             continue
 
         try:
-            # Ensure timestamp is datetime
+            # Ensure timestamp is datetime with UTC timezone
             if not pd.api.types.is_datetime64_any_dtype(tf_df["timestamp"]):
-                tf_df["timestamp"] = pd.to_datetime(tf_df["timestamp"])
+                tf_df["timestamp"] = pd.to_datetime(tf_df["timestamp"], utc=True)
+            elif tf_df["timestamp"].dt.tz is None:
+                # Convert timezone-naive to timezone-aware (UTC)
+                tf_df["timestamp"] = tf_df["timestamp"].dt.tz_localize('UTC')
 
             # Merge using asof (forward-fill higher TF values)
             df = df.sort_values('timestamp')
