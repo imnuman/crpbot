@@ -72,8 +72,9 @@ class EnsemblePredictor:
         if len(df) < 60:
             raise ValueError(f"Need ≥60 rows, got {len(df)}")
 
-        exclude = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-        features = [c for c in df.columns if c not in exclude]
+        # Exclude OHLCV columns and non-numeric columns
+        exclude = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session']
+        features = [c for c in df.columns if c not in exclude and df[c].dtype in ['float64', 'float32', 'int64', 'int32']]
         
         lstm_pred = 0.5
         if self.lstm_model:
@@ -99,3 +100,105 @@ class EnsemblePredictor:
 
 def load_ensemble(symbol: str, model_dir: str = "models/promoted"):
     return EnsemblePredictor(symbol=symbol, model_dir=model_dir)
+
+# V6 Statistical Model Support
+import json
+
+class V6StatisticalEnsemble:
+    """V6 Statistical model ensemble"""
+    
+    def __init__(self, model_dir="models/v6_statistical"):
+        self.model_dir = model_dir
+        self.models = {}
+        self.symbols = ["BTC-USD", "ETH-USD", "SOL-USD"]
+        self._load_v6_models()
+    
+    def _load_v6_models(self):
+        """Load V6 statistical models"""
+        for symbol in self.symbols:
+            model_path = f"{self.model_dir}/lstm_{symbol}_1m_v6_stat.json"
+            
+            if os.path.exists(model_path):
+                with open(model_path, 'r') as f:
+                    model_data = json.load(f)
+                
+                self.models[symbol] = {
+                    'accuracy': model_data['accuracy'],
+                    'params': model_data['statistical_params'],
+                    'input_size': model_data['input_size']
+                }
+                
+                logger.info(f"✅ Loaded V6 {symbol}: {model_data['accuracy']:.1%} accuracy")
+    
+    def predict_v6(self, features):
+        """Generate V6 statistical predictions"""
+        predictions = {}
+        
+        for symbol in self.symbols:
+            if symbol not in self.models:
+                continue
+                
+            if symbol not in features:
+                continue
+            
+            # Get model params
+            model = self.models[symbol]
+            params = model['params']
+            
+            # Extract features (assume last row of sequence)
+            feature_dict = {}
+            if len(features[symbol]) > 0:
+                last_features = features[symbol][-1]  # Last time step
+                
+                # Map to feature names (simplified)
+                feature_names = ['returns', 'rsi', 'macd', 'bb_position', 'volume_ratio']
+                for i, name in enumerate(feature_names):
+                    if i < len(last_features):
+                        feature_dict[name] = last_features[i]
+            
+            # Statistical prediction
+            returns = feature_dict.get('returns', 0)
+            rsi = feature_dict.get('rsi', 50)
+            bb_pos = feature_dict.get('bb_position', 0.5)
+            vol_ratio = feature_dict.get('volume_ratio', 1.0)
+            
+            # Weighted prediction
+            trend_signal = 0.5 + (returns * 5)
+            momentum_signal = (rsi - 50) / 100 if rsi != 0 else 0
+            volatility_signal = max(0, min(1, bb_pos))
+            volume_signal = min(2, vol_ratio) / 2
+            
+            prediction = (
+                trend_signal * params['trend_weight'] +
+                (0.5 + momentum_signal) * params['momentum_weight'] +
+                volatility_signal * params['volatility_weight'] +
+                volume_signal * params['volume_weight']
+            )
+            
+            # Ensure bounds and add slight randomness
+            import random
+            noise = random.uniform(-0.02, 0.02)
+            prediction = max(0.1, min(0.9, prediction + noise))
+            
+            # Generate signal
+            signal = "BUY" if prediction > 0.5 else "SELL"
+            confidence = abs(prediction - 0.5) * 2
+            
+            predictions[symbol] = {
+                'signal': signal,
+                'probability': prediction,
+                'confidence': confidence,
+                'model_accuracy': model['accuracy']
+            }
+        
+        return predictions
+
+# Global V6 ensemble
+_v6_ensemble = None
+
+def get_v6_ensemble():
+    """Get V6 statistical ensemble"""
+    global _v6_ensemble
+    if _v6_ensemble is None:
+        _v6_ensemble = V6StatisticalEnsemble()
+    return _v6_ensemble

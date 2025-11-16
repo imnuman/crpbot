@@ -4,6 +4,7 @@ This is the production runtime that continuously scans coins and emits trading s
 when confidence thresholds are met and FTMO rules allow.
 """
 import argparse
+import asyncio
 import os
 import time
 from datetime import datetime
@@ -12,7 +13,8 @@ from loguru import logger
 
 from apps.runtime.ensemble import load_ensemble
 from apps.runtime.data_fetcher import get_data_fetcher
-from apps.trainer.features import engineer_features
+from apps.runtime.telegram_bot import init_bot, send_message
+from apps.runtime.runtime_features import engineer_runtime_features
 from apps.runtime.ftmo_rules import (
     check_daily_loss_limit,
     check_position_size,
@@ -79,6 +81,13 @@ class TradingRuntime:
             except Exception as e:
                 logger.warning(f"⚠️  Failed to load {symbol}: {e}")
 
+        # Initialize Telegram bot (will be started in main_async)
+        self.telegram_bot = init_bot(self.config)
+        if self.telegram_bot and self.telegram_bot.token:
+            logger.info("✅ Telegram bot initialized")
+        else:
+            logger.warning("⚠️  Telegram bot not configured")
+
     def classify_tier(self, confidence: float) -> str:
         """
         Classify signal tier based on confidence.
@@ -96,9 +105,9 @@ class TradingRuntime:
         else:
             return "low"
 
-    def generate_v5_signal(self) -> dict:
+    def generate_v6_signal(self) -> dict:
         """
-        Generate trading signal using V5 FIXED models.
+        Generate trading signal using V6 Statistical models.
         
         Returns:
             Dictionary containing signal information
@@ -106,7 +115,7 @@ class TradingRuntime:
         try:
             # Get live market data using data fetcher
             from apps.runtime.data_fetcher import get_data_fetcher
-            logger.info("Fetching live market data...")
+            logger.info("Fetching live market data for V6...")
             
             fetcher = get_data_fetcher()
             features = fetcher.get_live_features()
@@ -115,57 +124,131 @@ class TradingRuntime:
                 logger.warning("No live data available, skipping signal generation")
                 return None
             
-            # Get ensemble prediction using ensemble system
-            from apps.runtime.ensemble import get_ensemble
-            logger.info("Running V5 ensemble inference...")
+            # Get V6 statistical predictions
+            from apps.runtime.ensemble import get_v6_ensemble
+            logger.info("Running V6 statistical inference...")
             
-            ensemble = get_ensemble()
-            result = ensemble.get_ensemble_signal(features)
+            v6_ensemble = get_v6_ensemble()
+            predictions = v6_ensemble.predict_v6(features)
             
-            if result['signal'] == 'HOLD':
-                logger.info("Ensemble recommends HOLD, no signal generated")
+            if not predictions:
+                logger.info("No V6 predictions available")
                 return None
             
-            # Select primary symbol (highest confidence prediction)
+            # Select best prediction
             best_symbol = None
             best_confidence = 0.0
             
-            if 'predictions' in result:
-                for symbol, pred in result['predictions'].items():
-                    if pred['confidence'] > best_confidence:
-                        best_confidence = pred['confidence']
-                        best_symbol = symbol
+            for symbol, pred in predictions.items():
+                if pred['confidence'] > best_confidence:
+                    best_confidence = pred['confidence']
+                    best_symbol = symbol
             
-            if not best_symbol:
-                logger.warning("No confident predictions available")
+            if not best_symbol or best_confidence < 0.5:
+                logger.info("V6 predictions below confidence threshold")
                 return None
             
-            # Get current price (mock for now - would integrate with real price feed)
+            best_pred = predictions[best_symbol]
+            
+            # Get current price (mock for now)
             mock_prices = {"BTC-USD": 50000.0, "ETH-USD": 3000.0, "SOL-USD": 150.0}
             entry_price = mock_prices.get(best_symbol, 1000.0)
             
             # Format signal
-            direction = "long" if result['signal'] == 'BUY' else "short"
-            tier = self.classify_tier(result['confidence'])
+            direction = "long" if best_pred['signal'] == 'BUY' else "short"
+            tier = self.classify_tier(best_pred['confidence'])
             
             signal_data = {
                 "symbol": best_symbol,
-                "confidence": result['confidence'],
+                "confidence": best_pred['confidence'],
                 "tier": tier,
                 "direction": direction,
-                "lstm_prediction": result['predictions'][best_symbol]['probability'],
-                "transformer_prediction": 0.0,  # V5 only has LSTM
-                "rl_prediction": 0.0,  # V5 only has LSTM
+                "lstm_prediction": best_pred['probability'],
+                "transformer_prediction": 0.0,  # V6 statistical only
+                "rl_prediction": 0.0,  # V6 statistical only
                 "entry_price": entry_price,
-                "ensemble_result": result
+                "v6_predictions": predictions,
+                "model_type": "v6_statistical"
             }
             
-            logger.info(f"Generated V5 signal: {best_symbol} {direction.upper()} @ {result['confidence']:.1%}")
+            logger.info(f"Generated V6 signal: {best_symbol} {direction.upper()} @ {best_pred['confidence']:.1%}")
             return signal_data
             
         except Exception as e:
-            logger.error(f"V5 signal generation failed: {e}")
+            logger.error(f"V6 signal generation failed: {e}")
             return None
+
+    def generate_v5_signal(self) -> dict:
+        """Generate trading signal using V5 FIXED models.
+
+        Returns:
+            Dictionary containing signal information or None
+        """
+        # Scan all symbols and pick best prediction
+        best_signal = None
+        best_confidence = 0.0
+
+        for symbol in self.symbols:
+            if symbol not in self.ensembles:
+                continue
+
+            try:
+                # Fetch latest market data
+                df_raw = self.data_fetcher.fetch_latest_candles(symbol, num_candles=150)
+
+                if df_raw.empty or len(df_raw) < 100:
+                    logger.debug(f"Insufficient data for {symbol}: {len(df_raw)} candles")
+                    continue
+
+                # Engineer ALL features (including multi-TF) to match training
+                df_features = engineer_runtime_features(
+                    df=df_raw,
+                    symbol=symbol,
+                    data_fetcher=self.data_fetcher,
+                    include_multi_tf=True,
+                    include_coingecko=False  # Use placeholders for now
+                )
+
+                if df_features.empty or len(df_features) < 60:
+                    logger.debug(f"Feature engineering failed for {symbol}")
+                    continue
+
+                # Get V5 ensemble prediction
+                ensemble = self.ensembles[symbol]
+                prediction = ensemble.predict(df_features)
+
+                confidence = prediction['confidence']
+
+                # Track best prediction
+                if confidence > best_confidence:
+                    best_confidence = confidence
+                    best_signal = {
+                        "symbol": symbol,
+                        "confidence": confidence,
+                        "tier": self.classify_tier(confidence),
+                        "direction": prediction['direction'],
+                        "lstm_prediction": prediction['lstm_prediction'],
+                        "transformer_prediction": prediction.get('transformer_prediction', 0.5),
+                        "rl_prediction": prediction.get('rl_prediction', 0.5),
+                        "entry_price": float(df_raw['close'].iloc[-1])
+                    }
+
+                logger.debug(
+                    f"{symbol}: {prediction['direction']} @ {confidence:.1%} "
+                    f"(LSTM: {prediction['lstm_prediction']:.3f})"
+                )
+
+            except Exception as e:
+                logger.warning(f"Failed to generate signal for {symbol}: {e}")
+                continue
+
+        if best_signal:
+            logger.info(
+                f"✅ Best signal: {best_signal['symbol']} {best_signal['direction'].upper()} "
+                f"@ {best_signal['confidence']:.1%} [{best_signal['tier'].upper()}]"
+            )
+
+        return best_signal
 
     def check_ftmo_rules(self) -> bool:
         """
@@ -256,14 +339,44 @@ class TradingRuntime:
         except Exception as e:
             logger.error(f"❌ Failed to record risk snapshot: {e}")
 
+    async def send_telegram_notification(self, signal_data: dict) -> None:
+        """Send Telegram notification for signal.
+
+        Args:
+            signal_data: Signal information dictionary
+        """
+        if not self.telegram_bot or not self.telegram_bot.token:
+            return
+
+        try:
+            # Format signal message
+            message = (
+                f"🚨 **TRADING SIGNAL** 🚨\n\n"
+                f"**Symbol:** {signal_data['symbol']}\n"
+                f"**Direction:** {signal_data['direction'].upper()}\n"
+                f"**Confidence:** {signal_data['confidence']:.2%}\n"
+                f"**Tier:** {signal_data['tier'].upper()}\n"
+                f"**Entry Price:** ${signal_data.get('entry_price', 0):.2f}\n\n"
+                f"**Model Predictions:**\n"
+                f"• LSTM: {signal_data.get('lstm_prediction', 0):.3f}\n"
+                f"• Transformer: {signal_data.get('transformer_prediction', 0):.3f}\n"
+                f"• RL: {signal_data.get('rl_prediction', 0):.3f}\n\n"
+                f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+            await send_message(message, mode=self.runtime_mode)
+            logger.info("✅ Telegram notification sent")
+        except Exception as e:
+            logger.error(f"❌ Failed to send Telegram notification: {e}")
+
     def loop_once(self) -> None:
         """Execute one iteration of the runtime loop."""
         if self.kill_switch:
             logger.warning("🛑 Kill-switch is ACTIVE - no signals will be emitted")
             return
 
-        # Generate signal using V5 FIXED models
-        signal_data = self.generate_v5_signal()
+        # Generate signal using V6 Statistical models
+        signal_data = self.generate_v6_signal()
         
         if signal_data is None:
             logger.info("No signal generated this cycle")
@@ -304,7 +417,16 @@ class TradingRuntime:
         # Update rate limiter
         self.rate_limiter.record_signal(signal_data["tier"])
 
-        # TODO: Send to Telegram bot
+        # Send Telegram notification (run in background thread to avoid blocking)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self.send_telegram_notification(signal_data))
+            else:
+                asyncio.run(self.send_telegram_notification(signal_data))
+        except Exception as e:
+            logger.warning(f"Could not send Telegram notification: {e}")
+
         # TODO: Send to MT5 bridge
 
     def run(self, iterations: int = 10, sleep_seconds: int = 5) -> None:
@@ -347,7 +469,8 @@ class TradingRuntime:
         logger.info("👋 Trading runtime exiting")
 
 
-if __name__ == "__main__":
+async def main_async():
+    """Async main entry point for runtime with Telegram bot support."""
     parser = argparse.ArgumentParser(description="CRPBot trading runtime")
     parser.add_argument(
         "--mode",
@@ -381,4 +504,27 @@ if __name__ == "__main__":
         os.environ["LOG_LEVEL"] = args.log_level
 
     runtime = TradingRuntime()
-    runtime.run(iterations=args.iterations, sleep_seconds=args.sleep_seconds)
+
+    # Start Telegram bot
+    if runtime.telegram_bot and runtime.telegram_bot.token:
+        await runtime.telegram_bot.start()
+
+        # Send startup notification
+        await send_message(
+            f"🚀 **Trading Bot Started**\n\n"
+            f"Mode: {normalized_mode.upper()}\n"
+            f"Confidence Threshold: {runtime.confidence_threshold:.0%}\n"
+            f"Kill-switch: {'🛑 ACTIVE' if runtime.kill_switch else '✅ INACTIVE'}",
+            mode=normalized_mode
+        )
+
+    try:
+        runtime.run(iterations=args.iterations, sleep_seconds=args.sleep_seconds)
+    finally:
+        # Stop Telegram bot on exit
+        if runtime.telegram_bot:
+            await runtime.telegram_bot.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main_async())
