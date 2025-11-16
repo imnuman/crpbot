@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from libs.config.config import Settings
 from libs.db.models import Signal, create_tables, get_session
+from libs.utils.timezone import now_est
 
 # Import data fetcher for live prices
 try:
@@ -43,7 +44,7 @@ def api_status():
     """System status endpoint."""
     return jsonify({
         'status': 'live',
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': now_est().isoformat(),
         'mode': config.runtime_mode,
         'confidence_threshold': config.confidence_threshold,
         'models': {
@@ -85,7 +86,7 @@ def api_recent_signals(hours=24):
     """Get recent signals."""
     session = get_session(config.db_url)
     try:
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = now_est() - timedelta(hours=hours)
         signals = session.query(Signal).filter(
             Signal.timestamp >= since
         ).order_by(desc(Signal.timestamp)).limit(100).all()
@@ -109,7 +110,7 @@ def api_signal_stats(hours=24):
     """Get signal statistics."""
     session = get_session(config.db_url)
     try:
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = now_est() - timedelta(hours=hours)
         signals = session.query(Signal).filter(
             Signal.timestamp >= since
         ).all()
@@ -156,7 +157,7 @@ def api_signal_stats(hours=24):
 def api_latest_features():
     """Get latest feature values (placeholder - would need live data)."""
     return jsonify({
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': now_est().isoformat(),
         'symbols': {
             'BTC-USD': {
                 'price': 95000,
@@ -212,7 +213,7 @@ def api_live_predictions():
                 }
             else:
                 latest_signals[symbol] = {
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': now_est().isoformat(),
                     'direction': 'neutral',
                     'confidence': 0.0,
                     'tier': 'low',
@@ -245,7 +246,7 @@ def api_live_market():
                             'low': float(latest['low']),
                             'volume': float(latest['volume']),
                             'change_pct': ((float(latest['close']) - float(latest['open'])) / float(latest['open'])) * 100,
-                            'timestamp': datetime.utcnow().isoformat()
+                            'timestamp': now_est().isoformat()
                         }
                 except Exception as e:
                     # Fallback placeholder data
@@ -256,7 +257,7 @@ def api_live_market():
                         'low': 0.0,
                         'volume': 0.0,
                         'change_pct': 0.0,
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': now_est().isoformat(),
                         'error': str(e)
                     }
         else:
@@ -280,7 +281,7 @@ def api_performance(hours=24):
         from datetime import timedelta
         from sqlalchemy import and_
 
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = now_est() - timedelta(hours=hours)
 
         # Get all evaluated signals in time period
         signals = session.query(Signal).filter(
