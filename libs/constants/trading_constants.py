@@ -14,7 +14,7 @@ INITIAL_BALANCE = 10000.0  # Default account balance
 # ============================================================================
 # CONFIDENCE THRESHOLDS & TIERS
 # ============================================================================
-CONFIDENCE_THRESHOLD = 0.75  # Default confidence threshold for signals
+CONFIDENCE_THRESHOLD = 0.65  # Default confidence threshold for signals
 CONFIDENCE_THRESHOLD_DEFAULT = 0.50  # Conservative default for evaluation
 CONFIDENCE_THRESHOLD_MIN = 0.50  # Minimum allowed threshold
 
