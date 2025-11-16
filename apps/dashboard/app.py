@@ -272,6 +272,108 @@ def api_live_market():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/performance/<int:hours>')
+def api_performance(hours=24):
+    """Get win/loss performance statistics."""
+    session = get_session(config.db_url)
+    try:
+        from datetime import timedelta
+        from sqlalchemy import and_
+
+        since = datetime.utcnow() - timedelta(hours=hours)
+
+        # Get all evaluated signals in time period
+        signals = session.query(Signal).filter(
+            and_(
+                Signal.timestamp >= since,
+                Signal.result.in_(['win', 'loss'])
+            )
+        ).all()
+
+        if not signals:
+            return jsonify({
+                'total_signals': 0,
+                'wins': 0,
+                'losses': 0,
+                'win_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_pnl_per_trade': 0.0,
+                'by_symbol': {},
+                'by_tier': {},
+                'by_direction': {}
+            })
+
+        # Calculate overall stats
+        wins = sum(1 for s in signals if s.result == 'win')
+        losses = sum(1 for s in signals if s.result == 'loss')
+        total = wins + losses
+        win_rate = (wins / total * 100) if total > 0 else 0
+        total_pnl = sum(s.pnl or 0 for s in signals)
+        avg_pnl = total_pnl / total if total > 0 else 0
+
+        # Break down by symbol
+        by_symbol = {}
+        for s in signals:
+            if s.symbol not in by_symbol:
+                by_symbol[s.symbol] = {'wins': 0, 'losses': 0, 'pnl': 0, 'win_rate': 0}
+            if s.result == 'win':
+                by_symbol[s.symbol]['wins'] += 1
+            else:
+                by_symbol[s.symbol]['losses'] += 1
+            by_symbol[s.symbol]['pnl'] += (s.pnl or 0)
+
+        # Calculate win rates
+        for symbol_data in by_symbol.values():
+            total_sym = symbol_data['wins'] + symbol_data['losses']
+            symbol_data['win_rate'] = (symbol_data['wins'] / total_sym * 100) if total_sym > 0 else 0
+
+        # Break down by tier
+        by_tier = {}
+        for s in signals:
+            if s.tier not in by_tier:
+                by_tier[s.tier] = {'wins': 0, 'losses': 0, 'pnl': 0, 'win_rate': 0}
+            if s.result == 'win':
+                by_tier[s.tier]['wins'] += 1
+            else:
+                by_tier[s.tier]['losses'] += 1
+            by_tier[s.tier]['pnl'] += (s.pnl or 0)
+
+        # Calculate win rates
+        for tier_data in by_tier.values():
+            total_tier = tier_data['wins'] + tier_data['losses']
+            tier_data['win_rate'] = (tier_data['wins'] / total_tier * 100) if total_tier > 0 else 0
+
+        # Break down by direction
+        by_direction = {}
+        for s in signals:
+            if s.direction not in by_direction:
+                by_direction[s.direction] = {'wins': 0, 'losses': 0, 'pnl': 0, 'win_rate': 0}
+            if s.result == 'win':
+                by_direction[s.direction]['wins'] += 1
+            else:
+                by_direction[s.direction]['losses'] += 1
+            by_direction[s.direction]['pnl'] += (s.pnl or 0)
+
+        # Calculate win rates
+        for dir_data in by_direction.values():
+            total_dir = dir_data['wins'] + dir_data['losses']
+            dir_data['win_rate'] = (dir_data['wins'] / total_dir * 100) if total_dir > 0 else 0
+
+        return jsonify({
+            'total_signals': total,
+            'wins': wins,
+            'losses': losses,
+            'win_rate': win_rate,
+            'total_pnl': total_pnl,
+            'avg_pnl_per_trade': avg_pnl,
+            'by_symbol': by_symbol,
+            'by_tier': by_tier,
+            'by_direction': by_direction
+        })
+    finally:
+        session.close()
+
+
 if __name__ == '__main__':
     print("=" * 80)
     print("🚀 V6 Enhanced Model Dashboard")
@@ -287,6 +389,8 @@ if __name__ == '__main__':
     print("   /api/signals/stats/24      - Signal statistics (24h)")
     print("   /api/features/latest       - Latest feature values")
     print("   /api/predictions/live      - Live predictions")
+    print("   /api/market/live           - Live market prices")
+    print("   /api/performance/24        - Win/loss performance (24h)")
     print("\n💡 Press Ctrl+C to stop\n")
 
     app.run(host='0.0.0.0', port=5000, debug=False)
