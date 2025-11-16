@@ -38,6 +38,8 @@ dependencies = [
     "confluent-kafka>=2.12.2",
     "coinbase-advanced-py>=1.8.2",
     "ccxt>=4.5.19",
+    "flask>=3.1.2",
+    "flask-cors>=6.0.1",
 ]
 
 [project.optional-dependencies]
