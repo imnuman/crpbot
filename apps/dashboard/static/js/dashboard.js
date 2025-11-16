@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchAllData();
 
     // Auto-refresh every 5 seconds
-    setInterval(fetchAllData, 5000);
+    setInterval(fetchAllData, 1000);
 });
 
 // Initialize prediction charts
