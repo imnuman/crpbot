@@ -232,8 +232,10 @@ class EnsemblePredictor:
                     # Check if V6 Enhanced FNN (3-class output)
                     if output.shape[-1] == 3:
                         # V6 Enhanced FNN: 3 classes (Down, Neutral, Up)
-                        # Apply softmax to get probabilities
-                        probs = torch.softmax(output, dim=-1).squeeze()
+                        # Apply temperature-scaled softmax to get more realistic probabilities
+                        # Temperature > 1 makes distribution smoother, < 1 makes it sharper
+                        temperature = 2.5  # Higher temperature = softer probabilities
+                        probs = torch.softmax(output / temperature, dim=-1).squeeze()
                         down_prob = probs[0].item()
                         neutral_prob = probs[1].item()
                         up_prob = probs[2].item()
@@ -242,7 +244,7 @@ class EnsemblePredictor:
                         # or: up_prob > down_prob for long signal
                         lstm_pred = up_prob  # Use up probability as confidence
 
-                        logger.debug(f"V6 Enhanced FNN output: Down={down_prob:.3f}, Neutral={neutral_prob:.3f}, Up={up_prob:.3f}")
+                        logger.debug(f"V6 Enhanced FNN output (T={temperature}): Down={down_prob:.3f}, Neutral={neutral_prob:.3f}, Up={up_prob:.3f}")
                     else:
                         # Binary output (V5/V6 LSTM)
                         lstm_pred = torch.sigmoid(output).item()
