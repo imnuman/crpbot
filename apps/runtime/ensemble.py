@@ -238,7 +238,8 @@ class EnsemblePredictor:
 
                         # Clamp logits to prevent extreme values
                         # This forces more balanced probabilities
-                        clamped_logits = torch.clamp(output, min=-5.0, max=5.0)
+                        # ±2.0 with T=2.0 gives ~79% max confidence (instead of 99%)
+                        clamped_logits = torch.clamp(output, min=-2.0, max=2.0)
                         temperature = 2.0
                         probs = torch.softmax(clamped_logits / temperature, dim=-1).squeeze()
                         down_prob = probs[0].item()
@@ -249,7 +250,7 @@ class EnsemblePredictor:
                         # or: up_prob > down_prob for long signal
                         lstm_pred = up_prob  # Use up probability as confidence
 
-                        logger.debug(f"V6 Enhanced FNN output (clamped ±5, T={temperature}): Down={down_prob:.3f}, Neutral={neutral_prob:.3f}, Up={up_prob:.3f}")
+                        logger.debug(f"V6 Enhanced FNN output (clamped ±2, T={temperature}): Down={down_prob:.3f}, Neutral={neutral_prob:.3f}, Up={up_prob:.3f}")
                     else:
                         # Binary output (V5/V6 LSTM)
                         lstm_pred = torch.sigmoid(output).item()
