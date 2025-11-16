@@ -26,9 +26,10 @@ class EnsemblePredictor:
 
     def _load_models(self):
         """Load LSTM model from promoted directory."""
-        # Prioritize V6 models, fallback to V5 FIXED models
+        # Prioritize V6 enhanced models, then V6 real, fallback to V5 FIXED models
         patterns = [
-            f"lstm_{self.symbol.replace('-', '-')}_*_v6_real.pt",  # V6 models (highest priority)
+            f"lstm_{self.symbol}_v6_enhanced.pt",                  # V6 enhanced models (HIGHEST priority)
+            f"lstm_{self.symbol.replace('-', '-')}_*_v6_real.pt",  # V6 real models
             f"lstm_{self.symbol.replace('-', '_')}_*_FIXED.pt",    # V5 FIXED models
             f"lstm_{self.symbol.replace('-', '-')}_*_FIXED.pt",    # V5 FIXED models (alt format)
         ]
