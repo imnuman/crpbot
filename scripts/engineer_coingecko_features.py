@@ -114,7 +114,7 @@ def engineer_onchain_features(df: pd.DataFrame) -> pd.DataFrame:
         df['hash_rate_change_pct'] = df['hash_rate'].pct_change() * 100
 
     # Drop NaN from rolling windows
-    df = df.fillna(method='bfill').fillna(0)
+    df = df.bfill().fillna(0)
 
     logger.info(f"✅ Engineered {len(df.columns)} on-chain features")
     return df
@@ -165,7 +165,7 @@ def engineer_hourly_features(df: pd.DataFrame) -> pd.DataFrame:
     df['price_24h_change_pct'] = df['close'].pct_change(24) * 100
 
     # Drop NaN
-    df = df.fillna(method='bfill').fillna(0)
+    df = df.bfill().fillna(0)
 
     logger.info(f"✅ Engineered {len(df.columns)} hourly features")
     return df
@@ -226,7 +226,7 @@ def engineer_daily_features(df: pd.DataFrame) -> pd.DataFrame:
         df['reddit_change_pct'] = df['reddit_subscribers'].pct_change() * 100
 
     # Drop NaN
-    df = df.fillna(method='bfill').fillna(0)
+    df = df.bfill().fillna(0)
 
     logger.info(f"✅ Engineered {len(df.columns)} daily features")
     return df

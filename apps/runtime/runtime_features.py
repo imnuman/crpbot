@@ -88,7 +88,7 @@ def engineer_runtime_features(
 
     # Step 5: Final cleanup - fill any remaining NaN values
     numeric_cols = df_features.select_dtypes(include=['float64', 'float32', 'int64', 'int32']).columns
-    df_features[numeric_cols] = df_features[numeric_cols].fillna(method='ffill').fillna(method='bfill').fillna(0)
+    df_features[numeric_cols] = df_features[numeric_cols].ffill().bfill().fillna(0)
 
     logger.info(f"Total features engineered: {len(df_features.columns)}")
     logger.debug(f"Runtime columns: {sorted(df_features.columns.tolist())}")
