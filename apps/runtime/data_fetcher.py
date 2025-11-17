@@ -39,12 +39,15 @@ class MarketDataFetcher:
         Returns:
             DataFrame with ['timestamp', 'open', 'high', 'low', 'close', 'volume']
         """
-        # Check cache
+        # Check cache (but only if it has enough rows)
         if symbol in self.cache and symbol in self.last_fetch:
             age = datetime.now() - self.last_fetch[symbol]
-            if age < self.cache_duration:
-                logger.debug(f"Using cached data for {symbol} (age: {age.total_seconds():.1f}s)")
-                return self.cache[symbol].copy()
+            cached_rows = len(self.cache[symbol])
+            if age < self.cache_duration and cached_rows >= num_candles:
+                logger.debug(f"Using cached data for {symbol} (age: {age.total_seconds():.1f}s, rows: {cached_rows})")
+                return self.cache[symbol].iloc[:num_candles].copy()
+            elif age < self.cache_duration and cached_rows < num_candles:
+                logger.debug(f"Cache has insufficient data for {symbol} ({cached_rows} < {num_candles}), fetching fresh data")
 
         if not self.client:
             logger.error("Coinbase client not initialized")
