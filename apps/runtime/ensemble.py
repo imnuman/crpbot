@@ -5,6 +5,7 @@ Loads V5 models and generates real-time predictions from live market data.
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 from loguru import logger
 
@@ -123,6 +124,27 @@ class EnsemblePredictor:
             logger.info(f"Using V5 architecture: 3-layer non-bidirectional, hidden_size=128")
 
         self.lstm_model.load_state_dict(checkpoint['model_state_dict'])
+
+        # Store V6 Fixed parameters if present
+        self.temperature = checkpoint.get("temperature", 1.0)
+        self.logit_clip = checkpoint.get("logit_clip", 15.0)
+        self.model_version = checkpoint.get("version", "unknown")
+        if self.model_version == "v6_fixed":
+            logger.info(f"V6 Fixed model detected: T={self.temperature:.1f}, clip={self.logit_clip}")
+        logger.info(f"DEBUG: Loaded checkpoint version: {self.model_version!r}, temperature: {self.temperature}, logit_clip: {self.logit_clip}")
+        # Load StandardScaler for V6 Fixed models
+        if self.model_version == 'v6_fixed':
+            import pickle
+            scaler_file = self.model_dir / f'scaler_{self.symbol}_v6_fixed.pkl'
+            if scaler_file.exists():
+                with open(scaler_file, 'rb') as f:
+                    self.scaler = pickle.load(f)
+                logger.info(f'Loaded StandardScaler for V6 Fixed model')
+            else:
+                logger.warning(f'Scaler file not found: {scaler_file}')
+                self.scaler = None
+        else:
+            self.scaler = None
         self.lstm_model.to(self.device)
         self.lstm_model.eval()
 
@@ -225,7 +247,18 @@ class EnsemblePredictor:
         lstm_pred = 0.5
         if self.lstm_model:
             try:
-                seq = torch.FloatTensor(df[features].iloc[-60:].values).unsqueeze(0).to(self.device)
+                # Extract features
+                feature_values = df[features].iloc[-60:].values
+                # Handle NaN/inf values
+                feature_values = np.nan_to_num(feature_values, nan=0.0, posinf=1e6, neginf=-1e6)
+
+                # Apply StandardScaler normalization for V6 Fixed models
+                if hasattr(self, "scaler") and self.scaler is not None:
+                    feature_values = self.scaler.transform(feature_values)
+                    logger.debug(f"Applied StandardScaler normalization for V6 Fixed model")
+
+                # Convert to tensor
+                seq = torch.FloatTensor(feature_values).unsqueeze(0).to(self.device)
                 with torch.no_grad():
                     output = self.lstm_model(seq)
 
@@ -236,8 +269,16 @@ class EnsemblePredictor:
                         raw_logits = output.squeeze()
                         logger.debug(f"Raw logits: Down={raw_logits[0].item():.3f}, Neutral={raw_logits[1].item():.3f}, Up={raw_logits[2].item():.3f}")
 
-                        # Apply softmax directly to raw logits (no clamping, no temperature)
-                        # This preserves the model's confidence information
+                        # Apply V6 Fixed temperature scaling if present
+                        if hasattr(self, "model_version") and self.model_version == "v6_fixed":
+                            # Clamp logits to prevent overflow
+                            output = torch.clamp(output, -self.logit_clip, self.logit_clip)
+                            # Apply temperature scaling
+                            output = output / self.temperature
+                            clamped_logits = output.squeeze()
+                            logger.debug(f"Clamped logits: Down={clamped_logits[0].item():.3f}, Neutral={clamped_logits[1].item():.3f}, Up={clamped_logits[2].item():.3f}")
+                            logger.debug(f"Applied temperature scaling: T={self.temperature:.1f}")
+
                         probs = torch.softmax(output, dim=-1).squeeze()
                         down_prob = probs[0].item()
                         neutral_prob = probs[1].item()

@@ -19,11 +19,16 @@ from libs.config.config import Settings
 from libs.db.models import Signal, create_tables, get_session
 from libs.utils.timezone import now_est
 
-# Import data fetcher for live prices
+# Import data fetcher and ensemble for live prices and predictions
 try:
-    from apps.runtime.data_fetcher import fetch_latest_candles
-except ImportError:
-    fetch_latest_candles = None
+    from apps.runtime.data_fetcher import get_data_fetcher
+    from apps.runtime.ensemble import load_ensemble
+    from apps.trainer.amazon_q_features import engineer_amazon_q_features
+except ImportError as e:
+    get_data_fetcher = None
+    load_ensemble = None
+    engineer_amazon_q_features = None
+    print(f"Import warning: {e}")
 
 app = Flask(__name__)
 CORS(app)
@@ -31,6 +36,17 @@ CORS(app)
 # Global config
 config = Settings()
 create_tables(config.db_url)
+
+# Global ensemble predictors cache (loaded once per symbol)
+_ensemble_cache = {}
+_data_fetcher = None
+
+def get_fetcher():
+    """Get or create MarketDataFetcher instance."""
+    global _data_fetcher
+    if _data_fetcher is None and get_data_fetcher:
+        _data_fetcher = get_data_fetcher(config)
+    return _data_fetcher
 
 
 @app.route('/')
@@ -192,39 +208,88 @@ def api_latest_features():
 
 @app.route('/api/predictions/live')
 def api_live_predictions():
-    """Get latest predictions (from most recent signal or placeholder)."""
-    session = get_session(config.db_url)
-    try:
-        latest_signals = {}
-        for symbol in ['BTC-USD', 'ETH-USD', 'SOL-USD']:
-            signal = session.query(Signal).filter(
-                Signal.symbol == symbol
-            ).order_by(desc(Signal.timestamp)).first()
+    """Get real-time predictions from live market data."""
+    global _ensemble_cache
 
-            if signal:
-                latest_signals[symbol] = {
-                    'timestamp': signal.timestamp.isoformat(),
-                    'direction': signal.direction,
-                    'confidence': signal.confidence,
-                    'tier': signal.tier,
-                    'down_prob': 1.0 - signal.ensemble_prediction if signal.direction == 'short' else 0.0,
-                    'neutral_prob': 0.0,  # Placeholder
-                    'up_prob': signal.ensemble_prediction if signal.direction == 'long' else 0.0
-                }
+    fetcher = get_fetcher()
+    if not fetcher or not load_ensemble or not engineer_amazon_q_features:
+        # Fallback to placeholder data if imports failed
+        return jsonify({
+            'BTC-USD': {'timestamp': now_est().isoformat(), 'direction': 'neutral', 'confidence': 0.0, 'tier': 'low', 'down_prob': 0.33, 'neutral_prob': 0.34, 'up_prob': 0.33},
+            'ETH-USD': {'timestamp': now_est().isoformat(), 'direction': 'neutral', 'confidence': 0.0, 'tier': 'low', 'down_prob': 0.33, 'neutral_prob': 0.34, 'up_prob': 0.33},
+            'SOL-USD': {'timestamp': now_est().isoformat(), 'direction': 'neutral', 'confidence': 0.0, 'tier': 'low', 'down_prob': 0.33, 'neutral_prob': 0.34, 'up_prob': 0.33}
+        })
+
+    latest_predictions = {}
+
+    for symbol in ['BTC-USD', 'ETH-USD', 'SOL-USD']:
+        try:
+            # Load ensemble predictor (cached)
+            if symbol not in _ensemble_cache:
+                _ensemble_cache[symbol] = load_ensemble(symbol)
+
+            predictor = _ensemble_cache[symbol]
+
+            # Fetch latest candles (100 for transformer, 60 for LSTM - we need at least 100)
+            df = fetcher.fetch_latest_candles(symbol, num_candles=120)
+
+            if len(df) < 60:
+                raise ValueError(f"Not enough data: {len(df)} rows")
+
+            # Engineer Amazon Q features
+            df = engineer_amazon_q_features(df)
+
+            # Generate prediction
+            result = predictor.predict(df)
+
+            # Extract probabilities (for V6 Enhanced FNN 3-class output)
+            # The ensemble.py returns lstm_prediction which is the up_prob for V6 Enhanced
+            confidence = result['confidence']
+            direction = result['direction']
+
+            # Calculate tier based on confidence
+            if confidence >= 0.75:
+                tier = 'high'
+            elif confidence >= 0.65:
+                tier = 'medium'
             else:
-                latest_signals[symbol] = {
-                    'timestamp': now_est().isoformat(),
-                    'direction': 'neutral',
-                    'confidence': 0.0,
-                    'tier': 'low',
-                    'down_prob': 0.33,
-                    'neutral_prob': 0.34,
-                    'up_prob': 0.33
-                }
+                tier = 'low'
 
-        return jsonify(latest_signals)
-    finally:
-        session.close()
+            # For V6 Enhanced FNN, we need to reconstruct the 3-class probabilities
+            # Since we have binary output, we'll approximate:
+            if direction == 'long':
+                up_prob = confidence
+                down_prob = 1.0 - confidence
+                neutral_prob = 0.0
+            else:
+                down_prob = confidence
+                up_prob = 1.0 - confidence
+                neutral_prob = 0.0
+
+            latest_predictions[symbol] = {
+                'timestamp': now_est().isoformat(),
+                'direction': direction,
+                'confidence': confidence,
+                'tier': tier,
+                'down_prob': down_prob,
+                'neutral_prob': neutral_prob,
+                'up_prob': up_prob
+            }
+
+        except Exception as e:
+            # Fallback to placeholder on error
+            latest_predictions[symbol] = {
+                'timestamp': now_est().isoformat(),
+                'direction': 'neutral',
+                'confidence': 0.0,
+                'tier': 'low',
+                'down_prob': 0.33,
+                'neutral_prob': 0.34,
+                'up_prob': 0.33,
+                'error': str(e)
+            }
+
+    return jsonify(latest_predictions)
 
 
 @app.route('/api/market/live')
@@ -233,10 +298,11 @@ def api_live_market():
     try:
         market_data = {}
 
-        if fetch_latest_candles:
+        fetcher = get_fetcher()
+        if fetcher:
             for symbol in ['BTC-USD', 'ETH-USD', 'SOL-USD']:
                 try:
-                    df = fetch_latest_candles(symbol, limit=1)
+                    df = fetcher.fetch_latest_candles(symbol, num_candles=1)
                     if not df.empty:
                         latest = df.iloc[-1]
                         market_data[symbol] = {

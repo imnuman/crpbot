@@ -197,6 +197,20 @@ async function fetchLivePredictions() {
 
         // Update prediction info
         updatePredictionInfo(symbolCode, pred);
+
+        // Update confidence display under market price
+        const confEl = document.getElementById(`conf${symbolCode}`);
+        if (confEl) {
+            confEl.textContent = `Confidence: ${(pred.confidence * 100).toFixed(1)}%`;
+            // Color-code based on tier
+            if (pred.tier === 'high') {
+                confEl.style.color = '#10b981'; // Green
+            } else if (pred.tier === 'medium') {
+                confEl.style.color = '#f59e0b'; // Orange
+            } else {
+                confEl.style.color = '#6b7280'; // Gray
+            }
+        }
     });
 }
 
