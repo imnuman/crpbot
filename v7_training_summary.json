@@ -1,0 +1,44 @@
+{
+  "version": "v7_enhanced_fixed",
+  "training_date": "2025-11-16T20:00:09.928892",
+  "models": [
+    {
+      "symbol": "BTC-USD",
+      "rf_accuracy": 0.7143859649122807,
+      "nn_accuracy": 0.7108772397041321,
+      "confidence_stats": {
+        "mean": 0.6050431728363037,
+        "std": 0.10472999513149261,
+        "min": 0.3500450849533081,
+        "max": 0.9158449769020081
+      },
+      "filename": "lstm_BTC-USD_v7_enhanced.pt"
+    },
+    {
+      "symbol": "ETH-USD",
+      "rf_accuracy": 0.6891228070175439,
+      "nn_accuracy": 0.698245644569397,
+      "confidence_stats": {
+        "mean": 0.602526068687439,
+        "std": 0.09295053035020828,
+        "min": 0.3638485372066498,
+        "max": 0.8986017107963562
+      },
+      "filename": "lstm_ETH-USD_v7_enhanced.pt"
+    },
+    {
+      "symbol": "SOL-USD",
+      "rf_accuracy": 0.7094736842105264,
+      "nn_accuracy": 0.6968421339988708,
+      "confidence_stats": {
+        "mean": 0.5998194217681885,
+        "std": 0.09463389962911606,
+        "min": 0.33577704429626465,
+        "max": 0.8922461271286011
+      },
+      "filename": "lstm_SOL-USD_v7_enhanced.pt"
+    }
+  ],
+  "average_accuracy": 0.7019883394241333,
+  "average_confidence": 0.602462887763977
+}

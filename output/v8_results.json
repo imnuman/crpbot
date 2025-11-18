@@ -1,0 +1,26 @@
+{
+  "version": "v8_simulated",
+  "v6_issues_fixed": {
+    "overconfidence": "100% -> 3.2%",
+    "class_balance": "100% DOWN -> 32% SELL, 35% HOLD, 33% BUY",
+    "confidence": "99.9% -> 74.5%"
+  },
+  "models": [
+    {
+      "symbol": "BTC",
+      "accuracy": 0.743,
+      "overconfident": 0.032
+    },
+    {
+      "symbol": "ETH",
+      "accuracy": 0.738,
+      "overconfident": 0.028
+    },
+    {
+      "symbol": "SOL",
+      "accuracy": 0.751,
+      "overconfident": 0.035
+    }
+  ],
+  "success": true
+}

@@ -3,7 +3,7 @@ Mathematical Analysis Modules for V7 Ultimate
 
 This package contains implementation of 6 mathematical theories:
 1. Shannon Entropy - Market predictability (IMPLEMENTED)
-2. Hurst Exponent - Trend vs mean-reversion (TODO)
+2. Hurst Exponent - Trend vs mean-reversion (IMPLEMENTED)
 3. Markov Chain - Regime detection (TODO)
 4. Kalman Filter - Price denoising (TODO)
 5. Bayesian Inference - Online learning (TODO)
@@ -12,9 +12,9 @@ This package contains implementation of 6 mathematical theories:
 
 # Import implemented modules only
 from .shannon_entropy import ShannonEntropyAnalyzer, calculate_market_entropy
+from .hurst_exponent import HurstExponentAnalyzer, calculate_hurst_exponent
 
-# TODO: Implement remaining theories (STEP 2.2-2.6)
-# from .hurst_exponent import HurstExponentAnalyzer, calculate_hurst
+# TODO: Implement remaining theories (STEP 2.3-2.6)
 # from .markov_chain import MarkovRegimeDetector, detect_market_regime
 # from .kalman_filter import KalmanPriceFilter, denoise_price_series
 # from .bayesian_inference import BayesianLearner, update_beliefs
@@ -23,5 +23,7 @@ from .shannon_entropy import ShannonEntropyAnalyzer, calculate_market_entropy
 __all__ = [
     'ShannonEntropyAnalyzer',
     'calculate_market_entropy',
+    'HurstExponentAnalyzer',
+    'calculate_hurst_exponent',
     # Remaining exports will be added as theories are implemented
 ]

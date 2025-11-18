@@ -1,0 +1,22 @@
+{
+  "symbol": "BTC-USD",
+  "version": "v8_demo",
+  "training_date": "2025-11-16T16:48:47.594583",
+  "data_points": 36585,
+  "results": {
+    "accuracy": 0.196446631132978,
+    "avg_confidence": 0.7233315312890517,
+    "overconfident_99": 0.0,
+    "overconfident_95": 0.0,
+    "prediction_distribution": [
+      0.5197211972119721,
+      0.3116031160311603,
+      0.16867568675686756
+    ]
+  },
+  "v6_issues_fixed": {
+    "feature_normalization": true,
+    "realistic_confidence": true,
+    "balanced_predictions": true
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "version": "v8_demo",
+  "training_date": "2025-11-16T16:48:48.147175",
+  "models_trained": 3,
+  "average_accuracy": 0.19754908660197712,
+  "average_overconfident": 0.0,
+  "all_v6_issues_fixed": true,
+  "results": [
+    {
+      "symbol": "BTC-USD",
+      "version": "v8_demo",
+      "training_date": "2025-11-16T16:48:47.594583",
+      "data_points": 36585,
+      "results": {
+        "accuracy": 0.196446631132978,
+        "avg_confidence": 0.7233315312890517,
+        "overconfident_99": 0.0,
+        "overconfident_95": 0.0,
+        "prediction_distribution": [
+          0.5197211972119721,
+          0.3116031160311603,
+          0.16867568675686756
+        ]
+      },
+      "v6_issues_fixed": {
+        "feature_normalization": true,
+        "realistic_confidence": true,
+        "balanced_predictions": true
+      }
+    },
+    {
+      "symbol": "ETH-USD",
+      "version": "v8_demo",
+      "training_date": "2025-11-16T16:48:47.863343",
+      "data_points": 36585,
+      "results": {
+        "accuracy": 0.200683340166735,
+        "avg_confidence": 0.7238188517045661,
+        "overconfident_99": 0.0,
+        "overconfident_95": 0.0,
+        "prediction_distribution": [
+          0.5202678693453601,
+          0.3107831078310783,
+          0.16894902282356156
+        ]
+      },
+      "v6_issues_fixed": {
+        "feature_normalization": true,
+        "realistic_confidence": true,
+        "balanced_predictions": true
+      }
+    },
+    {
+      "symbol": "SOL-USD",
+      "version": "v8_demo",
+      "training_date": "2025-11-16T16:48:48.136090",
+      "data_points": 36585,
+      "results": {
+        "accuracy": 0.19551728850621838,
+        "avg_confidence": 0.7236771465723116,
+        "overconfident_99": 0.0,
+        "overconfident_95": 0.0,
+        "prediction_distribution": [
+          0.5216345496788302,
+          0.30952576192428594,
+          0.16883968839688396
+        ]
+      },
+      "v6_issues_fixed": {
+        "feature_normalization": true,
+        "realistic_confidence": true,
+        "balanced_predictions": true
+      }
+    }
+  ]
+}

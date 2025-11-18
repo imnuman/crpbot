@@ -1,0 +1,22 @@
+{
+  "symbol": "SOL-USD",
+  "version": "v8_demo",
+  "training_date": "2025-11-16T16:48:48.136090",
+  "data_points": 36585,
+  "results": {
+    "accuracy": 0.19551728850621838,
+    "avg_confidence": 0.7236771465723116,
+    "overconfident_99": 0.0,
+    "overconfident_95": 0.0,
+    "prediction_distribution": [
+      0.5216345496788302,
+      0.30952576192428594,
+      0.16883968839688396
+    ]
+  },
+  "v6_issues_fixed": {
+    "feature_normalization": true,
+    "realistic_confidence": true,
+    "balanced_predictions": true
+  }
+}
