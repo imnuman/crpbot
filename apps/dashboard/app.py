@@ -13,7 +13,8 @@ from flask_cors import CORS
 from sqlalchemy import desc
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from libs.config.config import Settings
 from libs.db.models import Signal, create_tables, get_session
@@ -226,7 +227,8 @@ def api_live_predictions():
         try:
             # Load ensemble predictor (cached)
             if symbol not in _ensemble_cache:
-                _ensemble_cache[symbol] = load_ensemble(symbol)
+                model_dir = str(PROJECT_ROOT / "models" / "promoted")
+                _ensemble_cache[symbol] = load_ensemble(symbol, model_dir=model_dir)
 
             predictor = _ensemble_cache[symbol]
 
