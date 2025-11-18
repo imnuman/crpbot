@@ -153,6 +153,64 @@ aws s3 sync models/ s3://crpbot-ml-data/models/v6_retrained/
 
 ---
 
+## 📋 V7 Ultimate Implementation Guide
+
+**CRITICAL**: V7 is currently in development on `feature/v7-ultimate` branch.
+
+### What is V7 Ultimate?
+
+V7 Ultimate is a manual trading system (signal generation only) based on Renaissance Technologies methodology:
+- **6 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Markov Chain, Kalman Filter, Bayesian Inference, Monte Carlo
+- **Enhanced ML**: 4-layer FNN with BatchNorm, Dropout, Temperature Scaling
+- **Premium Data**: CoinGecko Analyst API ($129/month)
+- **LLM Synthesis**: DeepSeek integration for signal interpretation (planned)
+- **Expected Performance**: 58-65% initially → 70-75% with learning
+
+### Implementation Roadmap
+
+**Current Step**: STEP 1.1 - CoinGecko Analyst API Integration
+
+Full roadmap in `V7_PROJECT_STATUS_AND_ROADMAP.md`:
+1. CoinGecko Analyst API Integration ← **YOU ARE HERE**
+2. Mathematical Framework Implementation (6 theories)
+3. Signal Formatter Enhancement
+4. DeepSeek LLM Integration
+5. Signal Tracking Database
+6. 30-Day Paper Trading Observation
+7. Bayesian Learning System
+8. Full System Integration
+
+### V7 Key Principles
+
+1. **No Auto-Execution**: Manual trading only (human confirms each signal)
+2. **Mathematical Foundation**: Every signal backed by mathematical evidence
+3. **Continuous Learning**: Bayesian updates from trade outcomes
+4. **Risk Management**: Monte Carlo simulation for every trade
+5. **Quality over Quantity**: 2-5 high-quality signals/day (not 20-30 low-quality)
+
+### When Working on V7
+
+**Before Making Changes**:
+```bash
+# Ensure you're on V7 branch
+git checkout feature/v7-ultimate
+git pull origin feature/v7-ultimate
+
+# Check V7 roadmap
+cat V7_PROJECT_STATUS_AND_ROADMAP.md
+
+# Check current training metrics
+cat v7_training_summary.json
+```
+
+**Key Files**:
+- `apps/runtime/signal_formatter.py` - Signal output formatting
+- `libs/features/` - Feature engineering with CoinGecko data
+- `apps/trainer/main.py` - Enhanced training with BatchNorm + Dropout
+- `V7_PROJECT_STATUS_AND_ROADMAP.md` - Complete implementation guide
+
+---
+
 ## 🔄 GitHub Sync Protocol (CRITICAL)
 
 **ALWAYS sync with GitHub before and after work** to keep both environments in sync.
@@ -337,21 +395,31 @@ Kraken         + CoinGecko            (g4dn.xlarge)  promoted/      + Telegram
 
 ### Model System
 
-**Current Production**: V6 Enhanced (4-layer FNN)
-- **BTC-USD**: 67.58% accuracy, 72 features
-- **ETH-USD**: 71.65% accuracy, 72 features
-- **SOL-USD**: 70.39% accuracy, 72 features
-- **Architecture**: 72→256→128→64→3 (Down/Neutral/Up)
+**Current Development**: V7 Ultimate (Enhanced 4-layer FNN + Mathematical Framework)
+- **BTC-USD**: 71.4% RF accuracy, 71.1% NN accuracy, 72 features
+- **ETH-USD**: 68.9% RF accuracy, 69.8% NN accuracy, 72 features
+- **SOL-USD**: 70.9% RF accuracy, 69.7% NN accuracy, 72 features
+- **Architecture**: 72→256→128→64→3 with BatchNorm + Dropout (0.3)
+- **Status**: In development (feature/v7-ultimate branch)
+
+**V7 Enhancements**:
+- Temperature scaling (T=2.5) for calibrated confidence
+- Batch normalization layers
+- Dropout regularization (0.3)
+- 6 mathematical theories integration (Shannon, Hurst, Markov, Kalman, Bayesian, Monte Carlo)
+- CoinGecko Analyst API data enrichment
+- DeepSeek LLM synthesis (planned)
 
 **Model Evolution**:
 - V5 FIXED: 3-layer LSTM (73/54 features, multi-TF for BTC/SOL only)
 - V6 Real: 2-layer LSTM (31 features, uniform across symbols)
-- V6 Enhanced: 4-layer FNN (72 features, Amazon Q engineered) ⭐ **CURRENT**
+- V6 Enhanced: 4-layer FNN (72 features, Amazon Q engineered)
+- V7 Ultimate: Enhanced FNN + Mathematical Framework ⭐ **IN DEVELOPMENT**
 
 **Ensemble System** (`apps/runtime/ensemble.py`):
-- Loads best available model per symbol (V6 Enhanced → V6 Real → V5 FIXED)
-- Currently 100% LSTM (Transformer/RL planned for future)
-- Confidence threshold: 65% (configurable via CONFIDENCE_THRESHOLD env var)
+- Loads best available model per symbol
+- Confidence threshold: 60-65% (configurable via CONFIDENCE_THRESHOLD env var)
+- Manual signal generation (no auto-execution)
 
 ---
 
@@ -568,22 +636,30 @@ TELEGRAM_CHAT_ID=...
 
 ## 📚 Key Documentation
 
-**Primary References**:
+**V7 Documentation** (CURRENT):
+- `V7_PROJECT_STATUS_AND_ROADMAP.md` - Complete V7 implementation guide ⭐
+- `PROJECT_MEMORY.md` - Session continuity and dual-environment setup
+- `v7_training_summary.json` - Latest training metrics
+- `V7_DEEPSEEK_INTEGRATION_PLAN.md` - Original V7 plan
+- `V6_DIAGNOSTIC_AND_V7_PLAN.md` - Why V7 was needed
+
+**Training & Infrastructure**:
 - `MASTER_TRAINING_WORKFLOW.md` - AUTHORITATIVE training guide
-- `AWS_GPU_APPROVAL_2025-11-15.md` - AWS setup and costs
-- `V6_DEPLOYMENT_COMPLETE.md` - Current production status
+- `CLAUDE.md` - This file (project architecture)
 - `README.md` - Project overview
 
-**Architecture**:
+**Architecture** (Code):
 - `apps/trainer/models/lstm.py` - Model architectures
 - `apps/runtime/ensemble.py` - Model loading and inference
 - `apps/runtime/runtime_features.py` - Runtime feature pipeline
+- `apps/runtime/signal_formatter.py` - V7 signal formatting
 - `libs/config/config.py` - Configuration system
 
 **Deprecated** (ignore these):
 - Any docs mentioning Colab training
 - Any docs mentioning local CPU training
 - Any docs predating 2025-11-15
+- V6-specific deployment docs (superseded by V7)
 
 ---
 
@@ -601,23 +677,37 @@ TELEGRAM_CHAT_ID=...
 
 ## 🔮 Current Status (Nov 2025)
 
-**Production Models**: V6 Enhanced (4-layer FNN, 72 features)
-- Deployed: 2025-11-16
-- Average accuracy: 69.87%
-- Confidence threshold: 65%
-- Status: LIVE on cloud server (178.156.136.185)
+**Active Branch**: `feature/v7-ultimate`
+**Current Phase**: V7 Ultimate - Manual Signal System (Implementation)
+
+**V7 Status**:
+- Latest commit: `bf77081 - feat: V7 Ultimate STEP 1.1 - CoinGecko Analyst API Integration`
+- Training metrics: 70.2% avg accuracy (RF), 60.2% avg confidence
+- Architecture: Enhanced 4-layer FNN with BatchNorm + Dropout
+- Method: Manual trading (signal generation only, no auto-execution)
+
+**V7 Framework**:
+- 6 mathematical theories (Shannon Entropy, Hurst, Markov, Kalman, Bayesian, Monte Carlo)
+- CoinGecko Analyst API integration ($129/month)
+- DeepSeek LLM synthesis (planned)
+- Expected: 58-65% win rate initially → 70-75% with learning
 
 **Symbols Tracked**: BTC-USD, ETH-USD, SOL-USD
 **Data Sources**: Coinbase Advanced Trade API + CoinGecko Premium
-**Runtime Mode**: LIVE (generates real signals)
+**Runtime Mode**: Development (V7 implementation ongoing)
+
+**Key Files**:
+- `V7_PROJECT_STATUS_AND_ROADMAP.md` - Complete V7 implementation guide
+- `PROJECT_MEMORY.md` - Session continuity and dual-environment setup
+- `v7_training_summary.json` - Latest training metrics
 
 **Monitoring**:
 ```bash
 # Dashboard
 cd apps/dashboard && uv run python app.py
 
-# Logs
-tail -f /tmp/v6_65pct.log
+# Logs (check latest log file)
+ls -lt /tmp/*.log | head -3
 
 # Database
 sqlite3 tradingai.db "SELECT * FROM signals ORDER BY timestamp DESC LIMIT 10"
@@ -625,5 +715,5 @@ sqlite3 tradingai.db "SELECT * FROM signals ORDER BY timestamp DESC LIMIT 10"
 
 ---
 
-**Last Updated**: 2025-11-16
-**Next Review**: After 24-48 hours of V6 Enhanced live monitoring
+**Last Updated**: 2025-11-18
+**Next Milestone**: Complete V7 Ultimate STEP 1.1 (CoinGecko Analyst API Integration)
