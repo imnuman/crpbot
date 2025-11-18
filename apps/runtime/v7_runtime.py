@@ -38,6 +38,7 @@ from apps.runtime.ftmo_rules import (
 from libs.config.config import Settings
 from libs.db.models import Signal, create_tables, get_session
 from libs.constants import INITIAL_BALANCE
+from libs.notifications import TelegramNotifier
 
 
 @dataclass
@@ -94,6 +95,17 @@ class V7TradingRuntime:
             conservative_mode=self.runtime_config.conservative_mode
         )
         logger.info("✅ V7 SignalGenerator initialized (6 theories + DeepSeek LLM)")
+
+        # Initialize Telegram notifier
+        self.telegram = TelegramNotifier(
+            token=self.config.telegram_token,
+            chat_id=self.config.telegram_chat_id,
+            enabled=bool(self.config.telegram_token and self.config.telegram_chat_id)
+        )
+        if self.telegram.enabled:
+            logger.info("✅ Telegram notifier initialized")
+        else:
+            logger.info("⚠️  Telegram notifications disabled (no credentials)")
 
         # Account state (for FTMO rules)
         self.initial_balance = INITIAL_BALANCE
@@ -417,6 +429,13 @@ class V7TradingRuntime:
                 # Save to database
                 self._save_signal_to_db(symbol, result, current_price)
 
+                # Send to Telegram
+                if self.telegram.enabled:
+                    try:
+                        self.telegram.send_v7_signal(symbol, result)
+                    except Exception as e:
+                        logger.error(f"Failed to send Telegram notification: {e}")
+
                 # Update signal history (for rate limiting)
                 self.signal_history.append({
                     'timestamp': result.parsed_signal.timestamp,
@@ -459,6 +478,16 @@ class V7TradingRuntime:
         logger.info(f"Conservative Mode: {self.runtime_config.conservative_mode}")
         logger.info("=" * 80)
 
+        # Send startup notification to Telegram
+        if self.telegram.enabled:
+            startup_details = (
+                f"Symbols: {', '.join(self.runtime_config.symbols)}\n"
+                f"Scan Interval: {sleep_seconds}s\n"
+                f"Rate Limit: {self.runtime_config.max_signals_per_hour} signals/hour\n"
+                f"Conservative Mode: {'ON' if self.runtime_config.conservative_mode else 'OFF'}"
+            )
+            self.telegram.send_runtime_status("Started", startup_details)
+
         iteration = 0
 
         try:
@@ -489,9 +518,13 @@ class V7TradingRuntime:
 
         except KeyboardInterrupt:
             logger.info("\n\nV7 Runtime stopped by user (Ctrl+C)")
+            if self.telegram.enabled:
+                self.telegram.send_runtime_status("Stopped", "Manual shutdown (Ctrl+C)")
 
         except Exception as e:
             logger.error(f"\n\nV7 Runtime crashed: {e}")
+            if self.telegram.enabled:
+                self.telegram.send_runtime_status("Error", f"Runtime crashed: {str(e)[:200]}")
             raise
 
         finally:
@@ -508,6 +541,16 @@ class V7TradingRuntime:
             logger.info(f"  Daily Cost:            ${self.daily_cost:.4f}")
             logger.info(f"  Monthly Cost:          ${self.monthly_cost:.2f}")
             logger.info("=" * 80)
+
+            # Send shutdown notification with final stats
+            if self.telegram.enabled:
+                shutdown_details = (
+                    f"Total Iterations: {iteration}\n"
+                    f"DeepSeek API Calls: {stats['deepseek_api']['total_requests']}\n"
+                    f"Total Cost: ${stats['deepseek_api']['total_cost_usd']:.6f}\n"
+                    f"Daily Cost: ${self.daily_cost:.4f}"
+                )
+                self.telegram.send_runtime_status("Stopped", shutdown_details)
 
 
 def main():
