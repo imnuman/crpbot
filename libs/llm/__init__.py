@@ -11,6 +11,12 @@ from .signal_synthesizer import (
     TheoryAnalysis,
     build_signal_prompt
 )
+from .signal_parser import (
+    SignalParser,
+    ParsedSignal,
+    SignalType,
+    parse_llm_response
+)
 
 __all__ = [
     'DeepSeekClient',
@@ -19,4 +25,8 @@ __all__ = [
     'MarketContext',
     'TheoryAnalysis',
     'build_signal_prompt',
+    'SignalParser',
+    'ParsedSignal',
+    'SignalType',
+    'parse_llm_response',
 ]
