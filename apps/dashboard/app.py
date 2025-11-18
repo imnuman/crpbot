@@ -441,15 +441,140 @@ def api_performance(hours=24):
         session.close()
 
 
+# ============================================================================
+# V7 ULTIMATE API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/v7/signals/recent/<int:hours>')
+def api_v7_recent_signals(hours=24):
+    """Get recent V7 Ultimate signals."""
+    session = get_session(config.db_url)
+    try:
+        since = now_est() - timedelta(hours=hours)
+        signals = session.query(Signal).filter(
+            Signal.timestamp >= since,
+            Signal.model_version == 'v7_ultimate'
+        ).order_by(desc(Signal.timestamp)).limit(100).all()
+
+        return jsonify([{
+            'timestamp': s.timestamp.isoformat(),
+            'symbol': s.symbol,
+            'direction': s.direction,
+            'confidence': s.confidence,
+            'tier': s.tier,
+            'entry_price': s.entry_price,
+            'reasoning': s.notes,  # Contains theory analysis
+            'model_version': s.model_version
+        } for s in signals])
+    finally:
+        session.close()
+
+
+@app.route('/api/v7/statistics')
+def api_v7_statistics():
+    """Get V7 Ultimate runtime statistics."""
+    session = get_session(config.db_url)
+    try:
+        # Get all V7 signals
+        signals = session.query(Signal).filter(
+            Signal.model_version == 'v7_ultimate'
+        ).all()
+
+        if not signals:
+            return jsonify({
+                'total_signals': 0,
+                'avg_confidence': 0,
+                'by_direction': {},
+                'by_tier': {},
+                'by_symbol': {},
+                'latest_signal': None
+            })
+
+        # Calculate stats
+        total = len(signals)
+        avg_confidence = sum(s.confidence for s in signals) / total if total > 0 else 0
+
+        # By direction
+        by_direction = {}
+        for s in signals:
+            if s.direction not in by_direction:
+                by_direction[s.direction] = 0
+            by_direction[s.direction] += 1
+
+        # By tier
+        by_tier = {}
+        for s in signals:
+            if s.tier not in by_tier:
+                by_tier[s.tier] = 0
+            by_tier[s.tier] += 1
+
+        # By symbol
+        by_symbol = {}
+        for s in signals:
+            if s.symbol not in by_symbol:
+                by_symbol[s.symbol] = 0
+            by_symbol[s.symbol] += 1
+
+        # Latest signal
+        latest = signals[-1] if signals else None
+        latest_signal = {
+            'timestamp': latest.timestamp.isoformat(),
+            'symbol': latest.symbol,
+            'direction': latest.direction,
+            'confidence': latest.confidence,
+            'tier': latest.tier
+        } if latest else None
+
+        return jsonify({
+            'total_signals': total,
+            'avg_confidence': avg_confidence,
+            'by_direction': by_direction,
+            'by_tier': by_tier,
+            'by_symbol': by_symbol,
+            'latest_signal': latest_signal
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/v7/theories/latest/<symbol>')
+def api_v7_theories_latest(symbol):
+    """Get latest theory analysis for a symbol."""
+    session = get_session(config.db_url)
+    try:
+        # Get most recent V7 signal for symbol
+        signal = session.query(Signal).filter(
+            Signal.model_version == 'v7_ultimate',
+            Signal.symbol == symbol
+        ).order_by(desc(Signal.timestamp)).first()
+
+        if not signal:
+            return jsonify({'error': f'No V7 signals found for {symbol}'}), 404
+
+        # Parse theory analysis from reasoning/notes
+        reasoning = signal.notes or ""
+
+        return jsonify({
+            'symbol': signal.symbol,
+            'timestamp': signal.timestamp.isoformat(),
+            'signal': signal.direction,
+            'confidence': signal.confidence,
+            'reasoning': reasoning,
+            'entry_price': signal.entry_price
+        })
+    finally:
+        session.close()
+
+
 if __name__ == '__main__':
     print("=" * 80)
-    print("🚀 V6 Enhanced Model Dashboard")
+    print("🚀 V6 + V7 Ultimate Dashboard")
     print("=" * 80)
     print(f"   Dashboard URL: http://localhost:5000")
     print(f"   Mode: {config.runtime_mode}")
     print(f"   Confidence: {config.confidence_threshold * 100:.0f}%")
     print("=" * 80)
-    print("\n📊 Available endpoints:")
+    print("\n📊 V6 Enhanced Model Endpoints:")
     print("   /                          - Dashboard UI")
     print("   /api/status                - System status")
     print("   /api/signals/recent/24     - Recent signals (24h)")
@@ -458,6 +583,10 @@ if __name__ == '__main__':
     print("   /api/predictions/live      - Live predictions")
     print("   /api/market/live           - Live market prices")
     print("   /api/performance/24        - Win/loss performance (24h)")
+    print("\n🔬 V7 Ultimate Endpoints:")
+    print("   /api/v7/signals/recent/24  - Recent V7 signals (24h)")
+    print("   /api/v7/statistics         - V7 runtime statistics")
+    print("   /api/v7/theories/latest/:symbol - Latest theory analysis")
     print("\n💡 Press Ctrl+C to stop\n")
 
     app.run(host='0.0.0.0', port=5000, debug=False)

@@ -67,7 +67,9 @@ async function fetchAllData() {
             fetchLiveMarket(),
             fetchLivePredictions(),
             fetchSignalStats(),
-            fetchRecentSignals()
+            fetchRecentSignals(),
+            fetchV7Statistics(),
+            fetchV7RecentSignals()
         ]);
         updateLastUpdateTime();
     } catch (error) {
@@ -327,4 +329,101 @@ function formatTimestamp(isoString) {
         minute: '2-digit',
         second: '2-digit'
     });
+}
+
+// ============================================================================
+// V7 ULTIMATE FUNCTIONS
+// ============================================================================
+
+// Fetch V7 statistics
+async function fetchV7Statistics() {
+    try {
+        const response = await fetch('/api/v7/statistics');
+        const data = await response.json();
+
+        // Update stats
+        document.getElementById('v7TotalSignals').textContent = data.total_signals || 0;
+        document.getElementById('v7AvgConfidence').textContent =
+            data.avg_confidence > 0 ? (data.avg_confidence * 100).toFixed(1) + '%' : '--';
+
+        // Latest signal
+        if (data.latest_signal) {
+            const latest = data.latest_signal;
+            const dirClass = latest.direction === 'long' ? 'signal-long' : (latest.direction === 'short' ? 'signal-short' : 'signal-hold');
+            const dir = latest.direction.toUpperCase();
+            const conf = (latest.confidence * 100).toFixed(0);
+            document.getElementById('v7LatestSignal').innerHTML =
+                `<span class="${dirClass}">${latest.symbol} ${dir}</span> @ ${conf}%`;
+        } else {
+            document.getElementById('v7LatestSignal').textContent = 'No signals yet';
+        }
+
+        // By direction
+        let directionHtml = '';
+        for (const [dir, count] of Object.entries(data.by_direction)) {
+            directionHtml += `<div><strong>${dir}:</strong> ${count}</div>`;
+        }
+        document.getElementById('v7ByDirection').innerHTML = directionHtml || 'No data';
+
+        // By tier
+        let tierHtml = '';
+        for (const [tier, count] of Object.entries(data.by_tier)) {
+            tierHtml += `<div><strong>${tier}:</strong> ${count}</div>`;
+        }
+        document.getElementById('v7ByTier').innerHTML = tierHtml || 'No data';
+
+        // By symbol
+        let symbolHtml = '';
+        for (const [symbol, count] of Object.entries(data.by_symbol)) {
+            symbolHtml += `<div><strong>${symbol}:</strong> ${count}</div>`;
+        }
+        document.getElementById('v7BySymbol').innerHTML = symbolHtml || 'No data';
+    } catch (error) {
+        console.error('Error fetching V7 statistics:', error);
+    }
+}
+
+// Fetch V7 recent signals
+async function fetchV7RecentSignals() {
+    try {
+        const response = await fetch('/api/v7/signals/recent/24');
+        const signals = await response.json();
+
+        const tbody = document.getElementById('v7SignalsTable');
+
+        if (signals.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="no-data">No V7 signals in the last 24 hours</td></tr>';
+            return;
+        }
+
+        let html = '';
+        signals.slice(0, 10).forEach(signal => {
+            const time = new Date(signal.timestamp);
+            const dirClass = signal.direction === 'long' ? 'signal-long' : (signal.direction === 'short' ? 'signal-short' : 'signal-hold');
+            const tierClass = `tier-${signal.tier}`;
+
+            // Truncate reasoning for display
+            const reasoning = signal.reasoning ?
+                (signal.reasoning.length > 100 ? signal.reasoning.substring(0, 100) + '...' : signal.reasoning)
+                : 'No reasoning provided';
+
+            const dir = signal.direction.toUpperCase();
+            const conf = (signal.confidence * 100).toFixed(1);
+
+            html += `
+                <tr>
+                    <td>${time.toLocaleString()}</td>
+                    <td>${signal.symbol}</td>
+                    <td class="${dirClass}">${dir}</td>
+                    <td>${conf}%</td>
+                    <td class="${tierClass}">${signal.tier.toUpperCase()}</td>
+                    <td class="v7-reasoning" title="${signal.reasoning || ''}">${reasoning}</td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+    } catch (error) {
+        console.error('Error fetching V7 signals:', error);
+    }
 }

@@ -217,9 +217,61 @@
             </div>
         </section>
 
+        <!-- V7 Ultimate Signals -->
+        <section class="card v7-section">
+            <h2>🔬 V7 Ultimate Signals (Mathematical Theories + LLM)</h2>
+            <div class="v7-stats-grid">
+                <div class="v7-stat-card">
+                    <div class="stat-label">Total V7 Signals</div>
+                    <div class="stat-value" id="v7TotalSignals">--</div>
+                </div>
+                <div class="v7-stat-card">
+                    <div class="stat-label">Avg Confidence</div>
+                    <div class="stat-value" id="v7AvgConfidence">--</div>
+                </div>
+                <div class="v7-stat-card">
+                    <div class="stat-label">Latest Signal</div>
+                    <div class="stat-value" id="v7LatestSignal">--</div>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="signals-table v7-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Symbol</th>
+                            <th>Signal</th>
+                            <th>Confidence</th>
+                            <th>Tier</th>
+                            <th>Reasoning (Theories)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="v7SignalsTable">
+                        <tr>
+                            <td colspan="6" class="no-data">Loading V7 signals...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="v7-breakdown">
+                <div class="breakdown-section">
+                    <h4>By Signal Type</h4>
+                    <div id="v7ByDirection" class="breakdown-content">--</div>
+                </div>
+                <div class="breakdown-section">
+                    <h4>By Tier</h4>
+                    <div id="v7ByTier" class="breakdown-content">--</div>
+                </div>
+                <div class="breakdown-section">
+                    <h4>By Symbol</h4>
+                    <div id="v7BySymbol" class="breakdown-content">--</div>
+                </div>
+            </div>
+        </section>
+
         <!-- Model Analysis Process -->
         <section class="card">
-            <h2>🔬 Analysis Process</h2>
+            <h2>🔬 V6 Analysis Process</h2>
             <div class="process-flow">
                 <div class="process-step">
                     <div class="step-number">1</div>
