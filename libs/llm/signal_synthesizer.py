@@ -171,8 +171,8 @@ Timestamp: {context.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
         # Add conservative mode disclaimer
         if self.conservative_mode:
             user_prompt += """
-**Risk Management Mode: CONSERVATIVE**
-Prioritize capital preservation over aggressive returns. Only recommend trades with strong multi-theory convergence."""
+**Risk Management: FTMO-COMPLIANT**
+Apply proper risk management and position sizing. Recommend BUY/SELL when mathematical analysis indicates a favorable edge, or HOLD when market conditions are too uncertain or risky. Balance opportunity capture with capital preservation."""
 
         # Request format
         user_prompt += """
