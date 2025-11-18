@@ -1,11 +1,11 @@
 # Persistent Memory for Claude Instances
 
 **Created**: 2025-11-13 21:12 EST (Toronto)
-**Last Updated**: 2025-11-15 18:11 EST (Toronto)
+**Last Updated**: 2025-11-17 23:15 EST (Toronto)
 **Author**: QC Claude
 **Purpose**: This file ensures continuity between Claude sessions by documenting our dual-environment development setup and current project state.
 
-**Last Session**: V5 Planning & Data Strategy
+**Last Session**: V7 Ultimate Planning Complete → Implementation Roadmap Created
 
 ---
 
@@ -95,29 +95,38 @@ ls -lt QC_REVIEW_*.md | head -3
 
 ## 🔄 Current Project Status
 
-### Phase: V5 - Premium Data Upgrade
+### Phase: V7 Ultimate - Manual Signal System (IMPLEMENTATION READY)
 
-**Last Major Update**: 2025-11-14
+**Last Major Update**: 2025-11-17 23:15 EST
 
 **Current Situation**:
-- ✅ V4 models evaluated: 50% accuracy (data quality ceiling identified)
-- ✅ Root cause found: Free Coinbase data too noisy
-- ✅ V5 strategy decided: Upgrade data source (not rebuild)
-- ✅ Budget approved: <$200/month Phase 1
-- ✅ Data provider selected: Tardis.dev Historical ($147/month)
-- ⏸️ **READY TO START**: Waiting for Tardis subscription
+- ✅ V6 Fixed models deployed (NOT using for V7 - deemed faulty by user)
+- ✅ V7 Ultimate Planning Complete (Renaissance Technologies methodology)
+- ✅ Comprehensive roadmap created: 10 steps, 27 new files
+- ✅ Current infrastructure documented (data, codebase, APIs)
+- 📋 **READY TO START**: STEP 1.1 - CoinGecko Analyst API Integration
 
-**Next Action**:
-- User subscribes to Tardis.dev Historical ($147/month)
-- Builder Claude creates tardis_client.py
-- Download 2 years tick data (BTC/ETH/SOL)
-- Start V5 Week 1 execution
+**V7 Ultimate Summary**:
+- **Approach**: Manual trading (signal generation only, no auto-execution)
+- **Core**: 6 mathematical theories + DeepSeek LLM synthesis
+- **Data Sources**: 5 confirmed (CoinGecko Analyst, Coinbase, Yahoo, Deribit, WebSocket)
+- **Budget**: $229/month (CoinGecko $129 + DeepSeek $100 + AWS $15)
+- **Expected**: Win rate 58-65% initially → 70-75% with learning
+- **Method**: Step-based implementation (not timeline-based)
+
+**V7 Mathematical Framework**:
+1. Shannon Entropy → Market predictability
+2. Hurst Exponent → Trend vs mean-reversion
+3. Markov Chain → 6-state regime detection
+4. Kalman Filter → Price denoising + momentum
+5. Bayesian Inference → Online learning from outcomes
+6. Monte Carlo → 10k scenario risk simulation
 
 **Key Files to Check**:
-1. `V5_SIMPLE_PLAN.md` - Primary execution plan
-2. `V5_CONTEXT_AND_PLAN.md` - Complete context
-3. `SESSION_SUMMARY_2025-11-14.md` - Latest session
-4. `DATA_STRATEGY_COMPLETE.md` - Data roadmap
+1. `V7_PROJECT_STATUS_AND_ROADMAP.md` - Complete implementation guide (NEW)
+2. `V7_DEEPSEEK_INTEGRATION_PLAN.md` - Original V7 plan (superseded)
+3. `QC_REVIEW_V6_FIXED_2025-11-16.md` - V6 Fixed approval
+4. `PROJECT_MEMORY.md` - This file (session continuity)
 
 ---
 
