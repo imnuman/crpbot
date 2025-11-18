@@ -7,6 +7,7 @@ let charts = {};
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Dashboard initialized');
     initCharts();
+    initV7Charts();
     fetchAllData();
 
     // Auto-refresh every 5 seconds
@@ -69,7 +70,9 @@ async function fetchAllData() {
             fetchSignalStats(),
             fetchRecentSignals(),
             fetchV7Statistics(),
-            fetchV7RecentSignals()
+            fetchV7RecentSignals(),
+            fetchV7Timeseries(),
+            fetchV7ConfidenceDistribution()
         ]);
         updateLastUpdateTime();
     } catch (error) {
@@ -334,6 +337,244 @@ function formatTimestamp(isoString) {
 // ============================================================================
 // V7 ULTIMATE FUNCTIONS
 // ============================================================================
+
+// V7 Chart instances
+let v7Charts = {
+    timeseries: null,
+    confidence: null
+};
+
+// Initialize V7 charts
+function initV7Charts() {
+    // Time Series Chart
+    const timeseriesCtx = document.getElementById('v7TimeseriesChart');
+    if (timeseriesCtx) {
+        v7Charts.timeseries = new Chart(timeseriesCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'BUY Signals',
+                        data: [],
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    },
+                    {
+                        label: 'SELL Signals',
+                        data: [],
+                        borderColor: 'rgba(239, 68, 68, 1)',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    },
+                    {
+                        label: 'HOLD Signals',
+                        data: [],
+                        borderColor: 'rgba(251, 191, 36, 1)',
+                        backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    },
+                    {
+                        label: 'Avg Confidence',
+                        data: [],
+                        borderColor: 'rgba(142, 105, 201, 1)',
+                        backgroundColor: 'rgba(142, 105, 201, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            color: '#e6e6e6',
+                            font: { size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#e6e6e6',
+                        bodyColor: '#e6e6e6'
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: '#e6e6e6',
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: '#e6e6e6'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Signal Count',
+                            color: '#e6e6e6'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        ticks: {
+                            color: '#e6e6e6',
+                            callback: function(value) {
+                                return (value * 100).toFixed(0) + '%';
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Confidence',
+                            color: '#e6e6e6'
+                        },
+                        min: 0,
+                        max: 1
+                    }
+                }
+            }
+        });
+    }
+
+    // Confidence Distribution Chart
+    const confidenceCtx = document.getElementById('v7ConfidenceChart');
+    if (confidenceCtx) {
+        v7Charts.confidence = new Chart(confidenceCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Signal Count',
+                    data: [],
+                    backgroundColor: 'rgba(142, 105, 201, 0.6)',
+                    borderColor: 'rgba(142, 105, 201, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#e6e6e6',
+                        bodyColor: '#e6e6e6'
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: '#e6e6e6',
+                            font: { size: 10 }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Confidence Range',
+                            color: '#e6e6e6'
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: '#e6e6e6',
+                            stepSize: 1
+                        },
+                        title: {
+                            display: true,
+                            text: 'Number of Signals',
+                            color: '#e6e6e6'
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// Fetch and update V7 time-series chart
+async function fetchV7Timeseries() {
+    try {
+        const response = await fetch('/api/v7/signals/timeseries/24');
+        const data = await response.json();
+
+        if (v7Charts.timeseries && data.timeseries) {
+            const labels = data.timeseries.map(d => {
+                const date = new Date(d.timestamp);
+                return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            });
+
+            const longData = data.timeseries.map(d => d.long_count);
+            const shortData = data.timeseries.map(d => d.short_count);
+            const holdData = data.timeseries.map(d => d.hold_count);
+            const confData = data.timeseries.map(d => d.avg_confidence);
+
+            v7Charts.timeseries.data.labels = labels;
+            v7Charts.timeseries.data.datasets[0].data = longData;
+            v7Charts.timeseries.data.datasets[1].data = shortData;
+            v7Charts.timeseries.data.datasets[2].data = holdData;
+            v7Charts.timeseries.data.datasets[3].data = confData;
+            v7Charts.timeseries.update('none');
+        }
+    } catch (error) {
+        console.error('Error fetching V7 timeseries:', error);
+    }
+}
+
+// Fetch and update V7 confidence distribution chart
+async function fetchV7ConfidenceDistribution() {
+    try {
+        const response = await fetch('/api/v7/signals/confidence-distribution');
+        const data = await response.json();
+
+        if (v7Charts.confidence && data.bins) {
+            v7Charts.confidence.data.labels = data.bins;
+            v7Charts.confidence.data.datasets[0].data = data.counts;
+            v7Charts.confidence.update('none');
+        }
+    } catch (error) {
+        console.error('Error fetching V7 confidence distribution:', error);
+    }
+}
 
 // Fetch V7 statistics
 async function fetchV7Statistics() {

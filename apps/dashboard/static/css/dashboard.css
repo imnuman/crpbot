@@ -707,3 +707,33 @@ body {
     color: var(--tv-yellow);
     font-weight: 600;
 }
+
+/* V7 Chart Containers */
+.chart-section {
+    margin: 25px 0;
+}
+
+.chart-section h3 {
+    color: var(--tv-purple);
+    font-size: 18px;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.chart-container-large {
+    position: relative;
+    height: 400px;
+    background: var(--tv-bg-secondary);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid rgba(142, 105, 201, 0.2);
+}
+
+.chart-container-medium {
+    position: relative;
+    height: 300px;
+    background: var(--tv-bg-secondary);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid rgba(142, 105, 201, 0.2);
+}

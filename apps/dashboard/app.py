@@ -566,6 +566,95 @@ def api_v7_theories_latest(symbol):
         session.close()
 
 
+@app.route('/api/v7/signals/timeseries/<int:hours>')
+def api_v7_signals_timeseries(hours=24):
+    """Get V7 signals time-series data for charting."""
+    session = get_session(config.db_url)
+    try:
+        since = datetime.now() - timedelta(hours=hours)
+
+        # Get all V7 signals in time range
+        signals = session.query(Signal).filter(
+            Signal.timestamp >= since,
+            Signal.model_version == 'v7_ultimate'
+        ).order_by(Signal.timestamp).all()
+
+        # Group signals by hour
+        from collections import defaultdict
+        hourly_data = defaultdict(lambda: {'long': 0, 'short': 0, 'hold': 0, 'total': 0, 'avg_confidence': []})
+
+        for signal in signals:
+            # Round to nearest hour
+            hour_key = signal.timestamp.replace(minute=0, second=0, microsecond=0).isoformat()
+
+            hourly_data[hour_key][signal.direction] += 1
+            hourly_data[hour_key]['total'] += 1
+            hourly_data[hour_key]['avg_confidence'].append(signal.confidence)
+
+        # Format output
+        timeseries = []
+        for hour, data in sorted(hourly_data.items()):
+            avg_conf = sum(data['avg_confidence']) / len(data['avg_confidence']) if data['avg_confidence'] else 0
+            timeseries.append({
+                'timestamp': hour,
+                'long_count': data['long'],
+                'short_count': data['short'],
+                'hold_count': data['hold'],
+                'total_count': data['total'],
+                'avg_confidence': avg_conf
+            })
+
+        return jsonify({
+            'hours': hours,
+            'total_signals': len(signals),
+            'timeseries': timeseries
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/v7/signals/confidence-distribution')
+def api_v7_confidence_distribution():
+    """Get V7 signal confidence distribution for histogram."""
+    session = get_session(config.db_url)
+    try:
+        # Get all V7 signals from last 7 days
+        since = datetime.now() - timedelta(days=7)
+
+        signals = session.query(Signal).filter(
+            Signal.timestamp >= since,
+            Signal.model_version == 'v7_ultimate'
+        ).all()
+
+        # Create histogram bins (0.0-0.1, 0.1-0.2, ..., 0.9-1.0)
+        bins = [0, 0.5, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0]
+        bin_counts = [0] * (len(bins) - 1)
+        bin_labels = []
+
+        for i in range(len(bins) - 1):
+            bin_labels.append(f"{bins[i]:.0%}-{bins[i+1]:.0%}")
+
+        # Count signals in each bin
+        for signal in signals:
+            for i in range(len(bins) - 1):
+                if bins[i] <= signal.confidence < bins[i+1]:
+                    bin_counts[i] += 1
+                    break
+            else:
+                # Handle exactly 1.0
+                if signal.confidence == 1.0:
+                    bin_counts[-1] += 1
+
+        return jsonify({
+            'total_signals': len(signals),
+            'bins': bin_labels,
+            'counts': bin_counts,
+            'avg_confidence': sum(s.confidence for s in signals) / len(signals) if signals else 0
+        })
+    finally:
+        session.close()
+
+
 if __name__ == '__main__':
     print("=" * 80)
     print("🚀 V6 + V7 Ultimate Dashboard")
@@ -587,6 +676,8 @@ if __name__ == '__main__':
     print("   /api/v7/signals/recent/24  - Recent V7 signals (24h)")
     print("   /api/v7/statistics         - V7 runtime statistics")
     print("   /api/v7/theories/latest/:symbol - Latest theory analysis")
+    print("   /api/v7/signals/timeseries/24 - Time-series data for charts")
+    print("   /api/v7/signals/confidence-distribution - Confidence histogram")
     print("\n💡 Press Ctrl+C to stop\n")
 
     app.run(host='0.0.0.0', port=5000, debug=False)
