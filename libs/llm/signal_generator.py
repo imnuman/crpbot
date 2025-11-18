@@ -28,6 +28,7 @@ from libs.analysis import (
     BayesianWinRateLearner,
     MonteCarloSimulator,
 )
+from libs.analysis.markov_chain import detect_market_regime
 
 # Import LLM components
 from .deepseek_client import DeepSeekClient, DeepSeekResponse
@@ -131,8 +132,9 @@ class SignalGenerator:
         self.hurst_analyzer = HurstExponentAnalyzer()
         self.markov_detector = MarkovRegimeDetector()
         self.kalman_filter = KalmanPriceFilter()
-        self.bayesian_learner = BayesianWinRateLearner(prior_wins=10, prior_losses=10)
-        self.monte_carlo_simulator = MonteCarloSimulator()
+        # Bayesian learner with symmetric prior at 50% (α=11, β=11 → 10 wins, 10 losses)
+        self.bayesian_learner = BayesianWinRateLearner(alpha_prior=11.0, beta_prior=11.0)
+        # Note: MonteCarloSimulator is instantiated per-signal with actual market parameters
 
         # Configuration
         self.lookback_window = lookback_window
@@ -326,33 +328,69 @@ class SignalGenerator:
 
         # 2. Hurst Exponent
         hurst = self.hurst_analyzer.calculate_hurst(prices)
-        hurst_interpretation = self.hurst_analyzer.interpret_hurst(hurst)
+        hurst_interpretation_dict = self.hurst_analyzer.interpret_hurst(hurst)
+        # TheoryAnalysis expects a string for hurst_interpretation
+        hurst_interpretation = hurst_interpretation_dict.get('behavior', 'unknown')
 
         # 3. Markov Chain Regime Detection
-        regime_result = self.markov_detector.detect_regime(prices, returns)
+        # Use standalone function which returns dict with 'current_regime' and other keys
+        regime_result = detect_market_regime(prices, learn_transitions=True, lookback_window=100)
         current_regime = regime_result['current_regime']
-        regime_probabilities = regime_result['probabilities']
+        # Get regime probabilities from next regime prediction
+        # Convert list of probabilities to dict with regime names
+        from libs.analysis.markov_chain import REGIME_METADATA
+        all_probs_list = regime_result['next_regime_prediction']['all_probabilities']
+        regime_probabilities = {
+            REGIME_METADATA[i]['name']: float(all_probs_list[i])
+            for i in range(len(all_probs_list))
+        }
 
         # 4. Kalman Filter
-        self.kalman_filter.reset()
-        for price in prices:
+        # Initialize filter with first price, then update with all prices
+        self.kalman_filter.initialize(prices[0])
+        for price in prices[1:]:  # Start from second price since first used for init
             self.kalman_filter.update(price)
 
-        denoised_price = self.kalman_filter.get_state()
-        price_momentum = self.kalman_filter.get_velocity()
+        denoised_price = self.kalman_filter.get_denoised_price()
+        price_momentum = self.kalman_filter.get_momentum_estimate()
 
         # 5. Bayesian Inference (win rate estimation)
         # Note: This requires historical trade results, using placeholder for now
-        win_rate_estimate = self.bayesian_learner.get_win_rate()
-        win_rate_confidence = self.bayesian_learner.get_confidence_interval()[1] - win_rate_estimate
+        bayesian_estimate = self.bayesian_learner.get_current_estimate()
+        win_rate_estimate = bayesian_estimate.mean
+        # Confidence width: upper bound - lower bound of 95% credible interval
+        win_rate_confidence = bayesian_estimate.credible_interval_95[1] - bayesian_estimate.credible_interval_95[0]
 
         # 6. Monte Carlo Risk Simulation
-        risk_metrics = self.monte_carlo_simulator.simulate_scenarios(
-            current_price=current_price,
-            historical_returns=returns,
-            num_simulations=1000,
-            time_horizon=24  # hours
+        # Calculate mu (drift) and sigma (volatility) from historical returns
+        mu = float(np.mean(returns)) if len(returns) > 0 else 0.0
+        sigma = float(np.std(returns)) if len(returns) > 1 else 0.01
+
+        # Instantiate simulator with market parameters
+        monte_carlo_simulator = MonteCarloSimulator(
+            initial_price=current_price,
+            mu=mu,
+            sigma=sigma,
+            dt=1.0  # 1-minute time steps
         )
+
+        # Simulate paths (24 hours = 1440 minutes, use 500 simulations for speed)
+        paths = monte_carlo_simulator.simulate_multiple_paths(
+            n_steps=1440,  # 24 hours
+            n_simulations=500
+        )
+
+        # Calculate risk metrics
+        risk_metrics_obj = monte_carlo_simulator.calculate_risk_metrics(paths)
+
+        # Convert RiskMetrics to dict for TheoryAnalysis
+        risk_metrics = {
+            'var_95': risk_metrics_obj.var_95,
+            'cvar_95': risk_metrics_obj.cvar_95,
+            'max_drawdown': risk_metrics_obj.max_drawdown,
+            'sharpe_ratio': risk_metrics_obj.sharpe_ratio,
+            'profit_probability': risk_metrics_obj.prob_profit
+        }
 
         # Build TheoryAnalysis
         analysis = TheoryAnalysis(
@@ -385,8 +423,8 @@ class SignalGenerator:
         Args:
             trade_won: True if trade was profitable, False otherwise
         """
-        self.bayesian_learner.update(trade_won)
-        new_win_rate = self.bayesian_learner.get_win_rate()
+        estimate = self.bayesian_learner.update(trade_won)
+        new_win_rate = estimate.mean
 
         logger.info(
             f"Bayesian learning updated | "
@@ -402,14 +440,13 @@ class SignalGenerator:
             Dictionary with usage stats from all components
         """
         deepseek_stats = self.deepseek_client.get_stats()
+        bayesian_estimate = self.bayesian_learner.get_current_estimate()
 
         return {
             "deepseek_api": deepseek_stats,
-            "bayesian_win_rate": self.bayesian_learner.get_win_rate(),
-            "bayesian_confidence_interval": self.bayesian_learner.get_confidence_interval(),
-            "bayesian_total_trades": (
-                self.bayesian_learner.wins + self.bayesian_learner.losses
-            )
+            "bayesian_win_rate": bayesian_estimate.mean,
+            "bayesian_confidence_interval": bayesian_estimate.credible_interval_95,
+            "bayesian_total_trades": self.bayesian_learner.total_trades
         }
 
     def reset_statistics(self) -> None:
