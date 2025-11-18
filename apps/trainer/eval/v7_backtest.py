@@ -270,7 +270,8 @@ class V7BacktestRunner:
                 # Extract arrays for V7 signal generator
                 prices = window['close'].values
                 # Convert pandas datetime to Unix timestamps (seconds since epoch)
-                timestamps = window['timestamp'].astype('int64').values / 10**9  # nanoseconds to seconds
+                # Use .view('int64') to get raw nanosecond values, then convert to seconds
+                timestamps = window['timestamp'].values.view('int64') / 10**9
                 current_price = float(window.iloc[-1]['close'])
 
                 # Note: This will call DeepSeek API - costs ~$0.0003 per signal
