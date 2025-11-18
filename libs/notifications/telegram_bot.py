@@ -225,26 +225,26 @@ class TelegramNotifier:
             entropy_interp = "Low" if theories.entropy < 0.4 else ("High" if theories.entropy > 0.7 else "Medium")
             lines.append(f"• <b>Shannon Entropy:</b> {theories.entropy:.3f} ({entropy_interp} randomness)")
 
-        if theories.hurst_exponent is not None:
-            hurst_interp = "Trending" if theories.hurst_exponent > 0.5 else "Mean-reverting"
-            lines.append(f"• <b>Hurst Exponent:</b> {theories.hurst_exponent:.3f} ({hurst_interp})")
+        if theories.hurst is not None:
+            hurst_interp = "Trending" if theories.hurst > 0.5 else "Mean-reverting"
+            lines.append(f"• <b>Hurst Exponent:</b> {theories.hurst:.3f} ({hurst_interp})")
 
-        if theories.kolmogorov_complexity is not None:
-            complexity_interp = "Simple" if theories.kolmogorov_complexity < 0.4 else ("Complex" if theories.kolmogorov_complexity > 0.7 else "Moderate")
-            lines.append(f"• <b>Kolmogorov:</b> {theories.kolmogorov_complexity:.3f} ({complexity_interp})")
+        if theories.current_regime:
+            # Get highest probability regime for confidence
+            regime_conf = max(theories.regime_probabilities.values()) if theories.regime_probabilities else 0
+            lines.append(f"• <b>Market Regime:</b> {theories.current_regime} ({regime_conf*100:.0f}% conf)")
 
-        if theories.regime_name:
-            lines.append(f"• <b>Market Regime:</b> {theories.regime_name} ({theories.regime_confidence*100:.0f}% conf)")
+        sharpe = theories.risk_metrics.get('sharpe_ratio')
+        if sharpe is not None:
+            lines.append(f"• <b>Sharpe Ratio:</b> {sharpe:.2f}")
 
-        if theories.sharpe_ratio is not None:
-            lines.append(f"• <b>Sharpe Ratio:</b> {theories.sharpe_ratio:.2f}")
+        var_95 = theories.risk_metrics.get('var_95')
+        if var_95 is not None:
+            lines.append(f"• <b>VaR (95%):</b> {var_95*100:.1f}%")
 
-        if theories.var_95 is not None:
-            lines.append(f"• <b>VaR (95%):</b> {theories.var_95*100:.1f}%")
-
-        if theories.fractal_dimension is not None:
-            fractal_interp = "Smooth" if theories.fractal_dimension < 1.3 else ("Rough" if theories.fractal_dimension > 1.7 else "Normal")
-            lines.append(f"• <b>Fractal Dimension:</b> {theories.fractal_dimension:.2f} ({fractal_interp})")
+        profit_prob = theories.risk_metrics.get('profit_probability')
+        if profit_prob is not None:
+            lines.append(f"• <b>Profit Probability:</b> {profit_prob*100:.0f}%")
 
         # Add LLM reasoning
         lines.extend([
