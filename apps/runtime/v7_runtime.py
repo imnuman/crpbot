@@ -44,7 +44,7 @@ from libs.constants import INITIAL_BALANCE
 class V7RuntimeConfig:
     """Configuration for V7 runtime"""
     symbols: list[str]
-    min_data_points: int = 100  # Minimum candles needed for analysis
+    min_data_points: int = 200  # Minimum candles needed for analysis (signal generator requires 200)
     max_signals_per_hour: int = 6  # Max signals per hour (10 signals/day budget)
     max_cost_per_day: float = 3.00  # Max $3/day ($90/month)
     max_cost_per_month: float = 100.00  # Hard monthly limit
@@ -276,22 +276,40 @@ class V7TradingRuntime:
         try:
             session = get_session(self.config.db_url)
 
+            # Map V7 signal type to direction
+            signal_value = result.parsed_signal.signal.value
+            if signal_value == "BUY":
+                direction = "long"
+            elif signal_value == "SELL":
+                direction = "short"
+            else:  # HOLD
+                direction = "hold"
+
+            # Determine tier based on confidence
+            if result.parsed_signal.confidence >= 0.70:
+                tier = "high"
+            elif result.parsed_signal.confidence >= 0.55:
+                tier = "medium"
+            else:
+                tier = "low"
+
             signal = Signal(
                 timestamp=result.parsed_signal.timestamp,
                 symbol=symbol,
-                signal_type=result.parsed_signal.signal.value,
+                direction=direction,
                 confidence=result.parsed_signal.confidence,
-                current_price=current_price,
-                reasoning=result.parsed_signal.reasoning,
+                tier=tier,
+                ensemble_prediction=result.parsed_signal.confidence,  # V7 uses single confidence value
+                entry_price=current_price,
                 model_version="v7_ultimate",
-                is_valid=result.parsed_signal.is_valid
+                notes=result.parsed_signal.reasoning
             )
 
             session.add(signal)
             session.commit()
             session.close()
 
-            logger.debug(f"Signal saved to database: {symbol} {result.parsed_signal.signal.value} @ {result.parsed_signal.confidence:.1%}")
+            logger.debug(f"Signal saved to database: {symbol} {direction} @ {result.parsed_signal.confidence:.1%}")
 
         except Exception as e:
             logger.error(f"Failed to save signal to database: {e}")
@@ -307,11 +325,11 @@ class V7TradingRuntime:
             SignalGenerationResult or None if failed
         """
         try:
-            # Fetch live market data
+            # Fetch live market data (fetch extra buffer for signal generator)
             logger.info(f"Fetching live data for {symbol}...")
             df = self.data_fetcher.fetch_latest_candles(
                 symbol=symbol,
-                num_candles=self.runtime_config.min_data_points
+                num_candles=max(250, self.runtime_config.min_data_points + 50)  # Buffer for lookback window
             )
 
             if df.empty:
@@ -324,8 +342,9 @@ class V7TradingRuntime:
                 )
                 return None
 
-            # Extract price series
+            # Extract price series and timestamps
             prices = df['close'].values
+            timestamps = (df['timestamp'].astype('int64') // 10**9).values  # Convert to Unix timestamps as numpy array
             current_price = float(prices[-1])
 
             logger.info(f"Generating V7 signal for {symbol} (price: ${current_price:,.2f}, {len(prices)} candles)")
@@ -334,7 +353,9 @@ class V7TradingRuntime:
             result = self.signal_generator.generate_signal(
                 symbol=symbol,
                 prices=prices,
-                current_price=current_price
+                timestamps=timestamps,
+                current_price=current_price,
+                timeframe="1m"
             )
 
             # Update costs
