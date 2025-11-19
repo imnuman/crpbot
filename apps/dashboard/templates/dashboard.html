@@ -119,6 +119,83 @@
             </div>
         </section>
 
+        <!-- Performance Monitoring -->
+        <section class="card">
+            <h2>📊 Performance Monitoring & Cost Tracking</h2>
+
+            <!-- Cost Stats -->
+            <div style="margin-bottom: 30px;">
+                <h3 style="font-size: 18px; margin-bottom: 15px;">💰 API Cost Tracking (DeepSeek LLM)</h3>
+                <div class="v7-stats-grid">
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Today's Cost</div>
+                        <div class="stat-value" id="costToday">--</div>
+                        <div class="stat-sublabel" id="costTodayPercent">--</div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Daily Budget Remaining</div>
+                        <div class="stat-value" id="costTodayRemaining">--</div>
+                        <div class="stat-sublabel">$3.00/day limit</div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Monthly Cost</div>
+                        <div class="stat-value" id="costMonth">--</div>
+                        <div class="stat-sublabel" id="costMonthPercent">--</div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Monthly Budget Remaining</div>
+                        <div class="stat-value" id="costMonthRemaining">--</div>
+                        <div class="stat-sublabel">$100/month limit</div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Avg Cost/Signal</div>
+                        <div class="stat-value" id="avgCostPerSignal">--</div>
+                        <div class="stat-sublabel">Total signals: <span id="totalSignalsForCost">--</span></div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Total All-Time Cost</div>
+                        <div class="stat-value" id="totalCost">--</div>
+                        <div class="stat-sublabel">Since deployment</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Win/Loss Stats (when trades are tracked) -->
+            <div>
+                <h3 style="font-size: 18px; margin-bottom: 15px;">🎯 Trading Performance (Manual Tracking)</h3>
+                <div class="v7-stats-grid">
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Total Trades Evaluated</div>
+                        <div class="stat-value" id="perfTotalTrades">--</div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Win Rate</div>
+                        <div class="stat-value" id="perfWinRate">--</div>
+                        <div class="stat-sublabel"><span id="perfWins">--</span> wins / <span id="perfLosses">--</span> losses</div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Total P&L</div>
+                        <div class="stat-value" id="perfTotalPnl">--</div>
+                    </div>
+                    <div class="v7-stat-card">
+                        <div class="stat-label">Avg P&L per Trade</div>
+                        <div class="stat-value" id="perfAvgPnl">--</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; padding: 15px; background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; border-radius: 4px;">
+                    <p style="margin: 0; color: #f59e0b;">
+                        <strong>Note:</strong> This is a <strong>manual trading system</strong>. To track performance:
+                    </p>
+                    <ol style="margin: 10px 0 0 20px; color: #e6e6e6;">
+                        <li>Execute trades manually based on V7 signals</li>
+                        <li>Record outcomes using the API: <code>POST /api/v7/signals/{id}/result</code></li>
+                        <li>Performance metrics will update automatically as you track trades</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
         <!-- How It Works -->
         <section class="card">
             <h2>🧠 How V7 Predicts the Market</h2>

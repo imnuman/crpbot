@@ -676,6 +676,316 @@ def api_v7_confidence_distribution():
         session.close()
 
 
+@app.route('/api/v7/performance')
+def api_v7_performance():
+    """Get V7 performance metrics including win rate and P&L."""
+    session = get_session(config.db_url)
+    try:
+        # Get all V7 signals with results
+        signals_with_results = session.query(Signal).filter(
+            Signal.model_version == 'v7_ultimate',
+            Signal.result.in_(['win', 'loss'])
+        ).all()
+
+        if not signals_with_results:
+            return jsonify({
+                'total_trades': 0,
+                'wins': 0,
+                'losses': 0,
+                'win_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_pnl_per_trade': 0.0,
+                'by_symbol': {},
+                'by_tier': {},
+                'by_direction': {}
+            })
+
+        # Overall stats
+        wins = sum(1 for s in signals_with_results if s.result == 'win')
+        losses = len(signals_with_results) - wins
+        win_rate = (wins / len(signals_with_results)) * 100 if signals_with_results else 0
+        total_pnl = sum(s.pnl or 0 for s in signals_with_results)
+        avg_pnl = total_pnl / len(signals_with_results) if signals_with_results else 0
+
+        # By symbol
+        by_symbol = {}
+        for s in signals_with_results:
+            if s.symbol not in by_symbol:
+                by_symbol[s.symbol] = {'wins': 0, 'losses': 0, 'pnl': 0.0, 'win_rate': 0.0, 'count': 0}
+            by_symbol[s.symbol]['count'] += 1
+            if s.result == 'win':
+                by_symbol[s.symbol]['wins'] += 1
+            else:
+                by_symbol[s.symbol]['losses'] += 1
+            by_symbol[s.symbol]['pnl'] += (s.pnl or 0)
+
+        for sym_data in by_symbol.values():
+            sym_data['win_rate'] = (sym_data['wins'] / sym_data['count']) * 100 if sym_data['count'] > 0 else 0
+
+        # By tier (confidence-based)
+        by_tier = {}
+        for s in signals_with_results:
+            if s.tier not in by_tier:
+                by_tier[s.tier] = {'wins': 0, 'losses': 0, 'pnl': 0.0, 'win_rate': 0.0, 'count': 0}
+            by_tier[s.tier]['count'] += 1
+            if s.result == 'win':
+                by_tier[s.tier]['wins'] += 1
+            else:
+                by_tier[s.tier]['losses'] += 1
+            by_tier[s.tier]['pnl'] += (s.pnl or 0)
+
+        for tier_data in by_tier.values():
+            tier_data['win_rate'] = (tier_data['wins'] / tier_data['count']) * 100 if tier_data['count'] > 0 else 0
+
+        # By direction
+        by_direction = {}
+        for s in signals_with_results:
+            if s.direction not in by_direction:
+                by_direction[s.direction] = {'wins': 0, 'losses': 0, 'pnl': 0.0, 'win_rate': 0.0, 'count': 0}
+            by_direction[s.direction]['count'] += 1
+            if s.result == 'win':
+                by_direction[s.direction]['wins'] += 1
+            else:
+                by_direction[s.direction]['losses'] += 1
+            by_direction[s.direction]['pnl'] += (s.pnl or 0)
+
+        for dir_data in by_direction.values():
+            dir_data['win_rate'] = (dir_data['wins'] / dir_data['count']) * 100 if dir_data['count'] > 0 else 0
+
+        return jsonify({
+            'total_trades': len(signals_with_results),
+            'wins': wins,
+            'losses': losses,
+            'win_rate': win_rate,
+            'total_pnl': total_pnl,
+            'avg_pnl_per_trade': avg_pnl,
+            'by_symbol': by_symbol,
+            'by_tier': by_tier,
+            'by_direction': by_direction
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/v7/costs')
+def api_v7_costs():
+    """Get V7 API cost tracking (DeepSeek LLM costs)."""
+    session = get_session(config.db_url)
+    try:
+        # Get all V7 signals
+        all_signals = session.query(Signal).filter(
+            Signal.model_version == 'v7_ultimate'
+        ).all()
+
+        # Calculate total costs from notes field (contains llm_cost_usd)
+        total_cost = 0.0
+        daily_costs = {}
+        monthly_costs = {}
+        cost_by_symbol = {}
+
+        for signal in all_signals:
+            # Parse cost from notes
+            try:
+                if signal.notes:
+                    v7_data = json.loads(signal.notes)
+                    cost = v7_data.get('llm_cost_usd', 0.0)
+                    total_cost += cost
+
+                    # Daily breakdown
+                    day_key = signal.timestamp.strftime('%Y-%m-%d')
+                    if day_key not in daily_costs:
+                        daily_costs[day_key] = 0.0
+                    daily_costs[day_key] += cost
+
+                    # Monthly breakdown
+                    month_key = signal.timestamp.strftime('%Y-%m')
+                    if month_key not in monthly_costs:
+                        monthly_costs[month_key] = 0.0
+                    monthly_costs[month_key] += cost
+
+                    # By symbol
+                    if signal.symbol not in cost_by_symbol:
+                        cost_by_symbol[signal.symbol] = {'cost': 0.0, 'count': 0}
+                    cost_by_symbol[signal.symbol]['cost'] += cost
+                    cost_by_symbol[signal.symbol]['count'] += 1
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        # Get today's cost
+        today = datetime.utcnow().strftime('%Y-%m-%d')
+        today_cost = daily_costs.get(today, 0.0)
+
+        # Get current month's cost
+        current_month = datetime.utcnow().strftime('%Y-%m')
+        month_cost = monthly_costs.get(current_month, 0.0)
+
+        # Calculate average cost per signal
+        avg_cost_per_signal = total_cost / len(all_signals) if all_signals else 0.0
+
+        # Budget limits (from V7 design)
+        daily_budget = 3.0  # $3/day
+        monthly_budget = 100.0  # $100/month
+
+        return jsonify({
+            'total_cost': total_cost,
+            'total_signals': len(all_signals),
+            'avg_cost_per_signal': avg_cost_per_signal,
+            'today': {
+                'cost': today_cost,
+                'budget': daily_budget,
+                'percent_used': (today_cost / daily_budget) * 100 if daily_budget > 0 else 0,
+                'remaining': max(0, daily_budget - today_cost)
+            },
+            'month': {
+                'cost': month_cost,
+                'budget': monthly_budget,
+                'percent_used': (month_cost / monthly_budget) * 100 if monthly_budget > 0 else 0,
+                'remaining': max(0, monthly_budget - month_cost)
+            },
+            'by_symbol': cost_by_symbol,
+            'daily_breakdown': sorted(daily_costs.items()),
+            'monthly_breakdown': sorted(monthly_costs.items())
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/v7/theories/contribution')
+def api_v7_theories_contribution():
+    """Analyze which theories contribute most to winning signals."""
+    session = get_session(config.db_url)
+    try:
+        # Get V7 signals with results (wins/losses)
+        signals_with_results = session.query(Signal).filter(
+            Signal.model_version == 'v7_ultimate',
+            Signal.result.in_(['win', 'loss'])
+        ).all()
+
+        if not signals_with_results:
+            return jsonify({
+                'total_analyzed': 0,
+                'theory_stats': {},
+                'message': 'No V7 signals with results yet'
+            })
+
+        # Parse theory values from notes
+        theory_stats = {
+            'shannon_entropy': {'wins': [], 'losses': []},
+            'hurst': {'wins': [], 'losses': []},
+            'kolmogorov': {'wins': [], 'losses': []},
+            'regime': {'wins': [], 'losses': []},
+            'risk_sharpe': {'wins': [], 'losses': []},
+            'fractal': {'wins': [], 'losses': []}
+        }
+
+        for signal in signals_with_results:
+            try:
+                if signal.notes:
+                    v7_data = json.loads(signal.notes)
+                    theories = v7_data.get('theories', {})
+
+                    # Extract theory values
+                    for theory_name in theory_stats.keys():
+                        if theory_name in theories:
+                            value = theories[theory_name]
+                            if signal.result == 'win':
+                                theory_stats[theory_name]['wins'].append(value)
+                            else:
+                                theory_stats[theory_name]['losses'].append(value)
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        # Calculate statistics for each theory
+        analysis = {}
+        for theory, data in theory_stats.items():
+            wins = data['wins']
+            losses = data['losses']
+
+            if not wins and not losses:
+                continue
+
+            avg_win = sum(wins) / len(wins) if wins else 0
+            avg_loss = sum(losses) / len(losses) if losses else 0
+
+            analysis[theory] = {
+                'avg_when_win': avg_win,
+                'avg_when_loss': avg_loss,
+                'difference': avg_win - avg_loss,
+                'win_samples': len(wins),
+                'loss_samples': len(losses),
+                'total_samples': len(wins) + len(losses)
+            }
+
+        # Sort by absolute difference (theories with biggest impact on outcomes)
+        sorted_theories = sorted(
+            analysis.items(),
+            key=lambda x: abs(x[1]['difference']),
+            reverse=True
+        )
+
+        return jsonify({
+            'total_analyzed': len(signals_with_results),
+            'theory_stats': dict(sorted_theories),
+            'interpretation': 'Positive difference = theory value higher when winning'
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/v7/signals/<int:signal_id>/result', methods=['POST'])
+def api_v7_update_result(signal_id):
+    """Update signal result (win/loss) - for manual tracking."""
+    from flask import request
+
+    session = get_session(config.db_url)
+    try:
+        # Get the signal
+        signal = session.query(Signal).filter(Signal.id == signal_id).first()
+
+        if not signal:
+            return jsonify({'error': 'Signal not found'}), 404
+
+        # Get result from request
+        data = request.get_json()
+        result = data.get('result')  # 'win', 'loss', 'pending', 'skipped'
+        exit_price = data.get('exit_price')
+        pnl = data.get('pnl')
+        notes = data.get('notes', '')
+
+        if result not in ['win', 'loss', 'pending', 'skipped']:
+            return jsonify({'error': 'Invalid result. Must be: win, loss, pending, or skipped'}), 400
+
+        # Update signal
+        signal.result = result
+        signal.exit_time = now_est()
+        if exit_price:
+            signal.exit_price = float(exit_price)
+        if pnl is not None:
+            signal.pnl = float(pnl)
+        if notes:
+            # Append notes to existing notes (preserve theory data)
+            try:
+                existing_notes = json.loads(signal.notes) if signal.notes else {}
+                existing_notes['user_notes'] = notes
+                signal.notes = json.dumps(existing_notes)
+            except json.JSONDecodeError:
+                signal.notes = json.dumps({'user_notes': notes})
+
+        session.commit()
+
+        return jsonify({
+            'success': True,
+            'signal_id': signal_id,
+            'result': result,
+            'message': f'Signal {signal_id} marked as {result}'
+        })
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+
 if __name__ == '__main__':
     print("=" * 80)
     print("🚀 V6 + V7 Ultimate Dashboard")

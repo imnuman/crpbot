@@ -234,16 +234,178 @@ sqlite3 tradingai.db "REINDEX"
 - **Dashboard**: `apps/dashboard/app.py`
 - **Logs**: Check background process output via BashOutput tool
 
-## 🚀 Next Steps (STEP 5)
+## 📊 Performance Monitoring & Cost Tracking (STEP 7)
 
-V7 STEP 4 is complete! Next enhancements:
-1. **Dashboard V7 Integration**: Add V7 signal visualization
-2. **Advanced Telegram Commands**: Stop/start V7, adjust parameters
-3. **Performance Tracking**: Win rate, PnL tracking for executed trades
-4. **Bayesian Learning**: Continuous improvement from trade outcomes
+### Dashboard Performance Section
+
+**NEW**: V7 dashboard now includes comprehensive performance monitoring!
+
+Access at: http://178.156.136.185:5000 (scroll to "Performance Monitoring & Cost Tracking" section)
+
+**Features**:
+1. **Cost Tracking Dashboard** (6 real-time metrics)
+2. **Win/Loss Performance Tracking** (manual trading)
+3. **Budget Alerts** (visual green/yellow/red indicators)
+4. **Auto-refresh** (every 5 seconds)
+
+### API Endpoints for Monitoring
+
+**1. Cost Tracking API**:
+```bash
+# Get V7 cost breakdown
+curl http://localhost:5000/api/v7/costs | python3 -m json.tool
+
+# Response includes:
+# - today.cost, today.remaining (vs $3/day budget)
+# - month.cost, month.remaining (vs $100/month budget)
+# - avg_cost_per_signal
+# - by_symbol breakdown
+# - daily/monthly trends
+```
+
+**2. Performance API**:
+```bash
+# Get win/loss statistics
+curl http://localhost:5000/api/v7/performance | python3 -m json.tool
+
+# Response includes:
+# - total_trades, wins, losses, win_rate
+# - total_pnl, avg_pnl_per_trade
+# - breakdowns by symbol/tier/direction
+```
+
+**3. Theory Contribution API**:
+```bash
+# Analyze which theories correlate with winning trades
+curl http://localhost:5000/api/v7/theories/contribution | python3 -m json.tool
+
+# Shows which theories (Shannon, Hurst, etc.) predict wins
+```
+
+### Manual Trade Tracking
+
+V7 is a **manual trading system**. To track performance:
+
+**Log a trade result**:
+```bash
+# Method 1: Using curl
+curl -X POST http://localhost:5000/api/v7/signals/774/result \
+  -H "Content-Type: application/json" \
+  -d '{
+    "result": "win",
+    "exit_price": 95500.0,
+    "pnl": 250.00,
+    "notes": "Exited at resistance level"
+  }'
+
+# Method 2: Using Python
+python3 -c "
+import requests
+requests.post(
+    'http://localhost:5000/api/v7/signals/774/result',
+    json={'result': 'win', 'exit_price': 95500.0, 'pnl': 250.00}
+)"
+```
+
+**Find signal ID**:
+```bash
+# Get recent signals
+curl -s http://localhost:5000/api/v7/signals/recent/24 | python3 -m json.tool | grep -A 5 '"id"'
+
+# Or from dashboard signals table
+```
+
+**Result options**: `"win"`, `"loss"`, `"pending"`, `"skipped"`
+
+### Budget Alerts
+
+The dashboard visually indicates budget usage:
+- 🟢 Green border: < 80% used (healthy)
+- 🟡 Yellow border: 80-95% used (warning)
+- 🔴 Red border: ≥ 95% used (critical)
+
+**Daily Budget**: $3.00 (currently at $0.019 = 0.64% ✅)
+**Monthly Budget**: $100.00 (currently at $0.031 = 0.03% ✅)
+
+### Cost Query Examples
+
+```bash
+# Total V7 cost all-time
+sqlite3 tradingai.db "SELECT SUM(
+    CASE
+        WHEN notes LIKE '%llm_cost_usd%'
+        THEN CAST(json_extract(notes, '$.llm_cost_usd') AS REAL)
+        ELSE 0
+    END
+) as total_cost
+FROM signals WHERE model_version='v7_ultimate'"
+
+# Cost by day
+sqlite3 tradingai.db "SELECT
+    DATE(timestamp) as date,
+    COUNT(*) as signals,
+    SUM(CASE
+        WHEN notes LIKE '%llm_cost_usd%'
+        THEN CAST(json_extract(notes, '$.llm_cost_usd') AS REAL)
+        ELSE 0
+    END) as daily_cost
+FROM signals
+WHERE model_version='v7_ultimate'
+GROUP BY DATE(timestamp)
+ORDER BY date DESC
+LIMIT 7"
+```
+
+### Performance Query Examples
+
+```bash
+# Win rate (when trades are tracked)
+sqlite3 tradingai.db "SELECT
+    COUNT(*) as total_trades,
+    SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) as wins,
+    SUM(CASE WHEN result='loss' THEN 1 ELSE 0 END) as losses,
+    CAST(SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) AS FLOAT) / COUNT(*) * 100 as win_rate_pct,
+    SUM(pnl) as total_pnl
+FROM signals
+WHERE model_version='v7_ultimate'
+AND result IN ('win', 'loss')"
+
+# Performance by symbol
+sqlite3 tradingai.db "SELECT
+    symbol,
+    COUNT(*) as trades,
+    SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) as wins,
+    CAST(SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) AS FLOAT) / COUNT(*) * 100 as win_rate,
+    SUM(pnl) as total_pnl
+FROM signals
+WHERE model_version='v7_ultimate'
+AND result IN ('win', 'loss')
+GROUP BY symbol"
+```
+
+## 🚀 Next Steps (STEP 8)
+
+### ✅ Completed Steps:
+- ✅ **STEP 5**: Dashboard & Telegram Integration
+- ✅ **STEP 6**: Backtesting Framework
+- ✅ **STEP 7**: Performance Monitoring & Cost Tracking ⭐ **NEW**
+
+### 🚧 Remaining:
+**STEP 8: Documentation** (estimated: 1-2 hours)
+1. Complete API documentation for all V7 endpoints
+2. User guide for manual trading workflow
+3. Theory module detailed documentation
+4. Deployment/maintenance guide
 
 ---
 
-**Current Status**: ✅ V7 Running in Production (Background Process ID: 99fd09)
+**Current Status**: ✅ V7 Running in Production with Full Performance Monitoring
 
-**Last Updated**: 2025-11-18
+**Live Processes**:
+- V7 Runtime: PID 1911821
+- Dashboard: PID 1995084 (with performance monitoring)
+- Telegram Bot: PID (check with `ps aux | grep v7_telegram`)
+
+**Dashboard URL**: http://178.156.136.185:5000
+
+**Last Updated**: 2025-11-19 10:20 EST

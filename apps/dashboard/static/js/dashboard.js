@@ -24,7 +24,9 @@ async function fetchAllData() {
             fetchSystemStatus(),
             fetchV7Statistics(),
             fetchV7RecentSignals(),
-            fetchV7ChartData()
+            fetchV7ChartData(),
+            fetchV7Costs(),
+            fetchV7Performance()
         ]);
         updateLastUpdateTime();
     } catch (error) {
@@ -398,5 +400,107 @@ async function fetchV7ChartData() {
 
     } catch (error) {
         console.error('Error fetching chart data:', error);
+    }
+}
+
+// ==================== PERFORMANCE MONITORING ====================
+
+// Fetch V7 cost tracking data
+async function fetchV7Costs() {
+    try {
+        const response = await fetch('/api/v7/costs');
+        const data = await response.json();
+
+        // Today's cost
+        document.getElementById('costToday').textContent = '$' + (data.today?.cost || 0).toFixed(4);
+        document.getElementById('costTodayPercent').textContent =
+            (data.today?.percent_used || 0).toFixed(2) + '% of daily budget';
+        document.getElementById('costTodayRemaining').textContent = '$' + (data.today?.remaining || 0).toFixed(2);
+
+        // Monthly cost
+        document.getElementById('costMonth').textContent = '$' + (data.month?.cost || 0).toFixed(4);
+        document.getElementById('costMonthPercent').textContent =
+            (data.month?.percent_used || 0).toFixed(2) + '% of monthly budget';
+        document.getElementById('costMonthRemaining').textContent = '$' + (data.month?.remaining || 0).toFixed(2);
+
+        // Average and total
+        document.getElementById('avgCostPerSignal').textContent = '$' + (data.avg_cost_per_signal || 0).toFixed(6);
+        document.getElementById('totalSignalsForCost').textContent = data.total_signals || 0;
+        document.getElementById('totalCost').textContent = '$' + (data.total_cost || 0).toFixed(4);
+
+        // Color code based on budget usage
+        const todayCard = document.getElementById('costToday').parentElement;
+        const monthCard = document.getElementById('costMonth').parentElement;
+
+        if (data.today?.percent_used >= 95) {
+            todayCard.style.borderLeft = '4px solid #ef4444';
+        } else if (data.today?.percent_used >= 80) {
+            todayCard.style.borderLeft = '4px solid #f59e0b';
+        } else {
+            todayCard.style.borderLeft = '4px solid #10b981';
+        }
+
+        if (data.month?.percent_used >= 95) {
+            monthCard.style.borderLeft = '4px solid #ef4444';
+        } else if (data.month?.percent_used >= 80) {
+            monthCard.style.borderLeft = '4px solid #f59e0b';
+        } else {
+            monthCard.style.borderLeft = '4px solid #10b981';
+        }
+
+    } catch (error) {
+        console.error('Error fetching V7 costs:', error);
+    }
+}
+
+// Fetch V7 performance data
+async function fetchV7Performance() {
+    try {
+        const response = await fetch('/api/v7/performance');
+        const data = await response.json();
+
+        // Update performance stats
+        document.getElementById('perfTotalTrades').textContent = data.total_trades || 0;
+        document.getElementById('perfWins').textContent = data.wins || 0;
+        document.getElementById('perfLosses').textContent = data.losses || 0;
+
+        if (data.total_trades > 0) {
+            document.getElementById('perfWinRate').textContent = data.win_rate.toFixed(1) + '%';
+            document.getElementById('perfTotalPnl').textContent = '$' + data.total_pnl.toFixed(2);
+            document.getElementById('perfAvgPnl').textContent = '$' + data.avg_pnl_per_trade.toFixed(2);
+
+            // Color code P&L
+            const pnlElement = document.getElementById('perfTotalPnl');
+            if (data.total_pnl > 0) {
+                pnlElement.style.color = '#10b981';
+            } else if (data.total_pnl < 0) {
+                pnlElement.style.color = '#ef4444';
+            }
+
+            const avgPnlElement = document.getElementById('perfAvgPnl');
+            if (data.avg_pnl_per_trade > 0) {
+                avgPnlElement.style.color = '#10b981';
+            } else if (data.avg_pnl_per_trade < 0) {
+                avgPnlElement.style.color = '#ef4444';
+            }
+
+            // Color code win rate
+            const winRateElement = document.getElementById('perfWinRate');
+            if (data.win_rate >= 70) {
+                winRateElement.style.color = '#10b981';
+            } else if (data.win_rate >= 60) {
+                winRateElement.style.color = '#f59e0b';
+            } else {
+                winRateElement.style.color = '#ef4444';
+            }
+        } else {
+            // No trades yet
+            document.getElementById('perfWinRate').textContent = 'No trades tracked yet';
+            document.getElementById('perfTotalPnl').textContent = '--';
+            document.getElementById('perfAvgPnl').textContent = '--';
+        }
+
+    } catch (error) {
+        console.error('Error fetching V7 performance:', error);
     }
 }
