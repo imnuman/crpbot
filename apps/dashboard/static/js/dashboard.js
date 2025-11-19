@@ -207,9 +207,20 @@ function updateDeepSeekAnalysis(signal) {
     const timestampElement = document.getElementById('analysisTimestamp');
 
     // Only show if signal has reasoning (DeepSeek analysis)
-    if (signal.notes && signal.notes.length > 10) {
+    const reasoning = signal.reasoning || signal.notes;
+    if (reasoning && reasoning.length > 10) {
         analysisBox.style.display = 'block';
-        thinkingElement.textContent = signal.notes;
+
+        // Extract reasoning text from JSON if needed
+        let reasoningText = reasoning;
+        try {
+            const parsed = JSON.parse(reasoning);
+            reasoningText = parsed.reasoning || reasoning;
+        } catch (e) {
+            // Not JSON, use as-is
+        }
+
+        thinkingElement.textContent = reasoningText;
         symbolElement.textContent = signal.symbol;
         confidenceElement.textContent = (signal.confidence * 100).toFixed(1) + '%';
 
