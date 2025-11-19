@@ -131,11 +131,19 @@ uv run python scripts/regenerate_features_complete.py \
 
 ### Phase 3: AWS GPU Training (ONLY APPROVED METHOD)
 
-#### 3.1 Launch AWS GPU Instance
+#### 3.1 Launch AWS GPU Instance with Auto-Termination
+
+**RECOMMENDED: Use automatic termination to prevent forgotten instances**
+
 ```bash
-# Launch g5.xlarge spot instance (70% cheaper)
+# Option A: Automatic launch with built-in termination (RECOMMENDED)
+./scripts/launch_training_with_auto_terminate.sh --spot --instance-type g5.xlarge --max-hours 4
+
+# Option B: Manual launch (requires manual termination)
 ./scripts/launch_g5_training.sh
 ```
+
+**Option A** launches an instance that automatically terminates when training completes.
 
 #### 3.2 Setup on GPU Instance
 ```bash
@@ -162,7 +170,28 @@ python -c "import torch; print(torch.cuda.is_available())"  # Should print: True
 aws s3 sync s3://crpbot-ml-data/features/ data/features/
 ```
 
-#### 3.4 Train Models on GPU
+#### 3.4 Train Models on GPU with Auto-Termination
+
+**RECOMMENDED: Use auto-termination wrapper**
+
+```bash
+# Copy auto-termination script to instance
+curl -O https://raw.githubusercontent.com/imnuman/crpbot/main/scripts/auto_terminate_after_training.sh
+chmod +x auto_terminate_after_training.sh
+
+# Run training with automatic termination (4 hour max)
+nohup ./auto_terminate_after_training.sh "\
+  uv run python apps/trainer/main.py --task lstm --coin BTC --epochs 15 && \
+  uv run python apps/trainer/main.py --task lstm --coin ETH --epochs 15 && \
+  uv run python apps/trainer/main.py --task lstm --coin SOL --epochs 15 && \
+  aws s3 sync models/ s3://crpbot-ml-data/models/v5_retrained/" \
+  4 &
+
+# Monitor training progress
+tail -f /tmp/auto_terminate.log
+```
+
+**Alternative: Manual training (requires manual termination)**
 ```bash
 # Train BTC LSTM (73 features)
 uv run python apps/trainer/main.py \
@@ -187,7 +216,7 @@ uv run python apps/trainer/main.py \
 
 #### 3.5 Upload Trained Models
 ```bash
-# Upload to S3
+# Upload to S3 (if not using auto-termination wrapper)
 aws s3 sync models/ s3://crpbot-ml-data/models/v5_retrained/
 
 # Tag with training info
@@ -198,12 +227,19 @@ aws s3api put-object-tagging \
 ```
 
 #### 3.6 Terminate Instance
+
+**If using auto-termination wrapper**: Instance will self-terminate automatically ✅
+
+**If using manual training**:
 ```bash
 # ⚠️ CRITICAL: Always terminate to stop charges
 exit  # Exit SSH
 
 # On local machine
 aws ec2 terminate-instances --instance-ids <INSTANCE_ID>
+
+# Or check for long-running instances
+./scripts/check_running_instances.sh
 ```
 
 ---
@@ -354,10 +390,10 @@ print(f'Model expects: {checkpoint[\"input_size\"]} features')
 
 ### One-Time (Per Retraining)
 ```
-AWS g4dn.xlarge spot:  ~$0.16/hour × 1 hour = $0.16
+AWS g5.xlarge spot:    ~$0.30/hour × 1 hour = $0.30
 S3 data transfer:       $0 (same region)
 ────────────────────────────────────────────
-Total per training:     $0.16
+Total per training:     $0.30
 ```
 
 ### Monthly Recurring
@@ -367,6 +403,29 @@ Coinbase API:          $0 (FREE)
 S3 storage (5GB):      $0.12/month
 ────────────────────────────────────────────
 Total monthly:         $0.12
+```
+
+### Preventing Cost Overruns
+
+**Monitor running instances regularly**:
+```bash
+# Check for long-running instances (run this daily)
+./scripts/check_running_instances.sh
+
+# Expected output:
+# ✅ No running instances found
+# OR
+# ⚠️  WARNING | i-xxxxx | g5.xlarge (SPOT)
+#     Running: 3h 25m | Est. Cost: $1.02
+```
+
+**Set up automated monitoring** (optional):
+```bash
+# Add to crontab for hourly checks
+crontab -e
+
+# Add line:
+0 * * * * cd /root/crpbot && ./scripts/check_running_instances.sh | mail -s "AWS Instance Check" your@email.com
 ```
 
 ---
@@ -388,6 +447,31 @@ Total monthly:         $0.12
 ### Issue: Training very slow
 **Cause**: Running on CPU instead of GPU
 **Fix**: Verify torch.cuda.is_available() returns True
+
+### Issue: Unexpected AWS charges from forgotten instances
+**Cause**: Instance left running after training completed
+**Symptoms**: Monthly bill shows charges for days/weeks of runtime
+
+**Immediate Fix**:
+```bash
+# Check for running instances
+./scripts/check_running_instances.sh
+
+# Terminate all long-running instances
+aws ec2 describe-instances \
+  --filters "Name=instance-state-name,Values=running" \
+  --query "Reservations[*].Instances[*].[InstanceId,LaunchTime]" \
+  --output text | while read id time; do
+    echo "Terminating $id (launched: $time)"
+    aws ec2 terminate-instances --instance-ids $id
+done
+```
+
+**Prevention**:
+1. ALWAYS use auto-termination scripts (see Phase 3)
+2. Set up daily monitoring with check_running_instances.sh
+3. Enable AWS billing alerts in AWS Console
+4. Use spot instances (70% cheaper than on-demand)
 
 ---
 
