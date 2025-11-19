@@ -651,10 +651,15 @@ async function fetchV7RecentSignals() {
             const dir = signal.direction.toUpperCase();
             const conf = (signal.confidence * 100).toFixed(1);
 
-            // Format price targets
-            const entry = signal.entry_price ? `$${signal.entry_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A';
-            const sl = signal.sl_price ? `$${signal.sl_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A';
-            const tp = signal.tp_price ? `$${signal.tp_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A';
+            // Format price targets - simple formatting for compatibility
+            const formatPrice = (price) => {
+                if (!price) return 'N/A';
+                return '$' + price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            };
+
+            const entry = formatPrice(signal.entry_price);
+            const sl = formatPrice(signal.sl_price);
+            const tp = formatPrice(signal.tp_price);
 
             // Calculate R:R ratio
             let rr = 'N/A';
