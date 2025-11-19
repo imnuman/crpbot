@@ -40,6 +40,8 @@ from libs.db.models import Signal, create_tables, get_session
 from libs.constants import INITIAL_BALANCE
 from libs.notifications import TelegramNotifier
 from libs.bayesian import BayesianLearner
+from libs.data.coingecko_client import CoinGeckoClient
+from libs.theories.market_context import MarketContextTheory
 
 
 @dataclass
@@ -100,6 +102,16 @@ class V7TradingRuntime:
         # Initialize Bayesian learner for continuous improvement
         self.bayesian_learner = BayesianLearner(db_url=self.config.db_url)
         logger.info("✅ Bayesian learner initialized (adaptive confidence calibration)")
+
+        # Initialize CoinGecko client for market context (7th theory)
+        if self.config.coingecko_api_key:
+            self.coingecko_client = CoinGeckoClient(api_key=self.config.coingecko_api_key)
+            self.market_context_theory = MarketContextTheory()
+            logger.info("✅ CoinGecko Analyst API initialized (7th theory - market context)")
+        else:
+            self.coingecko_client = None
+            self.market_context_theory = None
+            logger.warning("⚠️  CoinGecko API disabled (no API key)")
 
         # Initialize Telegram notifier
         self.telegram = TelegramNotifier(
@@ -414,7 +426,26 @@ class V7TradingRuntime:
 
             logger.info(f"Generating V7 signal for {symbol} (price: ${current_price:,.2f}, {len(prices)} candles)")
 
+            # Fetch CoinGecko market context (7th theory)
+            coingecko_data = None
+            market_context = None
+            if self.coingecko_client and self.market_context_theory:
+                try:
+                    coingecko_data = self.coingecko_client.get_market_data(symbol)
+                    market_context = self.market_context_theory.analyze(symbol, coingecko_data)
+                    if market_context:
+                        logger.info(
+                            f"📊 Market Context: MCap ${market_context['market_cap_billions']:.1f}B, "
+                            f"Vol ${market_context['volume_billions']:.1f}B, "
+                            f"ATH {market_context['ath_distance_pct']:.1f}%, "
+                            f"Sentiment: {market_context['sentiment']}"
+                        )
+                except Exception as e:
+                    logger.warning(f"CoinGecko fetch failed: {e}")
+
             # Generate signal using V7 system
+            # Note: market_context is logged above but not yet integrated into LLM prompt
+            # TODO: Update libs/llm/signal_generator.py to accept market_context parameter
             result = self.signal_generator.generate_signal(
                 symbol=symbol,
                 prices=prices,

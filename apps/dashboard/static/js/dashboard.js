@@ -26,12 +26,38 @@ async function fetchAllData() {
             fetchV7RecentSignals(),
             fetchV7ChartData(),
             fetchV7Costs(),
-            fetchV7Performance()
+            fetchV7Performance(),
+            fetchLivePrices()
         ]);
         updateLastUpdateTime();
     } catch (error) {
         console.error('Error fetching data:', error);
         updateSystemStatus(false);
+    }
+}
+
+// Fetch live market prices
+async function fetchLivePrices() {
+    try {
+        const symbols = ['BTC-USD', 'ETH-USD', 'SOL-USD'];
+        const prices = {};
+
+        for (const symbol of symbols) {
+            const response = await fetch(`https://api.coinbase.com/v2/prices/${symbol}/spot`);
+            const data = await response.json();
+            prices[symbol] = parseFloat(data.data.amount);
+        }
+
+        // Update live price display
+        document.getElementById('liveBTCPrice').textContent = prices['BTC-USD'].toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('liveETHPrice').textContent = prices['ETH-USD'].toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('liveSOLPrice').textContent = prices['SOL-USD'].toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        const now = new Date();
+        document.getElementById('priceUpdateTime').textContent = 'Updated ' + now.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+
+    } catch (error) {
+        console.error('Error fetching live prices:', error);
     }
 }
 

@@ -21,6 +21,22 @@
             </div>
         </header>
 
+        <!-- Live Price Ticker -->
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; padding: 15px 20px; margin: 20px 0; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">
+            <div style="display: flex; align-items: center; justify-content: space-between; color: #fff;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 24px;">📈</span>
+                    <h3 style="margin: 0; font-size: 16px; font-weight: 600;">LIVE MARKET PRICES</h3>
+                    <span id="priceUpdateTime" style="font-size: 12px; opacity: 0.8;"></span>
+                </div>
+                <div style="display: flex; gap: 30px; font-size: 18px; font-weight: 600;">
+                    <div>BTC: $<span id="liveBTCPrice">--</span></div>
+                    <div>ETH: $<span id="liveETHPrice">--</span></div>
+                    <div>SOL: $<span id="liveSOLPrice">--</span></div>
+                </div>
+            </div>
+        </div>
+
         <!-- DeepSeek AI Analysis Box -->
         <div id="deepseekAnalysis" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; margin: 20px 0; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); display: none;">
             <div style="display: flex; align-items: center; margin-bottom: 12px;">
