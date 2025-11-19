@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V7 Ultimate Dashboard</title>
+    <title>V7 Trading Signals</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header class="dashboard-header">
-            <h1>🚀 V7 Ultimate Dashboard</h1>
+            <h1>📊 V7 Trading Signals - Live Market Predictions</h1>
             <div class="status-indicator">
                 <span class="status-dot" id="systemStatus"></span>
                 <span id="statusText">Connecting...</span>
@@ -21,319 +20,121 @@
             </div>
         </header>
 
-        <!-- Live Market Prices -->
-        <section class="card">
-            <h2>💰 Live Market Prices</h2>
-            <div class="market-grid">
-                <div class="market-card" id="marketBTC">
-                    <h3>BTC-USD</h3>
-                    <div class="market-price" id="priceBTC">$--</div>
-                    <div class="market-change" id="changeBTC">--</div>
-                    <div class="market-confidence" id="confBTC" style="font-size: 14px; font-weight: bold; margin: 5px 0; color: #10b981;">Confidence: --</div>
-                    <div class="market-details">
-                        <span>H: <span id="highBTC">--</span></span>
-                        <span>L: <span id="lowBTC">--</span></span>
-                        <span>V: <span id="volBTC">--</span></span>
-                    </div>
-                </div>
-                <div class="market-card" id="marketETH">
-                    <h3>ETH-USD</h3>
-                    <div class="market-price" id="priceETH">$--</div>
-                    <div class="market-change" id="changeETH">--</div>
-                    <div class="market-confidence" id="confETH" style="font-size: 14px; font-weight: bold; margin: 5px 0; color: #10b981;">Confidence: --</div>
-                    <div class="market-details">
-                        <span>H: <span id="highETH">--</span></span>
-                        <span>L: <span id="lowETH">--</span></span>
-                        <span>V: <span id="volETH">--</span></span>
-                    </div>
-                </div>
-                <div class="market-card" id="marketSOL">
-                    <h3>SOL-USD</h3>
-                    <div class="market-price" id="priceSOL">$--</div>
-                    <div class="market-change" id="changeSOL">--</div>
-                    <div class="market-confidence" id="confSOL" style="font-size: 14px; font-weight: bold; margin: 5px 0; color: #10b981;">Confidence: --</div>
-                    <div class="market-details">
-                        <span>H: <span id="highSOL">--</span></span>
-                        <span>L: <span id="lowSOL">--</span></span>
-                        <span>V: <span id="volSOL">--</span></span>
-                    </div>
-                </div>
-            </div>
-        </section>
+        <!-- V7 Ultimate Signals -->
+        <section class="card v7-section">
+            <h2>🎯 Latest Trading Signals (What to Buy/Sell and At What Price)</h2>
 
-        <!-- System Overview -->
-        <section class="card">
-            <h2>📊 System Overview</h2>
-            <div class="overview-grid">
-                <div class="overview-item">
-                    <div class="overview-label">Mode</div>
-                    <div class="overview-value" id="systemMode">--</div>
+            <!-- V7 Statistics -->
+            <div class="v7-stats-grid" style="margin-bottom: 20px;">
+                <div class="v7-stat-card">
+                    <div class="stat-label">Total Signals Today</div>
+                    <div class="stat-value" id="v7TotalSignals">--</div>
                 </div>
-                <div class="overview-item">
-                    <div class="overview-label">Confidence Threshold</div>
-                    <div class="overview-value" id="confidenceThreshold">--</div>
+                <div class="v7-stat-card">
+                    <div class="stat-label">BUY Signals</div>
+                    <div class="stat-value" style="color: #10b981;" id="v7BuyCount">--</div>
                 </div>
-                <div class="overview-item">
-                    <div class="overview-label">Average Accuracy</div>
-                    <div class="overview-value" id="avgAccuracy">--</div>
+                <div class="v7-stat-card">
+                    <div class="stat-label">SELL Signals</div>
+                    <div class="stat-value" style="color: #ef4444;" id="v7SellCount">--</div>
                 </div>
-                <div class="overview-item">
-                    <div class="overview-label">Architecture</div>
-                    <div class="overview-value small" id="architecture">--</div>
+                <div class="v7-stat-card">
+                    <div class="stat-label">HOLD Signals</div>
+                    <div class="stat-value" style="color: #f59e0b;" id="v7HoldCount">--</div>
                 </div>
-            </div>
-        </section>
-
-        <!-- Data Sources -->
-        <section class="card">
-            <h2>📡 Data Sources</h2>
-            <div class="data-sources-grid">
-                <div class="source-card" id="sourceCoinbase">
-                    <div class="source-header">
-                        <span class="source-name">Coinbase</span>
-                        <span class="source-status"></span>
-                    </div>
-                    <div class="source-type">--</div>
-                    <div class="source-interval">--</div>
-                    <div class="source-desc">--</div>
-                </div>
-                <div class="source-card" id="sourceKraken">
-                    <div class="source-header">
-                        <span class="source-name">Kraken</span>
-                        <span class="source-status"></span>
-                    </div>
-                    <div class="source-type">--</div>
-                    <div class="source-interval">--</div>
-                    <div class="source-desc">--</div>
-                </div>
-                <div class="source-card" id="sourceCoingecko">
-                    <div class="source-header">
-                        <span class="source-name">CoinGecko</span>
-                        <span class="source-status"></span>
-                    </div>
-                    <div class="source-type">--</div>
-                    <div class="source-interval">--</div>
-                    <div class="source-desc">--</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Live Predictions -->
-        <section class="card">
-            <h2>🎯 Live Predictions</h2>
-            <div class="predictions-grid">
-                <div class="prediction-card" id="predBTC">
-                    <h3>BTC-USD</h3>
-                    <div class="prediction-chart-container">
-                        <canvas id="chartBTC"></canvas>
-                    </div>
-                    <div class="prediction-info">
-                        <div class="prediction-direction" id="directionBTC">--</div>
-                        <div class="prediction-confidence" id="confidenceBTC">--</div>
-                        <div class="prediction-tier" id="tierBTC">--</div>
-                    </div>
-                    <div class="prediction-time" id="timeBTC">--</div>
-                </div>
-                <div class="prediction-card" id="predETH">
-                    <h3>ETH-USD</h3>
-                    <div class="prediction-chart-container">
-                        <canvas id="chartETH"></canvas>
-                    </div>
-                    <div class="prediction-info">
-                        <div class="prediction-direction" id="directionETH">--</div>
-                        <div class="prediction-confidence" id="confidenceETH">--</div>
-                        <div class="prediction-tier" id="tierETH">--</div>
-                    </div>
-                    <div class="prediction-time" id="timeETH">--</div>
-                </div>
-                <div class="prediction-card" id="predSOL">
-                    <h3>SOL-USD</h3>
-                    <div class="prediction-chart-container">
-                        <canvas id="chartSOL"></canvas>
-                    </div>
-                    <div class="prediction-info">
-                        <div class="prediction-direction" id="directionSOL">--</div>
-                        <div class="prediction-confidence" id="confidenceSOL">--</div>
-                        <div class="prediction-tier" id="tierSOL">--</div>
-                    </div>
-                    <div class="prediction-time" id="timeSOL">--</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Signal Statistics (24h) -->
-        <section class="card">
-            <h2>📈 Signal Statistics (24h)</h2>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Total Signals</div>
-                    <div class="stat-value" id="totalSignals">--</div>
-                </div>
-                <div class="stat-card">
+                <div class="v7-stat-card">
                     <div class="stat-label">Average Confidence</div>
-                    <div class="stat-value" id="avgConfidence">--</div>
+                    <div class="stat-value" id="v7AvgConfidence">--</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Hourly Rate</div>
-                    <div class="stat-value" id="hourlyRate">--</div>
-                </div>
-            </div>
-            <div class="stats-breakdown">
-                <div class="breakdown-section">
-                    <h4>By Symbol</h4>
-                    <div id="statsBySymbol" class="breakdown-content">--</div>
-                </div>
-                <div class="breakdown-section">
-                    <h4>By Direction</h4>
-                    <div id="statsByDirection" class="breakdown-content">--</div>
-                </div>
-                <div class="breakdown-section">
-                    <h4>By Tier</h4>
-                    <div id="statsByTier" class="breakdown-content">--</div>
+                <div class="v7-stat-card">
+                    <div class="stat-label">API Cost Today</div>
+                    <div class="stat-value" id="v7Cost">--</div>
                 </div>
             </div>
-        </section>
 
-        <!-- Recent Signals -->
-        <section class="card">
-            <h2>🔔 Recent Signals</h2>
+            <!-- V7 Signals Table -->
             <div class="table-container">
                 <table class="signals-table">
                     <thead>
                         <tr>
-                            <th>Timestamp</th>
-                            <th>Symbol</th>
-                            <th>Direction</th>
-                            <th>Confidence</th>
-                            <th>Tier</th>
-                        </tr>
-                    </thead>
-                    <tbody id="recentSignalsTable">
-                        <tr>
-                            <td colspan="5" class="no-data">Loading signals...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- V7 Ultimate Signals -->
-        <section class="card v7-section">
-            <h2>🔬 V7 Ultimate Signals (Mathematical Theories + LLM)</h2>
-            <div class="v7-stats-grid">
-                <div class="v7-stat-card">
-                    <div class="stat-label">Total V7 Signals</div>
-                    <div class="stat-value" id="v7TotalSignals">--</div>
-                </div>
-                <div class="v7-stat-card">
-                    <div class="stat-label">Avg Confidence</div>
-                    <div class="stat-value" id="v7AvgConfidence">--</div>
-                </div>
-                <div class="v7-stat-card">
-                    <div class="stat-label">Latest Signal</div>
-                    <div class="stat-value" id="v7LatestSignal">--</div>
-                </div>
-            </div>
-            <div class="table-container">
-                <table class="signals-table v7-table">
-                    <thead>
-                        <tr>
-                            <th>Timestamp</th>
+                            <th>Time</th>
                             <th>Symbol</th>
                             <th>Signal</th>
                             <th>Confidence</th>
-                            <th>Entry</th>
+                            <th>Entry Price</th>
                             <th>Stop Loss</th>
                             <th>Take Profit</th>
-                            <th>R:R</th>
-                            <th>Reasoning</th>
+                            <th>Risk/Reward</th>
+                            <th>AI Reasoning</th>
                         </tr>
                     </thead>
                     <tbody id="v7SignalsTable">
                         <tr>
-                            <td colspan="9" class="no-data">Loading V7 signals...</td>
+                            <td colspan="9" class="no-data">Loading signals...</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <div class="v7-breakdown">
+
+            <!-- Signal Breakdown -->
+            <div class="v7-breakdown" style="margin-top: 20px;">
                 <div class="breakdown-section">
                     <h4>By Signal Type</h4>
                     <div id="v7ByDirection" class="breakdown-content">--</div>
                 </div>
                 <div class="breakdown-section">
-                    <h4>By Tier</h4>
-                    <div id="v7ByTier" class="breakdown-content">--</div>
-                </div>
-                <div class="breakdown-section">
                     <h4>By Symbol</h4>
                     <div id="v7BySymbol" class="breakdown-content">--</div>
                 </div>
-            </div>
-        </section>
-
-        <!-- V7 Signal History Visualization -->
-        <section class="card v7-section">
-            <h2>📈 V7 Signal History & Analytics</h2>
-
-            <!-- Time Series Chart -->
-            <div class="chart-section">
-                <h3>Signal Timeline (24h)</h3>
-                <div class="chart-container-large">
-                    <canvas id="v7TimeseriesChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Confidence Distribution Chart -->
-            <div class="chart-section">
-                <h3>Confidence Distribution (7 days)</h3>
-                <div class="chart-container-medium">
-                    <canvas id="v7ConfidenceChart"></canvas>
+                <div class="breakdown-section">
+                    <h4>By Confidence Tier</h4>
+                    <div id="v7ByTier" class="breakdown-content">--</div>
                 </div>
             </div>
         </section>
 
-        <!-- Model Analysis Process -->
+        <!-- How It Works -->
         <section class="card">
-            <h2>🔬 V6 Analysis Process</h2>
-            <div class="process-flow">
-                <div class="process-step">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h4>Data Collection</h4>
-                        <p>Fetch 1-minute OHLCV candles from Coinbase, Kraken backup, and CoinGecko fundamentals</p>
-                    </div>
-                </div>
-                <div class="process-arrow">→</div>
-                <div class="process-step">
-                    <div class="step-number">2</div>
-                    <div class="step-content">
-                        <h4>Feature Engineering</h4>
-                        <p>Generate 72 Amazon Q features: EMAs, MACDs, RSI, Bollinger Bands, Stochastic, Williams %R, Momentum, ROC</p>
-                    </div>
-                </div>
-                <div class="process-arrow">→</div>
-                <div class="process-step">
-                    <div class="step-number">3</div>
-                    <div class="step-content">
-                        <h4>Model Inference</h4>
-                        <p>V6 Enhanced FNN: 4-layer feedforward (72→256→128→64→3) with softmax output</p>
-                    </div>
-                </div>
-                <div class="process-arrow">→</div>
-                <div class="process-step">
-                    <div class="step-number">4</div>
-                    <div class="step-content">
-                        <h4>Signal Generation</h4>
-                        <p>Filter predictions by 65% confidence threshold and classify into high/medium/low tiers</p>
-                    </div>
-                </div>
+            <h2>🧠 How V7 Predicts the Market</h2>
+            <div style="padding: 20px; line-height: 1.8;">
+                <p><strong>V7 analyzes the market using 6 mathematical theories + AI:</strong></p>
+                <ul style="margin: 15px 0; padding-left: 20px;">
+                    <li><strong>Shannon Entropy:</strong> Measures market randomness (low = predictable, high = chaotic)</li>
+                    <li><strong>Hurst Exponent:</strong> Detects trends (>0.5 = trending market, <0.5 = mean-reverting)</li>
+                    <li><strong>Market Regime:</strong> Identifies if market is bullish, bearish, or consolidating</li>
+                    <li><strong>Kalman Filter:</strong> Removes noise to find true price direction</li>
+                    <li><strong>Bayesian Learning:</strong> Learns from past trades to improve accuracy</li>
+                    <li><strong>Monte Carlo Risk:</strong> Simulates 10,000 scenarios to calculate risk/reward</li>
+                </ul>
+
+                <p><strong>Signal Meanings:</strong></p>
+                <ul style="margin: 15px 0; padding-left: 20px;">
+                    <li><strong style="color: #10b981;">BUY:</strong> Market likely going UP - Entry price shows where to buy, Take Profit shows target</li>
+                    <li><strong style="color: #ef4444;">SELL:</strong> Market likely going DOWN - Entry price shows where to sell, Take Profit shows target</li>
+                    <li><strong style="color: #f59e0b;">HOLD:</strong> Market too uncertain - Wait for better conditions</li>
+                </ul>
+
+                <p><strong>Confidence Levels:</strong></p>
+                <ul style="margin: 15px 0; padding-left: 20px;">
+                    <li><strong>70%+:</strong> High confidence - Strong signal with clear mathematical backing</li>
+                    <li><strong>60-70%:</strong> Medium confidence - Decent signal, manageable risk</li>
+                    <li><strong><60%:</strong> Low confidence - Market uncertain, usually HOLD recommended</li>
+                </ul>
+
+                <p><strong>Price Targets Explained:</strong></p>
+                <ul style="margin: 15px 0; padding-left: 20px;">
+                    <li><strong>Entry Price:</strong> The price where you should enter the trade</li>
+                    <li><strong>Stop Loss:</strong> Exit if price goes against you (limits losses)</li>
+                    <li><strong>Take Profit:</strong> Exit if price reaches target (locks in profits)</li>
+                    <li><strong>Risk/Reward (R:R):</strong> 1:2 means risk $1 to potentially make $2</li>
+                </ul>
             </div>
         </section>
 
         <!-- Footer -->
-        <footer class="dashboard-footer">
-            <p>V6 Enhanced Model Dashboard | Auto-refresh every 1 second | Model Version: v6_enhanced</p>
+        <footer style="text-align: center; padding: 20px; color: #888;">
+            <p>V7 Ultimate Trading System | Scans every 2 minutes | Costs ~$0.0004 per signal</p>
+            <p>⚠️ This is for informational purposes only. Not financial advice. Always do your own research.</p>
         </footer>
     </div>
 

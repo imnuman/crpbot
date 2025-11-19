@@ -52,7 +52,7 @@ def get_fetcher():
 
 @app.route('/')
 def index():
-    """Dashboard home page."""
+    """Dashboard home page - V7 Clean."""
     return render_template('dashboard.html')
 
 
