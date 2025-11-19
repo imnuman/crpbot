@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>V7 Trading Signals</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -89,6 +90,31 @@
                 <div class="breakdown-section">
                     <h4>By Confidence Tier</h4>
                     <div id="v7ByTier" class="breakdown-content">--</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Signal History Charts -->
+        <section class="card">
+            <h2>📈 Signal History & Trends</h2>
+
+            <div class="charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-top: 20px;">
+                <!-- Signal Timeline Chart -->
+                <div class="chart-container">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">Signals Over Time (24 Hours)</h3>
+                    <canvas id="signalTimelineChart"></canvas>
+                </div>
+
+                <!-- Signal Distribution Chart -->
+                <div class="chart-container">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">Signal Distribution</h3>
+                    <canvas id="signalDistributionChart"></canvas>
+                </div>
+
+                <!-- Confidence Trend Chart -->
+                <div class="chart-container">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">Average Confidence Trend</h3>
+                    <canvas id="confidenceTrendChart"></canvas>
                 </div>
             </div>
         </section>

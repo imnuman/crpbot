@@ -1,8 +1,16 @@
 // V7 Trading Signals Dashboard JavaScript
 
+// Chart instances
+let charts = {
+    timeline: null,
+    distribution: null,
+    confidence: null
+};
+
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', function() {
     console.log('V7 Dashboard initialized');
+    initCharts();
     fetchAllData();
 
     // Auto-refresh every 5 seconds
@@ -15,7 +23,8 @@ async function fetchAllData() {
         await Promise.all([
             fetchSystemStatus(),
             fetchV7Statistics(),
-            fetchV7RecentSignals()
+            fetchV7RecentSignals(),
+            fetchV7ChartData()
         ]);
         updateLastUpdateTime();
     } catch (error) {
@@ -185,4 +194,209 @@ function updateLastUpdateTime() {
         hour12: false
     });
     document.getElementById('lastUpdate').textContent = timeString;
+}
+
+// ==================== CHART FUNCTIONS ====================
+
+// Initialize all charts
+function initCharts() {
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 2,
+        plugins: {
+            legend: {
+                labels: {
+                    color: '#e6e6e6',
+                    font: { size: 12 }
+                }
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#999' },
+                grid: { color: 'rgba(255,255,255,0.1)' }
+            },
+            y: {
+                ticks: { color: '#999' },
+                grid: { color: 'rgba(255,255,255,0.1)' }
+            }
+        }
+    };
+
+    // Signal Timeline Chart (Bar chart)
+    const timelineCtx = document.getElementById('signalTimelineChart');
+    if (timelineCtx) {
+        charts.timeline = new Chart(timelineCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'BUY',
+                        data: [],
+                        backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'SELL',
+                        data: [],
+                        backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                        borderColor: 'rgba(239, 68, 68, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'HOLD',
+                        data: [],
+                        backgroundColor: 'rgba(245, 158, 11, 0.7)',
+                        borderColor: 'rgba(245, 158, 11, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                ...chartOptions,
+                scales: {
+                    ...chartOptions.scales,
+                    x: { ...chartOptions.scales.x, stacked: true },
+                    y: { ...chartOptions.scales.y, stacked: true, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // Signal Distribution Chart (Doughnut chart)
+    const distributionCtx = document.getElementById('signalDistributionChart');
+    if (distributionCtx) {
+        charts.distribution = new Chart(distributionCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['BUY', 'SELL', 'HOLD'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: [
+                        'rgba(16, 185, 129, 0.8)',
+                        'rgba(239, 68, 68, 0.8)',
+                        'rgba(245, 158, 11, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(16, 185, 129, 1)',
+                        'rgba(239, 68, 68, 1)',
+                        'rgba(245, 158, 11, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1.5,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#e6e6e6',
+                            font: { size: 12 }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Confidence Trend Chart (Line chart)
+    const confidenceCtx = document.getElementById('confidenceTrendChart');
+    if (confidenceCtx) {
+        charts.confidence = new Chart(confidenceCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Average Confidence',
+                    data: [],
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                ...chartOptions,
+                scales: {
+                    ...chartOptions.scales,
+                    y: { 
+                        ...chartOptions.scales.y,
+                        beginAtZero: false,
+                        min: 0,
+                        max: 1,
+                        ticks: {
+                            color: '#999',
+                            callback: function(value) {
+                                return (value * 100).toFixed(0) + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// Fetch chart data
+async function fetchV7ChartData() {
+    try {
+        // Fetch timeseries data for last 24 hours
+        const response = await fetch('/api/v7/signals/timeseries/24');
+        const data = await response.json();
+
+        if (!data.timeseries || data.timeseries.length === 0) {
+            console.log('No chart data available');
+            return;
+        }
+
+        // Update timeline chart
+        if (charts.timeline) {
+            const labels = data.timeseries.map(d => {
+                const date = new Date(d.timestamp);
+                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            });
+            const buyData = data.timeseries.map(d => d.long_count || 0);
+            const sellData = data.timeseries.map(d => d.short_count || 0);
+            const holdData = data.timeseries.map(d => d.hold_count || 0);
+
+            charts.timeline.data.labels = labels;
+            charts.timeline.data.datasets[0].data = buyData;
+            charts.timeline.data.datasets[1].data = sellData;
+            charts.timeline.data.datasets[2].data = holdData;
+            charts.timeline.update('none'); // Update without animation
+        }
+
+        // Update distribution chart (aggregate)
+        if (charts.distribution) {
+            const totalBuy = data.timeseries.reduce((sum, d) => sum + (d.long_count || 0), 0);
+            const totalSell = data.timeseries.reduce((sum, d) => sum + (d.short_count || 0), 0);
+            const totalHold = data.timeseries.reduce((sum, d) => sum + (d.hold_count || 0), 0);
+
+            charts.distribution.data.datasets[0].data = [totalBuy, totalSell, totalHold];
+            charts.distribution.update('none');
+        }
+
+        // Update confidence trend chart
+        if (charts.confidence) {
+            const labels = data.timeseries.map(d => {
+                const date = new Date(d.timestamp);
+                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            });
+            const confidenceData = data.timeseries.map(d => d.avg_confidence || 0);
+
+            charts.confidence.data.labels = labels;
+            charts.confidence.data.datasets[0].data = confidenceData;
+            charts.confidence.update('none');
+        }
+
+    } catch (error) {
+        console.error('Error fetching chart data:', error);
+    }
 }
