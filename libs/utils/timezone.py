@@ -2,8 +2,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-# EST Timezone
-EST = ZoneInfo("America/Toronto")
+# EST Timezone (US Eastern Time)
+EST = ZoneInfo("America/New_York")
 
 
 def now_est() -> datetime:
