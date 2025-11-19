@@ -48,8 +48,8 @@ class V7RuntimeConfig:
     symbols: list[str]
     min_data_points: int = 200  # Minimum candles needed for analysis (signal generator requires 200)
     max_signals_per_hour: int = 6  # Max signals per hour (10 signals/day budget)
-    max_cost_per_day: float = 3.00  # Max $3/day ($90/month)
-    max_cost_per_month: float = 100.00  # Hard monthly limit
+    max_cost_per_day: float = 5.00  # Max $5/day for more market analysis (increased from $3)
+    max_cost_per_month: float = 150.00  # Hard monthly limit (increased from $100)
     signal_interval_seconds: int = 120  # 2 minutes between scans
     conservative_mode: bool = True  # Conservative LLM prompting
 

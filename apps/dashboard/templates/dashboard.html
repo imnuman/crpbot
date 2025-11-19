@@ -21,6 +21,23 @@
             </div>
         </header>
 
+        <!-- DeepSeek AI Analysis Box -->
+        <div id="deepseekAnalysis" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 20px; margin: 20px 0; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); display: none;">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <span style="font-size: 28px; margin-right: 12px;">🧠</span>
+                <h3 style="margin: 0; color: #fff; font-size: 18px; font-weight: 600;">DeepSeek AI Market Analysis</h3>
+                <span id="analysisTimestamp" style="margin-left: auto; color: rgba(255,255,255,0.8); font-size: 14px;"></span>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; backdrop-filter: blur(10px);">
+                <div id="deepseekThinking" style="color: #fff; font-size: 15px; line-height: 1.7; white-space: pre-wrap; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"></div>
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 15px; font-size: 13px; color: rgba(255,255,255,0.9);">
+                <div><strong>Symbol:</strong> <span id="analysisSymbol">-</span></div>
+                <div><strong>Confidence:</strong> <span id="analysisConfidence">-</span></div>
+                <div><strong>Direction:</strong> <span id="analysisDirection">-</span></div>
+            </div>
+        </div>
+
         <!-- V7 Ultimate Signals -->
         <section class="card v7-section">
             <h2>🎯 Latest Trading Signals (What to Buy/Sell and At What Price)</h2>

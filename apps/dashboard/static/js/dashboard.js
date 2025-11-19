@@ -89,6 +89,11 @@ async function fetchV7RecentSignals() {
         // Update total signals counter
         document.getElementById('totalV7Signals').textContent = allSignals.length;
 
+        // Update DeepSeek Analysis Box with most recent signal
+        if (allSignals.length > 0) {
+            updateDeepSeekAnalysis(allSignals[0]);
+        }
+
         // Limit to most recent 20 signals for readability
         const signals = allSignals.slice(0, 20);
 
@@ -189,6 +194,37 @@ function updateSystemStatus(isOnline) {
     } else {
         statusDot.className = 'status-dot status-offline';
         statusText.textContent = 'Offline';
+    }
+}
+
+// Update DeepSeek Analysis Box
+function updateDeepSeekAnalysis(signal) {
+    const analysisBox = document.getElementById('deepseekAnalysis');
+    const thinkingElement = document.getElementById('deepseekThinking');
+    const symbolElement = document.getElementById('analysisSymbol');
+    const confidenceElement = document.getElementById('analysisConfidence');
+    const directionElement = document.getElementById('analysisDirection');
+    const timestampElement = document.getElementById('analysisTimestamp');
+
+    // Only show if signal has reasoning (DeepSeek analysis)
+    if (signal.notes && signal.notes.length > 10) {
+        analysisBox.style.display = 'block';
+        thinkingElement.textContent = signal.notes;
+        symbolElement.textContent = signal.symbol;
+        confidenceElement.textContent = (signal.confidence * 100).toFixed(1) + '%';
+
+        const direction = signal.direction === 'long' ? '🟢 BUY' :
+                         signal.direction === 'short' ? '🔴 SELL' : '🟡 HOLD';
+        directionElement.textContent = direction;
+
+        const timestamp = new Date(signal.timestamp);
+        timestampElement.textContent = timestamp.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+    } else {
+        analysisBox.style.display = 'none';
     }
 }
 
