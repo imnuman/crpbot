@@ -452,7 +452,8 @@ def api_v7_recent_signals(hours=24):
     """Get recent V7 Ultimate signals."""
     session = get_session(config.db_url)
     try:
-        since = now_est() - timedelta(hours=hours)
+        # Use UTC time since signals are stored in UTC
+        since = datetime.utcnow() - timedelta(hours=hours)
         signals = session.query(Signal).filter(
             Signal.timestamp >= since,
             Signal.model_version == 'v7_ultimate'
@@ -465,6 +466,8 @@ def api_v7_recent_signals(hours=24):
             'confidence': s.confidence,
             'tier': s.tier,
             'entry_price': s.entry_price,
+            'sl_price': s.sl_price,
+            'tp_price': s.tp_price,
             'reasoning': s.notes,  # Contains theory analysis
             'model_version': s.model_version
         } for s in signals])
@@ -553,16 +556,31 @@ def api_v7_theories_latest(symbol):
         if not signal:
             return jsonify({'error': f'No V7 signals found for {symbol}'}), 404
 
-        # Parse theory analysis from reasoning/notes
-        reasoning = signal.notes or ""
+        # Parse V7 JSON data from notes field
+        v7_data = {}
+        try:
+            if signal.notes:
+                v7_data = json.loads(signal.notes)
+        except json.JSONDecodeError:
+            # Fallback: treat as plain reasoning text (legacy format)
+            v7_data = {
+                "reasoning": signal.notes or "",
+                "theories": {},
+                "llm_cost_usd": 0.0
+            }
 
         return jsonify({
             'symbol': signal.symbol,
             'timestamp': signal.timestamp.isoformat(),
             'signal': signal.direction,
             'confidence': signal.confidence,
-            'reasoning': reasoning,
-            'entry_price': signal.entry_price
+            'entry_price': signal.entry_price,
+            'reasoning': v7_data.get('reasoning', ''),
+            'theories': v7_data.get('theories', {}),
+            'llm_cost_usd': v7_data.get('llm_cost_usd', 0.0),
+            'input_tokens': v7_data.get('input_tokens', 0),
+            'output_tokens': v7_data.get('output_tokens', 0),
+            'generation_time_seconds': v7_data.get('generation_time_seconds', 0.0)
         })
     finally:
         session.close()
@@ -573,7 +591,8 @@ def api_v7_signals_timeseries(hours=24):
     """Get V7 signals time-series data for charting."""
     session = get_session(config.db_url)
     try:
-        since = datetime.now() - timedelta(hours=hours)
+        # Use UTC time since signals are stored in UTC
+        since = datetime.utcnow() - timedelta(hours=hours)
 
         # Get all V7 signals in time range
         signals = session.query(Signal).filter(
@@ -620,8 +639,8 @@ def api_v7_confidence_distribution():
     """Get V7 signal confidence distribution for histogram."""
     session = get_session(config.db_url)
     try:
-        # Get all V7 signals from last 7 days
-        since = datetime.now() - timedelta(days=7)
+        # Get all V7 signals from last 7 days (use UTC)
+        since = datetime.utcnow() - timedelta(days=7)
 
         signals = session.query(Signal).filter(
             Signal.timestamp >= since,

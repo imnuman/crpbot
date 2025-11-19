@@ -216,9 +216,40 @@ class TelegramNotifier:
             f"<b>Signal:</b> {action}",
             f"<b>Confidence:</b> {conf_pct}% {conf_bars}",
             f"<b>Time:</b> {ts}",
+        ]
+
+        # Add price targets section for BUY/SELL signals
+        if sig.signal.value in ["BUY", "SELL"] and sig.entry_price:
+            lines.extend([
+                "",
+                "💰 <b>PRICE TARGETS</b>",
+            ])
+
+            # Entry price
+            lines.append(f"• <b>Entry Price:</b> ${sig.entry_price:,.2f}")
+
+            # Stop Loss with risk %
+            if sig.stop_loss:
+                risk_pct = abs(sig.entry_price - sig.stop_loss) / sig.entry_price * 100
+                lines.append(f"• <b>Stop Loss:</b> ${sig.stop_loss:,.2f} ({risk_pct:.2f}% risk)")
+
+            # Take Profit with reward %
+            if sig.take_profit:
+                reward_pct = abs(sig.take_profit - sig.entry_price) / sig.entry_price * 100
+                lines.append(f"• <b>Take Profit:</b> ${sig.take_profit:,.2f} ({reward_pct:.2f}% reward)")
+
+            # Risk/Reward ratio
+            if sig.entry_price and sig.stop_loss and sig.take_profit:
+                risk = abs(sig.entry_price - sig.stop_loss)
+                reward = abs(sig.take_profit - sig.entry_price)
+                if risk > 0:
+                    rr = reward / risk
+                    lines.append(f"• <b>Risk/Reward:</b> 1:{rr:.2f}")
+
+        lines.extend([
             "",
             "📊 <b>MATHEMATICAL ANALYSIS</b>",
-        ]
+        ])
 
         # Add theory analysis
         if theories.entropy is not None:

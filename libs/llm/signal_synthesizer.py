@@ -174,15 +174,49 @@ Timestamp: {context.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
 **Risk Management: FTMO-COMPLIANT**
 Apply proper risk management and position sizing. Recommend BUY/SELL when mathematical analysis indicates a favorable edge, or HOLD when market conditions are too uncertain or risky. Balance opportunity capture with capital preservation."""
 
-        # Request format
+        # Request format with price targets
         user_prompt += """
 
 **Task:**
-Based on the mathematical analysis above, provide a trading signal in the following format:
+Based on the mathematical analysis above, provide a trading signal with specific price targets:
 
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]%
-REASONING: [Brief 1-2 sentence explanation synthesizing the theories]
+ENTRY PRICE: $[specific price to enter - use current price or better level]
+STOP LOSS: $[price to exit if wrong - based on support/resistance, ATR, or recent swing points]
+TAKE PROFIT: $[price to exit if right - based on resistance/support, Fibonacci, or volatility bands]
+REASONING: [Brief 2-3 sentence explanation synthesizing theories AND price level justification]
+
+**Example for BUY signal:**
+SIGNAL: BUY
+CONFIDENCE: 75%
+ENTRY PRICE: $91,234
+STOP LOSS: $90,500
+TAKE PROFIT: $92,800
+REASONING: Strong bullish momentum (Hurst 0.72 trending) + bull regime (65% confidence). Enter at current price, SL below recent support at $90,500 (0.8% risk), TP at 1.618 Fibonacci extension $92,800 (1.7% reward, R:R 1:2.1).
+
+**Example for SELL signal:**
+SIGNAL: SELL
+CONFIDENCE: 78%
+ENTRY PRICE: $91,234
+STOP LOSS: $92,100
+TAKE PROFIT: $89,500
+REASONING: Bear regime detected with negative momentum. Enter at current price, SL above resistance at $92,100 (0.9% risk), TP at support zone $89,500 (1.9% reward, R:R 1:2.1).
+
+**Example for HOLD signal:**
+SIGNAL: HOLD
+CONFIDENCE: 45%
+ENTRY PRICE: N/A
+STOP LOSS: N/A
+TAKE PROFIT: N/A
+REASONING: High entropy (0.89) indicates random market conditions. Insufficient edge for trade entry.
+
+**Important:**
+- Entry price should be current price or a specific limit order level
+- Stop loss should provide 0.5-2% risk from entry
+- Take profit should aim for at least 1:1.5 risk/reward ratio
+- For HOLD signals, use N/A for all prices
+- Include brief justification for price levels in reasoning
 
 Be concise and actionable. This is for manual execution by a human trader."""
 

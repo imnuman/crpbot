@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V6 Enhanced Model Dashboard</title>
+    <title>V7 Ultimate Dashboard</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -11,7 +11,7 @@
     <div class="container">
         <!-- Header -->
         <header class="dashboard-header">
-            <h1>🚀 V6 Enhanced Model Dashboard</h1>
+            <h1>🚀 V7 Ultimate Dashboard</h1>
             <div class="status-indicator">
                 <span class="status-dot" id="systemStatus"></span>
                 <span id="statusText">Connecting...</span>
@@ -242,13 +242,16 @@
                             <th>Symbol</th>
                             <th>Signal</th>
                             <th>Confidence</th>
-                            <th>Tier</th>
-                            <th>Reasoning (Theories)</th>
+                            <th>Entry</th>
+                            <th>Stop Loss</th>
+                            <th>Take Profit</th>
+                            <th>R:R</th>
+                            <th>Reasoning</th>
                         </tr>
                     </thead>
                     <tbody id="v7SignalsTable">
                         <tr>
-                            <td colspan="6" class="no-data">Loading V7 signals...</td>
+                            <td colspan="9" class="no-data">Loading V7 signals...</td>
                         </tr>
                     </tbody>
                 </table>

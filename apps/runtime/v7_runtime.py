@@ -39,6 +39,7 @@ from libs.config.config import Settings
 from libs.db.models import Signal, create_tables, get_session
 from libs.constants import INITIAL_BALANCE
 from libs.notifications import TelegramNotifier
+from libs.bayesian import BayesianLearner
 
 
 @dataclass
@@ -95,6 +96,10 @@ class V7TradingRuntime:
             conservative_mode=self.runtime_config.conservative_mode
         )
         logger.info("✅ V7 SignalGenerator initialized (6 theories + DeepSeek LLM)")
+
+        # Initialize Bayesian learner for continuous improvement
+        self.bayesian_learner = BayesianLearner(db_url=self.config.db_url)
+        logger.info("✅ Bayesian learner initialized (adaptive confidence calibration)")
 
         # Initialize Telegram notifier
         self.telegram = TelegramNotifier(
@@ -256,6 +261,26 @@ class V7TradingRuntime:
         lines.append("")
         lines.append(f"SIGNAL:       {result.parsed_signal.signal.value}")
         lines.append(f"CONFIDENCE:   {result.parsed_signal.confidence:.1%}")
+        lines.append("")
+
+        # Price targets (if available)
+        if result.parsed_signal.entry_price:
+            risk = abs(result.parsed_signal.entry_price - (result.parsed_signal.stop_loss or result.parsed_signal.entry_price))
+            reward = abs((result.parsed_signal.take_profit or result.parsed_signal.entry_price) - result.parsed_signal.entry_price)
+            risk_pct = (risk / result.parsed_signal.entry_price * 100) if result.parsed_signal.entry_price > 0 else 0
+            reward_pct = (reward / result.parsed_signal.entry_price * 100) if result.parsed_signal.entry_price > 0 else 0
+            rr_ratio = (reward / risk) if risk > 0 else 0
+
+            lines.append("PRICE TARGETS:")
+            lines.append(f"  Entry:        ${result.parsed_signal.entry_price:,.2f}")
+            if result.parsed_signal.stop_loss:
+                lines.append(f"  Stop Loss:    ${result.parsed_signal.stop_loss:,.2f} (risk: {risk_pct:.2f}% / ${risk:,.2f})")
+            if result.parsed_signal.take_profit:
+                lines.append(f"  Take Profit:  ${result.parsed_signal.take_profit:,.2f} (reward: {reward_pct:.2f}% / ${reward:,.2f})")
+            if rr_ratio > 0:
+                lines.append(f"  Risk/Reward:  1:{rr_ratio:.2f}")
+            lines.append("")
+
         lines.append(f"REASONING:    {result.parsed_signal.reasoning}")
         lines.append("")
         lines.append("MATHEMATICAL ANALYSIS:")
@@ -284,7 +309,7 @@ class V7TradingRuntime:
         result: SignalGenerationResult,
         current_price: float
     ):
-        """Save signal to database"""
+        """Save signal to database with complete V7 analysis as JSON"""
         try:
             session = get_session(self.config.db_url)
 
@@ -305,6 +330,31 @@ class V7TradingRuntime:
             else:
                 tier = "low"
 
+            # Build complete V7 analysis JSON for dashboard
+            # Note: Convert any Timestamp/datetime objects to strings for JSON serialization
+            v7_data = {
+                "reasoning": result.parsed_signal.reasoning,
+                "theories": {
+                    "entropy": float(result.theory_analysis.entropy) if result.theory_analysis.entropy is not None else None,
+                    "entropy_interpretation": result.theory_analysis.entropy_interpretation if hasattr(result.theory_analysis, 'entropy_interpretation') else {},
+                    "hurst": float(result.theory_analysis.hurst) if result.theory_analysis.hurst is not None else None,
+                    "hurst_interpretation": result.theory_analysis.hurst_interpretation if hasattr(result.theory_analysis, 'hurst_interpretation') else "",
+                    "current_regime": result.theory_analysis.current_regime if hasattr(result.theory_analysis, 'current_regime') else "",
+                    "regime_probabilities": result.theory_analysis.regime_probabilities if hasattr(result.theory_analysis, 'regime_probabilities') else {},
+                    "denoised_price": float(result.theory_analysis.denoised_price) if hasattr(result.theory_analysis, 'denoised_price') and result.theory_analysis.denoised_price is not None else None,
+                    "price_momentum": float(result.theory_analysis.price_momentum) if hasattr(result.theory_analysis, 'price_momentum') and result.theory_analysis.price_momentum is not None else None,
+                    "win_rate_estimate": float(result.theory_analysis.win_rate_estimate) if hasattr(result.theory_analysis, 'win_rate_estimate') and result.theory_analysis.win_rate_estimate is not None else None,
+                    "risk_metrics": result.theory_analysis.risk_metrics if hasattr(result.theory_analysis, 'risk_metrics') else {}
+                },
+                "llm_cost_usd": float(result.total_cost_usd),
+                "input_tokens": int(result.input_tokens),
+                "output_tokens": int(result.output_tokens),
+                "generation_time_seconds": float(result.generation_time_seconds)
+            }
+
+            import json
+            notes_json = json.dumps(v7_data, default=str)  # Use default=str to handle any remaining non-serializable objects
+
             signal = Signal(
                 timestamp=result.parsed_signal.timestamp,
                 symbol=symbol,
@@ -312,9 +362,12 @@ class V7TradingRuntime:
                 confidence=result.parsed_signal.confidence,
                 tier=tier,
                 ensemble_prediction=result.parsed_signal.confidence,  # V7 uses single confidence value
-                entry_price=current_price,
+                # Use LLM-generated prices (fallback to current_price for entry if None)
+                entry_price=result.parsed_signal.entry_price or current_price,
+                sl_price=result.parsed_signal.stop_loss,
+                tp_price=result.parsed_signal.take_profit,
                 model_version="v7_ultimate",
-                notes=result.parsed_signal.reasoning
+                notes=notes_json  # Store complete V7 analysis as JSON
             )
 
             session.add(signal)
@@ -369,6 +422,23 @@ class V7TradingRuntime:
                 current_price=current_price,
                 timeframe="1m"
             )
+
+            # Apply Bayesian confidence adjustment (continuous learning)
+            if result.parsed_signal.signal != SignalType.HOLD:
+                original_confidence = result.parsed_signal.confidence
+                signal_direction = 'long' if result.parsed_signal.signal == SignalType.BUY else 'short'
+
+                adjusted_confidence = self.bayesian_learner.get_adaptive_confidence_adjustment(
+                    base_confidence=original_confidence,
+                    signal_type=signal_direction,
+                    symbol=symbol
+                )
+
+                result.parsed_signal.confidence = adjusted_confidence
+                logger.debug(
+                    f"Bayesian confidence adjustment: {original_confidence:.3f} → {adjusted_confidence:.3f} "
+                    f"({symbol}, {signal_direction})"
+                )
 
             # Update costs
             self._update_costs(result.total_cost_usd)

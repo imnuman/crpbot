@@ -633,7 +633,7 @@ async function fetchV7RecentSignals() {
         const tbody = document.getElementById('v7SignalsTable');
 
         if (signals.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="no-data">No V7 signals in the last 24 hours</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="no-data">No V7 signals in the last 24 hours</td></tr>';
             return;
         }
 
@@ -651,13 +651,31 @@ async function fetchV7RecentSignals() {
             const dir = signal.direction.toUpperCase();
             const conf = (signal.confidence * 100).toFixed(1);
 
+            // Format price targets
+            const entry = signal.entry_price ? `$${signal.entry_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A';
+            const sl = signal.sl_price ? `$${signal.sl_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A';
+            const tp = signal.tp_price ? `$${signal.tp_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A';
+
+            // Calculate R:R ratio
+            let rr = 'N/A';
+            if (signal.entry_price && signal.sl_price && signal.tp_price) {
+                const risk = Math.abs(signal.entry_price - signal.sl_price);
+                const reward = Math.abs(signal.tp_price - signal.entry_price);
+                if (risk > 0) {
+                    rr = `1:${(reward / risk).toFixed(2)}`;
+                }
+            }
+
             html += `
                 <tr>
                     <td>${time.toLocaleString()}</td>
                     <td>${signal.symbol}</td>
                     <td class="${dirClass}">${dir}</td>
                     <td>${conf}%</td>
-                    <td class="${tierClass}">${signal.tier.toUpperCase()}</td>
+                    <td>${entry}</td>
+                    <td>${sl}</td>
+                    <td>${tp}</td>
+                    <td>${rr}</td>
                     <td class="v7-reasoning" title="${signal.reasoning || ''}">${reasoning}</td>
                 </tr>
             `;

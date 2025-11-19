@@ -45,16 +45,38 @@ class ParsedSignal:
     is_valid: bool
     timestamp: datetime
     parse_warnings: list[str]
+    # Price targets (new fields)
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
 
     def __str__(self) -> str:
+        price_info = ""
+        if self.entry_price:
+            rr_ratio = self._calculate_risk_reward()
+            price_info = f"\n  entry=${self.entry_price:.2f}, sl=${self.stop_loss:.2f}, tp=${self.take_profit:.2f}, R:R={rr_ratio}"
         return (
             f"ParsedSignal(\n"
             f"  signal={self.signal.value},\n"
-            f"  confidence={self.confidence:.1%},\n"
+            f"  confidence={self.confidence:.1%},{price_info}\n"
             f"  reasoning='{self.reasoning[:50]}...',\n"
             f"  valid={self.is_valid}\n"
             f")"
         )
+
+    def _calculate_risk_reward(self) -> str:
+        """Calculate risk/reward ratio from prices"""
+        if not all([self.entry_price, self.stop_loss, self.take_profit]):
+            return "N/A"
+
+        risk = abs(self.entry_price - self.stop_loss)
+        reward = abs(self.take_profit - self.entry_price)
+
+        if risk == 0:
+            return "N/A"
+
+        ratio = reward / risk
+        return f"1:{ratio:.2f}"
 
 
 class SignalParser:
@@ -76,6 +98,10 @@ class SignalParser:
     SIGNAL_PATTERN = r"SIGNAL:\s*(BUY|SELL|HOLD)"
     CONFIDENCE_PATTERN = r"CONFIDENCE:\s*(\d+(?:\.\d+)?)\s*%?"
     REASONING_PATTERN = r"REASONING:\s*(.+?)(?:\n|$)"
+    # Price target patterns (support $ symbol, commas, and N/A)
+    ENTRY_PRICE_PATTERN = r"ENTRY PRICE:\s*(?:\$)?([0-9,]+\.?[0-9]*|N/?A)"
+    STOP_LOSS_PATTERN = r"STOP LOSS:\s*(?:\$)?([0-9,]+\.?[0-9]*|N/?A)"
+    TAKE_PROFIT_PATTERN = r"TAKE PROFIT:\s*(?:\$)?([0-9,]+\.?[0-9]*|N/?A)"
 
     # Validation thresholds
     MIN_CONFIDENCE = 0.0
@@ -129,6 +155,19 @@ class SignalParser:
             if self.strict_mode:
                 is_valid = False
 
+        # Extract price targets (new)
+        entry_price, entry_warning = self._extract_price(response_clean, self.ENTRY_PRICE_PATTERN, "ENTRY PRICE")
+        if entry_warning:
+            warnings.append(entry_warning)
+
+        stop_loss, sl_warning = self._extract_price(response_clean, self.STOP_LOSS_PATTERN, "STOP LOSS")
+        if sl_warning:
+            warnings.append(sl_warning)
+
+        take_profit, tp_warning = self._extract_price(response_clean, self.TAKE_PROFIT_PATTERN, "TAKE PROFIT")
+        if tp_warning:
+            warnings.append(tp_warning)
+
         # Final validation
         if signal is None or confidence is None or reasoning is None:
             is_valid = False
@@ -140,7 +179,11 @@ class SignalParser:
             raw_response=response_clean,
             is_valid=is_valid,
             timestamp=datetime.now(),
-            parse_warnings=warnings
+            parse_warnings=warnings,
+            # Price targets
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit
         )
 
         if is_valid:
@@ -263,6 +306,50 @@ class SignalParser:
                     return reasoning, "Reasoning extracted via fallback method"
 
             return None, "No reasoning found in response"
+
+    def _extract_price(
+        self,
+        text: str,
+        pattern: str,
+        field_name: str
+    ) -> Tuple[Optional[float], Optional[str]]:
+        """
+        Extract price from response
+
+        Args:
+            text: Response text
+            pattern: Regex pattern to match price
+            field_name: Name of field (for error messages)
+
+        Returns:
+            Tuple of (price, warning_message)
+        """
+        match = re.search(pattern, text, re.IGNORECASE)
+
+        if match:
+            price_str = match.group(1)
+
+            # Handle N/A cases
+            if price_str.upper() in ['N/A', 'NA', 'N A']:
+                return None, None  # Valid N/A for HOLD signals
+
+            try:
+                # Remove commas and parse
+                price = float(price_str.replace(',', ''))
+
+                # Validate price is positive and reasonable
+                if price <= 0:
+                    return None, f"{field_name} must be positive: {price}"
+                if price > 1_000_000:  # Sanity check for crypto prices
+                    return None, f"{field_name} suspiciously high: {price}"
+
+                return price, None
+
+            except ValueError:
+                return None, f"Failed to parse {field_name}: {price_str}"
+        else:
+            # Price fields are optional (not present for HOLD signals)
+            return None, None
 
     def validate_signal(self, parsed: ParsedSignal) -> Tuple[bool, list[str]]:
         """
