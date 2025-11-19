@@ -77,14 +77,20 @@ async function fetchV7Statistics() {
 async function fetchV7RecentSignals() {
     try {
         const response = await fetch('/api/v7/signals/recent/24');
-        const signals = await response.json();
+        const allSignals = await response.json();
 
         const tableBody = document.getElementById('v7SignalsTable');
 
-        if (!signals || signals.length === 0) {
+        if (!allSignals || allSignals.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="9" class="no-data">No V7 signals in the last 24 hours</td></tr>';
             return;
         }
+
+        // Update total signals counter
+        document.getElementById('totalV7Signals').textContent = allSignals.length;
+
+        // Limit to most recent 20 signals for readability
+        const signals = allSignals.slice(0, 20);
 
         tableBody.innerHTML = signals.map(signal => {
             const direction = signal.direction === 'long' ? 'BUY' :
