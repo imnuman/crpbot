@@ -2,78 +2,32 @@
   "config": {
     "days": 3,
     "symbols": [
-      "BTC-USD",
-      "ETH-USD",
-      "SOL-USD"
+      "BTC-USD"
     ],
-    "sample_rate": 0.05,
+    "sample_rate": 0.1,
     "confidence_threshold": 0.65
   },
   "comparisons": [
     {
       "symbol": "BTC-USD",
       "v6": {
-        "total_trades": 3530,
-        "win_rate": 0.030878186968838525,
-        "total_pnl": -3.5688996894576066,
-        "sharpe_ratio": -5.6954389420826175,
-        "max_drawdown": 0.00035688996894914454
+        "total_trades": 3461,
+        "win_rate": 0.03380525859578157,
+        "total_pnl": -3.346922619951943,
+        "sharpe_ratio": -22.37260501587231,
+        "max_drawdown": 0.0003348019803623174
       },
       "v7": {
-        "total_trades": 5,
-        "win_rate": 0.0,
-        "total_pnl": -0.005373539215519811,
-        "sharpe_ratio": -159.82771178600603,
-        "max_drawdown": 5.373539217544021e-07
+        "total_trades": 15,
+        "win_rate": 0.13333333333333333,
+        "total_pnl": -0.009718986745093427,
+        "sharpe_ratio": -8.65400910526422,
+        "max_drawdown": 9.740977175576998e-07
       },
       "improvement": {
-        "win_rate": -0.030878186968838525,
-        "sharpe_ratio": -154.13227284392343,
-        "max_drawdown_reduction": 0.0003563526150273901
-      }
-    },
-    {
-      "symbol": "ETH-USD",
-      "v6": {
-        "total_trades": 7358,
-        "win_rate": 0.042674639847784725,
-        "total_pnl": -105.40698076164215,
-        "sharpe_ratio": -11.11728509540197,
-        "max_drawdown": 0.010540698076165428
-      },
-      "v7": {
-        "total_trades": 14,
-        "win_rate": 0.07142857142857142,
-        "total_pnl": -0.19725740263917302,
-        "sharpe_ratio": -8.549467604423693,
-        "max_drawdown": 2.237439323078495e-05
-      },
-      "improvement": {
-        "win_rate": 0.0287539315807867,
-        "sharpe_ratio": 2.5678174909782765,
-        "max_drawdown_reduction": 0.010518323682934642
-      }
-    },
-    {
-      "symbol": "SOL-USD",
-      "v6": {
-        "total_trades": 7358,
-        "win_rate": 0.042674639847784725,
-        "total_pnl": -105.40698076164215,
-        "sharpe_ratio": -11.11728509540197,
-        "max_drawdown": 0.010540698076165428
-      },
-      "v7": {
-        "total_trades": 21,
-        "win_rate": 0.09523809523809523,
-        "total_pnl": -1.8089846267448368,
-        "sharpe_ratio": -7.728914192944804,
-        "max_drawdown": 0.0001835466887422017
-      },
-      "improvement": {
-        "win_rate": 0.05256345539031051,
-        "sharpe_ratio": 3.388370902457166,
-        "max_drawdown_reduction": 0.010357151387423226
+        "win_rate": 0.09952807473755176,
+        "sharpe_ratio": 13.718595910608089,
+        "max_drawdown_reduction": 0.00033382788264475966
       }
     }
   ]
