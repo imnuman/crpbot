@@ -284,13 +284,22 @@ class V7BacktestRunner:
 
                 v7_costs_total += result.total_cost_usd
 
+                # Log signal details for analysis
+                logger.info(f"V7 Signal @ {i}: {result.parsed_signal.signal.value} | "
+                           f"Confidence: {result.parsed_signal.confidence:.2%} | "
+                           f"Valid: {result.parsed_signal.is_valid} | "
+                           f"Threshold: {self.config.confidence_threshold:.2%}")
+
                 # Check if signal is valid and passes confidence threshold
                 if result.parsed_signal.is_valid and result.parsed_signal.confidence >= self.config.confidence_threshold:
                     # Determine direction
                     direction = 'long' if result.parsed_signal.signal.value == 'BUY' else 'short'
 
                     if result.parsed_signal.signal.value == 'HOLD':
+                        logger.info(f"  → Skipped: HOLD signal")
                         continue  # Skip HOLD signals
+
+                    logger.info(f"  → ✅ Executing {direction.upper()} trade")
 
                     # Execute trade in backtest engine
                     entry_time = window.iloc[-1]['timestamp']

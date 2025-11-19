@@ -64,6 +64,16 @@ class SignalGenerationResult:
     success: bool
     error_message: Optional[str] = None
 
+    @property
+    def input_tokens(self) -> int:
+        """Get input tokens from LLM response"""
+        return self.llm_response.prompt_tokens if self.llm_response else 0
+
+    @property
+    def output_tokens(self) -> int:
+        """Get output tokens from LLM response"""
+        return self.llm_response.completion_tokens if self.llm_response else 0
+
 
 class SignalGenerator:
     """
@@ -108,8 +118,8 @@ class SignalGenerator:
         conservative_mode: bool = True,
         strict_parsing: bool = False,
         lookback_window: int = 200,
-        temperature: float = 0.7,
-        max_tokens: int = 200
+        temperature: float = 1.0,
+        max_tokens: int = 1200
     ):
         """
         Initialize Signal Generator
@@ -119,8 +129,8 @@ class SignalGenerator:
             conservative_mode: Emphasize risk management in prompts
             strict_parsing: Require exact format match in LLM responses
             lookback_window: Number of data points for analysis
-            temperature: LLM sampling temperature (0.0-2.0)
-            max_tokens: Maximum tokens for LLM response
+            temperature: LLM sampling temperature (0.0-2.0) - 1.0 for balanced creativity/consistency
+            max_tokens: Maximum tokens for LLM response - 1200 for detailed mathematical reasoning
         """
         # Initialize LLM components
         self.deepseek_client = DeepSeekClient(api_key=api_key)

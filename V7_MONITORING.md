@@ -7,31 +7,45 @@ V7 Ultimate is now running in production! This guide shows you how to monitor an
 ```bash
 # Check if V7 is running
 ps aux | grep "v7_runtime.py" | grep -v grep
+# Expected output: root 1868284 ... .venv/bin/python3 apps/runtime/v7_runtime.py --iterations -1 --sleep-seconds 120
 
-# View latest signals in console output (last 50 lines)
-# Background process ID: 99fd09
-# Use BashOutput tool with bash_id=99fd09
+# View latest logs
+tail -f /tmp/v7_runtime.log
 
-# Check database for recent signals
-sqlite3 tradingai.db "SELECT timestamp, symbol, signal, confidence, valid FROM signals WHERE timestamp > datetime('now', '-1 hour') ORDER BY timestamp DESC LIMIT 10"
+# Check database for recent V7 signals
+sqlite3 tradingai.db "SELECT timestamp, symbol, direction, confidence, entry_price, sl_price, tp_price FROM signals WHERE model_version='v7_ultimate' AND timestamp > datetime('now', '-1 hour') ORDER BY timestamp DESC LIMIT 10"
 
 # Count signals by type (24 hours)
-sqlite3 tradingai.db "SELECT signal, COUNT(*) as count FROM signals WHERE timestamp > datetime('now', '-24 hours') GROUP BY signal"
+sqlite3 tradingai.db "SELECT direction, COUNT(*) as count FROM signals WHERE model_version='v7_ultimate' AND timestamp > datetime('now', '-24 hours') GROUP BY direction"
 ```
 
 ## 📈 Dashboard Access
 
 The V7 dashboard is accessible at:
-- **URL**: http://178.156.136.185:5000
-- **Features**: Live signals, statistics, V7 signal history
+- **Local**: http://localhost:5000
+- **External**: http://178.156.136.185:5000 (if firewall allows)
+- **Features**:
+  - V7 Ultimate Signals with price predictions (Entry, Stop Loss, Take Profit)
+  - Live statistics (BUY/SELL/HOLD counts, confidence, API costs)
+  - Signal breakdown by direction, symbol, and confidence tier
+  - Clear explanations of how V7 works (6 mathematical theories)
 
 To check dashboard status:
 ```bash
-ps aux | grep "dashboard" | grep -v grep
+ps aux | grep "app.py" | grep python | grep -v grep
+# Expected: root ... .venv/bin/python3 -m apps.dashboard.app
+
 lsof -i :5000
+curl http://localhost:5000/api/v7/signals/recent/1
 ```
 
-## 🔔 Telegram Notifications
+**Restart Dashboard:**
+```bash
+pkill -9 -f "app.py"
+.venv/bin/python3 -m apps.dashboard.app > /tmp/dashboard.log 2>&1 &
+```
+
+## 🔔 Telegram Notifications & Commands
 
 V7 sends real-time signals to Telegram with:
 - Signal type (BUY/SELL/HOLD)
@@ -42,6 +56,38 @@ V7 sends real-time signals to Telegram with:
 
 Chat ID: `8302332448`
 
+### Telegram Bot Commands (STEP 5)
+
+The V7 Telegram bot command listener is now available! Control V7 directly from Telegram:
+
+**V7 Control Commands:**
+- `/v7_status` - Show V7 runtime status (running/stopped, latest signal, 24h stats)
+- `/v7_start` - Start V7 runtime in background
+- `/v7_stop` - Stop V7 runtime
+- `/v7_stats` - Detailed V7 statistics (24h/7d signals, costs, projections)
+- `/v7_config` - Show/adjust V7 parameters (rate limit, confidence threshold)
+
+**Legacy Commands:**
+- `/check` - System status
+- `/stats` - Performance metrics
+- `/ftmo_status` - FTMO account status
+- `/help` - Show all commands
+
+**Start Telegram Bot Listener:**
+```bash
+# Run in foreground (testing)
+.venv/bin/python3 apps/runtime/v7_telegram_bot_runner.py
+
+# Run in background (production)
+nohup .venv/bin/python3 apps/runtime/v7_telegram_bot_runner.py > /tmp/v7_telegram_bot.log 2>&1 &
+
+# Check if running
+ps aux | grep v7_telegram_bot_runner | grep -v grep
+
+# View logs
+tail -f /tmp/v7_telegram_bot.log
+```
+
 ## 💰 Cost Tracking
 
 ```bash
@@ -51,11 +97,12 @@ Chat ID: `8302332448`
 sqlite3 tradingai.db "SELECT
     DATE(timestamp) as date,
     COUNT(*) as signals,
-    SUM(CASE WHEN signal='BUY' THEN 1 ELSE 0 END) as buys,
-    SUM(CASE WHEN signal='SELL' THEN 1 ELSE 0 END) as sells,
-    SUM(CASE WHEN signal='HOLD' THEN 1 ELSE 0 END) as holds
+    SUM(CASE WHEN direction='long' THEN 1 ELSE 0 END) as buys,
+    SUM(CASE WHEN direction='short' THEN 1 ELSE 0 END) as sells,
+    SUM(CASE WHEN direction='neutral' THEN 1 ELSE 0 END) as holds,
+    AVG(confidence) as avg_conf
 FROM signals
-WHERE timestamp > datetime('now', '-7 days')
+WHERE model_version='v7_ultimate' AND timestamp > datetime('now', '-7 days')
 GROUP BY DATE(timestamp)
 ORDER BY date DESC"
 ```
