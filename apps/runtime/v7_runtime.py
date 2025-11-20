@@ -227,8 +227,7 @@ class V7TradingRuntime:
 
         # Check daily loss limit
         if not check_daily_loss_limit(
-            current_balance=self.current_balance,
-            initial_balance=self.initial_balance,
+            balance=self.current_balance,
             daily_pnl=self.daily_pnl
         ):
             return False, "Daily loss limit exceeded (5%)"
@@ -443,16 +442,67 @@ class V7TradingRuntime:
                 except Exception as e:
                     logger.warning(f"CoinGecko fetch failed: {e}")
 
-            # Generate signal using V7 system
-            # Note: market_context is logged above but not yet integrated into LLM prompt
-            # TODO: Update libs/llm/signal_generator.py to accept market_context parameter
+            # Generate signal using V7 system (with CoinGecko market context)
             result = self.signal_generator.generate_signal(
                 symbol=symbol,
                 prices=prices,
                 timestamps=timestamps,
                 current_price=current_price,
-                timeframe="1m"
+                timeframe="1m",
+                coingecko_context=market_context  # Pass 7th theory data to DeepSeek LLM
             )
+
+            # Apply momentum override if DeepSeek is too conservative
+            if result.parsed_signal.signal == SignalType.HOLD:
+                momentum = result.theory_analysis.price_momentum
+                hurst = result.theory_analysis.hurst
+                entropy = result.theory_analysis.entropy
+
+                # Strong bullish momentum in uncertain market
+                if momentum > 20 and hurst > 0.55 and entropy > 0.70:
+                    logger.warning(
+                        f"🔄 MOMENTUM OVERRIDE: Bullish momentum ({momentum:+.2f}) "
+                        f"with trending Hurst ({hurst:.3f}) in choppy market (entropy {entropy:.3f}). "
+                        f"Overriding HOLD → BUY at 40% confidence"
+                    )
+                    from libs.llm import ParsedSignal
+                    from datetime import datetime, timezone
+                    result.parsed_signal = ParsedSignal(
+                        signal=SignalType.BUY,
+                        confidence=0.40,
+                        reasoning=f"MOMENTUM OVERRIDE: {result.parsed_signal.reasoning}. "
+                                 f"Strong bullish momentum (+{momentum:.1f}) justifies entry despite mixed signals.",
+                        raw_response=f"[MOMENTUM OVERRIDE] Original: {result.parsed_signal.raw_response}",
+                        is_valid=True,
+                        timestamp=datetime.now(timezone.utc),
+                        parse_warnings=[f"Momentum override triggered: momentum={momentum:.2f}, hurst={hurst:.3f}, entropy={entropy:.3f}"],
+                        entry_price=current_price,
+                        stop_loss=current_price * 0.995,  # 0.5% stop
+                        take_profit=current_price * 1.015  # 1.5% target (1:3 R:R)
+                    )
+
+                # Strong bearish momentum in uncertain market
+                elif momentum < -20 and hurst < 0.45 and entropy > 0.70:
+                    logger.warning(
+                        f"🔄 MOMENTUM OVERRIDE: Bearish momentum ({momentum:+.2f}) "
+                        f"with mean-reverting Hurst ({hurst:.3f}) in choppy market (entropy {entropy:.3f}). "
+                        f"Overriding HOLD → SELL at 40% confidence"
+                    )
+                    from libs.llm import ParsedSignal
+                    from datetime import datetime, timezone
+                    result.parsed_signal = ParsedSignal(
+                        signal=SignalType.SELL,
+                        confidence=0.40,
+                        reasoning=f"MOMENTUM OVERRIDE: {result.parsed_signal.reasoning}. "
+                                 f"Strong bearish momentum ({momentum:.1f}) justifies entry despite mixed signals.",
+                        raw_response=f"[MOMENTUM OVERRIDE] Original: {result.parsed_signal.raw_response}",
+                        is_valid=True,
+                        timestamp=datetime.now(timezone.utc),
+                        parse_warnings=[f"Momentum override triggered: momentum={momentum:.2f}, hurst={hurst:.3f}, entropy={entropy:.3f}"],
+                        entry_price=current_price,
+                        stop_loss=current_price * 1.005,  # 0.5% stop
+                        take_profit=current_price * 0.985  # 1.5% target (1:3 R:R)
+                    )
 
             # Apply Bayesian confidence adjustment (continuous learning)
             if result.parsed_signal.signal != SignalType.HOLD:

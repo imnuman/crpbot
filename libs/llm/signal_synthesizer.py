@@ -97,13 +97,14 @@ class SignalSynthesizer:
     # System prompt for DeepSeek
     SYSTEM_PROMPT = """You are an expert quantitative trading analyst specializing in cryptocurrency markets. Your role is to synthesize complex mathematical analysis into actionable trading signals.
 
-You analyze market conditions using 6 mathematical theories:
+You analyze market conditions using 7 theories:
 1. Shannon Entropy - Market predictability (0=predictable, 1=random)
 2. Hurst Exponent - Trend persistence (>0.5=trending, <0.5=mean-reverting)
 3. Markov Chain - Market regime classification
 4. Kalman Filter - Price denoising and momentum
 5. Bayesian Inference - Strategy performance learning
 6. Monte Carlo - Risk assessment and scenario analysis
+7. Market Context (CoinGecko) - Macro market conditions, sentiment, and liquidity
 
 Your outputs must be:
 - Concise: 2-3 sentences maximum
@@ -130,15 +131,17 @@ IMPORTANT: This is a MANUAL trading system. You generate signals for a human tra
         self,
         context: MarketContext,
         analysis: TheoryAnalysis,
-        additional_context: Optional[str] = None
+        additional_context: Optional[str] = None,
+        coingecko_context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
         """
         Build DeepSeek chat prompt from market context and theory analysis
 
         Args:
             context: Market context (symbol, price, timeframe)
-            analysis: Results from all 6 theories
+            analysis: Results from all 7 theories (6 mathematical + CoinGecko)
             additional_context: Optional additional context (news, etc.)
+            coingecko_context: Optional CoinGecko market context (7th theory)
 
         Returns:
             List of message dicts for DeepSeek chat API
@@ -164,15 +167,45 @@ Timestamp: {context.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
 
         user_prompt += f"\n**Mathematical Analysis:**\n{theory_summary}\n"
 
+        # Add CoinGecko market context if available (7th theory)
+        if coingecko_context:
+            user_prompt += "\n**7. Market Context (CoinGecko):**\n"
+            user_prompt += f"   - Market Cap: ${coingecko_context.get('market_cap_billions', 0):.1f}B\n"
+            user_prompt += f"   - Trading Volume: ${coingecko_context.get('volume_billions', 0):.1f}B\n"
+            user_prompt += f"   - ATH Distance: {coingecko_context.get('ath_distance_pct', 0):.1f}%\n"
+            user_prompt += f"   - Market Sentiment: {coingecko_context.get('sentiment', 'neutral')}\n"
+            user_prompt += f"   - Liquidity Score: {coingecko_context.get('liquidity_score', 0):.3f}\n"
+            user_prompt += f"   - Market Strength: {coingecko_context.get('market_strength', 0):.1%}\n"
+            if coingecko_context.get('notes'):
+                user_prompt += f"   - Notes: {coingecko_context['notes']}\n"
+
         # Add additional context if provided
         if additional_context:
             user_prompt += f"\n**Additional Context:**\n{additional_context}\n"
 
-        # Add conservative mode disclaimer
+        # Add conservative mode disclaimer with momentum priority
         if self.conservative_mode:
             user_prompt += """
 **Risk Management: FTMO-COMPLIANT**
-Apply proper risk management and position sizing. Recommend BUY/SELL when mathematical analysis indicates a favorable edge, or HOLD when market conditions are too uncertain or risky. Balance opportunity capture with capital preservation."""
+Apply proper risk management and position sizing.
+
+**CRITICAL SIGNAL GENERATION RULES**:
+1. **In Choppy/Ranging Markets** (high entropy >0.85, consolidation regime):
+   - PRIORITIZE momentum signals (Kalman momentum, Hurst exponent)
+   - Strong momentum (>±15) with trending Hurst (>0.55) = ACTIONABLE SIGNAL
+   - Don't let negative Sharpe ratios paralyze you - they're backward-looking
+
+2. **Price Action Override**:
+   - If Kalman momentum >+20 and Hurst >0.55: Consider BUY (35-55% confidence)
+   - If Kalman momentum <-20 and Hurst <0.45: Consider SELL (35-55% confidence)
+   - Clear directional movement >0.5% = tradeable opportunity
+
+3. **Confidence Calibration**:
+   - High entropy + strong momentum = 35-45% confidence (ACCEPTABLE in ranging markets)
+   - Trending market + aligned theories = 60-75% confidence
+   - Conflicting signals = 20-35% confidence or HOLD
+
+Recommend BUY/SELL when momentum is clear, even if other metrics are mixed. HOLD only when truly no edge exists."""
 
         # Request format with price targets
         user_prompt += """
@@ -226,9 +259,11 @@ Be concise and actionable. This is for manual execution by a human trader."""
             {"role": "user", "content": user_prompt}
         ]
 
+        theories_count = 7 if coingecko_context else 6
         logger.debug(
             f"Built prompt for {context.symbol} | "
-            f"Theories: 6 | "
+            f"Theories: {theories_count} | "
+            f"CoinGecko: {bool(coingecko_context)} | "
             f"Conservative: {self.conservative_mode}"
         )
 

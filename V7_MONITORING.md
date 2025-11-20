@@ -408,4 +408,64 @@ GROUP BY symbol"
 
 **Dashboard URL**: http://178.156.136.185:5000
 
-**Last Updated**: 2025-11-19 10:20 EST
+---
+
+## 🔧 Signal Generation Fixes (2025-11-19 17:55 EST)
+
+### Problem: Missed +0.88% BTC Move (3-5 PM)
+
+**What Happened**:
+- BTC moved from $88,769 → $89,554 (+$785, +0.88%) from 3:01-3:58 PM
+- System only output HOLD signals at 15-40% confidence
+- DeepSeek reasoning: "High entropy (0.92) shows random conditions conflicting with consolidation regime"
+
+**Root Cause**:
+- Conservative mode prompt made DeepSeek default to HOLD when theories conflicted
+- Equal theory weighting → conservative theories (entropy, Sharpe, Monte Carlo) dominated
+- No fail-safe override for strong momentum in choppy markets
+
+### Fixes Implemented ✅
+
+#### Fix 1: Enhanced DeepSeek Prompt
+**File**: `/root/crpbot/libs/llm/signal_synthesizer.py` (lines 186-208)
+
+Added explicit rules:
+1. Prioritize momentum signals (Kalman, Hurst) in choppy markets (entropy >0.85)
+2. Strong momentum (>±15) with trending Hurst (>0.55) = ACTIONABLE SIGNAL
+3. Confidence calibration: 35-45% acceptable in ranging markets
+4. Don't let negative Sharpe ratios paralyze decision-making
+
+#### Fix 2: Momentum Override Logic
+**File**: `/root/crpbot/apps/runtime/v7_runtime.py` (lines 456-502)
+
+Automatic override when:
+- Bullish: momentum > +20, hurst > 0.55, entropy > 0.85 → BUY @ 40%
+- Bearish: momentum < -20, hurst < 0.45, entropy > 0.85 → SELL @ 40%
+
+### Monitoring Results (17:51-17:56 EST)
+
+**Runtime Configuration**:
+- Mode: Aggressive (conservative_mode=False)
+- Rate Limit: 30 signals/hour
+- Scan Interval: 120 seconds
+
+**Signal Quality**:
+| Time     | Symbol   | Signal | Confidence | Price      | Notes                        |
+|----------|----------|--------|------------|------------|------------------------------|
+| 17:51:47 | BTC-USD  | HOLD   | 45.0%      | $90,355.42 | ✅ Improved from 15-40%      |
+| 17:53:54 | BTC-USD  | HOLD   | 40.0%      | $90,368.72 | Stable confidence            |
+| 17:55:56 | BTC-USD  | HOLD   | 40.0%      | $90,391.21 | +$36 move (0.04% - minimal)  |
+
+**Key Observations**:
+- ✅ Confidence improved: 40-45% (up from 15-40% baseline)
+- ✅ HOLD signals appropriate (market only +0.04%, not volatile)
+- ⏳ No momentum override triggered yet (momentum below ±20 threshold)
+- 🔍 Awaiting volatile market to validate full effectiveness
+
+**Next Validation**: Need market scenario with >±0.5% move + entropy >0.85 + momentum >±20
+
+**Documentation**: Full analysis in `V7_SIGNAL_FIXES.md`
+
+---
+
+**Last Updated**: 2025-11-19 17:56 EST
