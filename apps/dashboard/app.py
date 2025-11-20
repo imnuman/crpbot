@@ -466,22 +466,26 @@ def api_v7_recent_signals(hours=24):
         est = pytz_timezone('US/Eastern')
 
         # Helper to truncate reasoning for performance
-        def truncate_reasoning(notes, max_length=200):
-            """Truncate reasoning to first sentence or max_length chars"""
+        def truncate_reasoning(notes, max_length=300):
+            """Extract reasoning text from JSON notes"""
             if not notes:
                 return 'N/A'
-            # Try to extract just the first sentence
             try:
                 import json
                 data = json.loads(notes)
                 reasoning = data.get('reasoning', notes)
-                # Take first sentence or 200 chars
-                first_sentence = reasoning.split('.')[0] + '.'
-                if len(first_sentence) > max_length:
-                    return first_sentence[:max_length] + '...'
-                return first_sentence
+                # V7 reasoning is already concise (~250 chars), return as-is if under limit
+                if len(reasoning) <= max_length:
+                    return reasoning
+                # If too long, find sentence boundary (period followed by space or end)
+                import re
+                sentences = re.split(r'\.\s+', reasoning)
+                result = sentences[0] + '.'
+                if len(result) > max_length:
+                    return result[:max_length] + '...'
+                return result
             except:
-                # Fallback: just truncate
+                # Fallback: just return raw notes truncated
                 return notes[:max_length] + '...' if len(notes) > max_length else notes
 
         return jsonify([{
