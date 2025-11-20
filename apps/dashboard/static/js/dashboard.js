@@ -188,7 +188,17 @@ function formatPrice(price) {
 // Helper: Format time
 function formatTime(timestamp) {
     if (!timestamp) return 'N/A';
-    const date = new Date(timestamp);
+
+    // Handle different timestamp formats
+    let date;
+    if (typeof timestamp === 'string' && timestamp.includes('EST')) {
+        // Already in EST format (e.g., "2025-11-19 21:06:20 EST")
+        // Parse the datetime part (remove " EST" suffix)
+        const dateStr = timestamp.replace(' EST', '').replace(' ', 'T');
+        date = new Date(dateStr + '-05:00'); // EST is UTC-5
+    } else {
+        date = new Date(timestamp);
+    }
 
     // Check if date is valid
     if (isNaN(date.getTime())) {
@@ -196,11 +206,13 @@ function formatTime(timestamp) {
         return 'Invalid';
     }
 
+    // Format as EST time
     return date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
-        hour12: false
-    });
+        hour12: false,
+        timeZone: 'America/New_York'
+    }) + ' EST';
 }
 
 // Helper: Update breakdown display
