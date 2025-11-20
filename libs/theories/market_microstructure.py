@@ -59,14 +59,15 @@ class MarketMicrostructure:
         """
         # Initialize clients
         self.fear_greed = FearGreedClient() if FearGreedClient else None
-        self.binance = BinanceClient() if BinanceClient else None
+        # Binance disabled - not available in Canada (geo-restricted)
+        self.binance = None  # BinanceClient() if BinanceClient else None
         self.fred = FREDClient(fred_api_key) if FREDClient and fred_api_key else None
         self.cryptocompare = CryptoCompareClient(cryptocompare_api_key) if CryptoCompareClient else None
 
         # Track which clients are available
         self.available_clients = {
             'fear_greed': self.fear_greed is not None,
-            'binance': self.binance is not None,
+            'binance': False,  # Disabled for Canada
             'fred': self.fred is not None,
             'cryptocompare': self.cryptocompare is not None
         }
