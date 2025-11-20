@@ -450,6 +450,8 @@ def api_performance(hours=24):
 @app.route('/api/v7/signals/recent/<int:hours>')
 def api_v7_recent_signals(hours=24):
     """Get recent V7 Ultimate signals."""
+    from pytz import timezone as pytz_timezone
+
     session = get_session(config.db_url)
     try:
         # Use UTC time since signals are stored in UTC
@@ -459,8 +461,12 @@ def api_v7_recent_signals(hours=24):
             Signal.model_version == 'v7_ultimate'
         ).order_by(desc(Signal.timestamp)).limit(100).all()
 
+        # Convert timestamps to EST for display
+        est = pytz_timezone('US/Eastern')
+
         return jsonify([{
-            'timestamp': s.timestamp.isoformat(),
+            'timestamp': s.timestamp.replace(tzinfo=pytz_timezone('UTC')).astimezone(est).strftime('%Y-%m-%d %H:%M:%S EST'),
+            'timestamp_utc': s.timestamp.isoformat(),
             'symbol': s.symbol,
             'direction': s.direction,
             'confidence': s.confidence,
