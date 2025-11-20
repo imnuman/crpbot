@@ -102,7 +102,8 @@ async function fetchV7Statistics() {
 // Fetch V7 recent signals
 async function fetchV7RecentSignals() {
     try {
-        const response = await fetch('/api/v7/signals/recent/24');
+        // Fetch only last 2 hours of signals (much faster, less data)
+        const response = await fetch('/api/v7/signals/recent/2');
         const allSignals = await response.json();
 
         const tableBody = document.getElementById('v7SignalsTable');

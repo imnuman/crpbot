@@ -459,10 +459,29 @@ def api_v7_recent_signals(hours=24):
         signals = session.query(Signal).filter(
             Signal.timestamp >= since,
             Signal.model_version == 'v7_ultimate'
-        ).order_by(desc(Signal.timestamp)).limit(100).all()
+        ).order_by(desc(Signal.timestamp)).limit(30).all()  # Reduced from 100 to 30
 
         # Convert timestamps to EST for display
         est = pytz_timezone('US/Eastern')
+
+        # Helper to truncate reasoning for performance
+        def truncate_reasoning(notes, max_length=200):
+            """Truncate reasoning to first sentence or max_length chars"""
+            if not notes:
+                return 'N/A'
+            # Try to extract just the first sentence
+            try:
+                import json
+                data = json.loads(notes)
+                reasoning = data.get('reasoning', notes)
+                # Take first sentence or 200 chars
+                first_sentence = reasoning.split('.')[0] + '.'
+                if len(first_sentence) > max_length:
+                    return first_sentence[:max_length] + '...'
+                return first_sentence
+            except:
+                # Fallback: just truncate
+                return notes[:max_length] + '...' if len(notes) > max_length else notes
 
         return jsonify([{
             'timestamp': s.timestamp.replace(tzinfo=pytz_timezone('UTC')).astimezone(est).strftime('%Y-%m-%d %H:%M:%S EST'),
@@ -474,7 +493,7 @@ def api_v7_recent_signals(hours=24):
             'entry_price': s.entry_price,
             'sl_price': s.sl_price,
             'tp_price': s.tp_price,
-            'reasoning': s.notes,  # Contains theory analysis
+            'reasoning': truncate_reasoning(s.notes),  # Truncated for performance
             'model_version': s.model_version
         } for s in signals])
     finally:
