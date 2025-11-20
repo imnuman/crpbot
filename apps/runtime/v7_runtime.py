@@ -170,7 +170,11 @@ class V7TradingRuntime:
 
         # Check minimum interval since last signal (prevent rapid-fire)
         if self.last_signal_time:
-            time_since_last = (now - self.last_signal_time).total_seconds()
+            # Ensure last_signal_time is timezone-aware
+            last_time = self.last_signal_time
+            if last_time.tzinfo is None:
+                last_time = last_time.replace(tzinfo=timezone.utc)
+            time_since_last = (now - last_time).total_seconds()
             min_interval = 60  # 1 minute minimum between signals
             if time_since_last < min_interval:
                 return False, f"Too soon: {time_since_last:.0f}s since last signal (min {min_interval}s)"
