@@ -454,8 +454,9 @@ def api_v7_recent_signals(hours=24):
 
     session = get_session(config.db_url)
     try:
-        # Use UTC time since signals are stored in UTC
-        since = datetime.utcnow() - timedelta(hours=hours)
+        # Use timezone-aware UTC time for comparison
+        from datetime import timezone as dt_timezone
+        since = datetime.now(dt_timezone.utc) - timedelta(hours=hours)
         signals = session.query(Signal).filter(
             Signal.timestamp >= since,
             Signal.model_version == 'v7_ultimate'
@@ -616,8 +617,9 @@ def api_v7_signals_timeseries(hours=24):
     """Get V7 signals time-series data for charting."""
     session = get_session(config.db_url)
     try:
-        # Use UTC time since signals are stored in UTC
-        since = datetime.utcnow() - timedelta(hours=hours)
+        # Use timezone-aware UTC time for comparison
+        from datetime import timezone as dt_timezone
+        since = datetime.now(dt_timezone.utc) - timedelta(hours=hours)
 
         # Get all V7 signals in time range
         signals = session.query(Signal).filter(
