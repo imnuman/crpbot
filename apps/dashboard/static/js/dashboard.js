@@ -13,8 +13,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initCharts();
     fetchAllData();
 
-    // Auto-refresh every 5 seconds
-    setInterval(fetchAllData, 5000);
+    // Auto-refresh every 2 seconds
+    setInterval(fetchAllData, 2000);
 });
 
 // Fetch all dashboard data
