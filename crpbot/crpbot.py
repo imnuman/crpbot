@@ -20,7 +20,8 @@ from libs.config.config import Settings
 # Initialize settings
 app_config = Settings()
 
-# EST timezone for display
+# Timezones
+UTC = pytz.UTC
 EST = pytz.timezone('America/New_York')
 
 
@@ -98,12 +99,13 @@ class V7State(rx.State):
                 total_confidence += (s.confidence or 0.0)
 
                 # Convert timestamp to EST for display
-                # Timestamps in DB are naive (local time), treat as EST
+                # Timestamps in DB are naive UTC (stored without timezone info)
                 if s.timestamp.tzinfo is None:
-                    # Naive datetime - assume it's already in EST (local time)
-                    ts_est = EST.localize(s.timestamp)
+                    # Naive datetime - treat as UTC, then convert to EST
+                    ts_utc = UTC.localize(s.timestamp)
+                    ts_est = ts_utc.astimezone(EST)
                 else:
-                    # Aware datetime - convert to EST
+                    # Already aware - just convert to EST
                     ts_est = s.timestamp.astimezone(EST)
 
                 signals_data.append({
