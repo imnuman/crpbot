@@ -20,7 +20,7 @@ Usage:
     runtime.run(iterations=-1, sleep_seconds=120)  # Run continuously
 """
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
@@ -136,8 +136,8 @@ class V7TradingRuntime:
         # Cost tracking
         self.daily_cost = 0.0
         self.monthly_cost = 0.0
-        self.cost_reset_day = datetime.now().day
-        self.cost_reset_month = datetime.now().month
+        self.cost_reset_day = datetime.now(timezone.utc).day
+        self.cost_reset_month = datetime.now(timezone.utc).month
 
         logger.info(f"V7 Runtime initialized | Symbols: {len(self.runtime_config.symbols)} | Conservative: {self.runtime_config.conservative_mode}")
 
@@ -148,7 +148,7 @@ class V7TradingRuntime:
         Returns:
             Tuple of (allowed, reason)
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         # Remove signals older than 1 hour
         one_hour_ago = now - timedelta(hours=1)
@@ -182,7 +182,7 @@ class V7TradingRuntime:
             Tuple of (allowed, reason)
         """
         # Reset daily cost if new day
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if now.day != self.cost_reset_day:
             logger.info(f"Daily cost reset: ${self.daily_cost:.4f} spent yesterday")
             self.daily_cost = 0.0

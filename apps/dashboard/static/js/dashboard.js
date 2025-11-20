@@ -206,13 +206,19 @@ function formatTime(timestamp) {
         return 'Invalid';
     }
 
-    // Format as EST time
-    return date.toLocaleTimeString('en-US', {
+    // Format as EST time with date
+    const dateStr = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'America/New_York'
+    });
+    const timeStr = date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
         timeZone: 'America/New_York'
-    }) + ' EST';
+    });
+    return `${dateStr} ${timeStr} EST`;
 }
 
 // Helper: Update breakdown display
