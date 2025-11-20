@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     # DeepSeek LLM API (for V7 Ultimate)
     deepseek_api_key: str = ""
 
+    # FRED Macro Economic Data API (for V7 Market Microstructure)
+    fred_api_key: str = ""
+
     # Legacy Binance support (for backward compatibility)
     binance_api_key: str = ""
     binance_api_secret: str = ""

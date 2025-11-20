@@ -42,6 +42,7 @@ from libs.notifications import TelegramNotifier
 from libs.bayesian import BayesianLearner
 from libs.data.coingecko_client import CoinGeckoClient
 from libs.theories.market_context import MarketContextTheory
+from libs.theories.market_microstructure import MarketMicrostructure
 
 
 @dataclass
@@ -112,6 +113,13 @@ class V7TradingRuntime:
             self.coingecko_client = None
             self.market_context_theory = None
             logger.warning("⚠️  CoinGecko API disabled (no API key)")
+
+        # Initialize Market Microstructure (8th theory - Fear & Greed, FRED, News)
+        self.market_microstructure = MarketMicrostructure(
+            fred_api_key=self.config.fred_api_key,
+            cryptocompare_api_key=self.config.cryptocompare_api_key
+        )
+        logger.info("✅ Market Microstructure initialized (8th theory - sentiment + macro + news)")
 
         # Initialize Telegram notifier
         self.telegram = TelegramNotifier(
