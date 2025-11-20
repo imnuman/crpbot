@@ -454,9 +454,9 @@ def api_v7_recent_signals(hours=24):
 
     session = get_session(config.db_url)
     try:
-        # Use timezone-aware UTC time for comparison
-        from datetime import timezone as dt_timezone
-        since = datetime.now(dt_timezone.utc) - timedelta(hours=hours)
+        # Database timestamps are stored as naive datetimes in server's local timezone
+        # Use naive local time for comparison (no timezone conversion needed)
+        since = datetime.now() - timedelta(hours=hours)
         signals = session.query(Signal).filter(
             Signal.timestamp >= since,
             Signal.model_version == 'v7_ultimate'
@@ -485,7 +485,8 @@ def api_v7_recent_signals(hours=24):
                 return notes[:max_length] + '...' if len(notes) > max_length else notes
 
         return jsonify([{
-            'timestamp': s.timestamp.replace(tzinfo=pytz_timezone('UTC')).astimezone(est).strftime('%Y-%m-%d %H:%M:%S EST'),
+            # Database timestamps are already in EST (server local time)
+            'timestamp': s.timestamp.strftime('%Y-%m-%d %H:%M:%S EST'),
             'timestamp_utc': s.timestamp.isoformat(),
             'symbol': s.symbol,
             'direction': s.direction,
