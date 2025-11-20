@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker
 import json
+import pytz
 
 # Import your existing models
 import sys
@@ -18,6 +19,9 @@ from libs.config.config import Settings
 
 # Initialize settings
 app_config = Settings()
+
+# EST timezone for display
+EST = pytz.timezone('America/New_York')
 
 
 class V7State(rx.State):
@@ -50,14 +54,14 @@ class V7State(rx.State):
         Session = sessionmaker(bind=engine)
         return Session()
 
-    async def fetch_signals(self):
+    def fetch_signals(self):
         """Fetch latest V7 signals from database"""
         self.is_loading = True
 
         try:
             session = self._get_session()
 
-            # Fetch last 2 hours of signals
+            # Fetch last 2 hours of signals (use naive datetime for SQLite)
             since = datetime.now() - timedelta(hours=2)
             signals_query = session.query(Signal).filter(
                 Signal.timestamp >= since,
@@ -93,8 +97,17 @@ class V7State(rx.State):
 
                 total_confidence += (s.confidence or 0.0)
 
+                # Convert timestamp to EST for display
+                # Timestamps in DB are naive (local time), treat as EST
+                if s.timestamp.tzinfo is None:
+                    # Naive datetime - assume it's already in EST (local time)
+                    ts_est = EST.localize(s.timestamp)
+                else:
+                    # Aware datetime - convert to EST
+                    ts_est = s.timestamp.astimezone(EST)
+
                 signals_data.append({
-                    'timestamp': s.timestamp.strftime('%b %d %H:%M EST'),
+                    'timestamp': ts_est.strftime('%b %d %H:%M EST'),
                     'symbol': s.symbol,
                     'direction': s.direction.upper(),
                     'confidence': f"{(s.confidence or 0.0) * 100:.1f}%",
@@ -115,14 +128,16 @@ class V7State(rx.State):
             self.sell_count = sell_count
             self.hold_count = hold_count
             self.avg_confidence = avg_conf
-            self.last_update = datetime.now().strftime('%H:%M:%S EST')
+            # Get current time in EST
+            now_est = datetime.now(EST)
+            self.last_update = now_est.strftime('%H:%M:%S EST')
             self.is_loading = False
 
         except Exception as e:
             print(f"Error fetching signals: {e}")
             self.is_loading = False
 
-    async def fetch_market_prices(self):
+    def fetch_market_prices(self):
         """Fetch latest market prices"""
         try:
             session = self._get_session()
@@ -146,11 +161,10 @@ class V7State(rx.State):
             print(f"Error fetching prices: {e}")
 
     def on_load(self):
-        """Called when page loads - start background tasks"""
-        return [
-            self.fetch_signals(),
-            self.fetch_market_prices(),
-        ]
+        """Called when page loads - trigger data fetch"""
+        # Call methods directly to update state
+        self.fetch_signals()
+        self.fetch_market_prices()
 
 
 def signal_card(signal: Dict[str, Any]) -> rx.Component:
