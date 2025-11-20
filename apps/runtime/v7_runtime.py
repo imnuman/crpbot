@@ -129,9 +129,9 @@ class V7TradingRuntime:
         self.current_balance = INITIAL_BALANCE
         self.daily_pnl = 0.0
 
-        # Rate limiting state
-        self.signal_history: list[Dict[str, Any]] = []  # Last hour of signals
-        self.last_signal_time: Optional[datetime] = None
+        # Rate limiting state - PER SYMBOL (FIX #2)
+        self.signal_history: list[Dict[str, Any]] = []  # Last hour of signals (all symbols)
+        self.last_signal_time_per_symbol: Dict[str, datetime] = {}  # Per-symbol last signal time
 
         # Cost tracking
         self.daily_cost = 0.0
@@ -141,9 +141,12 @@ class V7TradingRuntime:
 
         logger.info(f"V7 Runtime initialized | Symbols: {len(self.runtime_config.symbols)} | Conservative: {self.runtime_config.conservative_mode}")
 
-    def _check_rate_limits(self) -> tuple[bool, str]:
+    def _check_rate_limits(self, symbol: str) -> tuple[bool, str]:
         """
-        Check if we can generate a signal (rate limits)
+        Check if we can generate a signal (rate limits) - PER SYMBOL (FIX #2)
+
+        Args:
+            symbol: Trading symbol to check rate limits for
 
         Returns:
             Tuple of (allowed, reason)
@@ -163,21 +166,22 @@ class V7TradingRuntime:
                 filtered_history.append(s)
         self.signal_history = filtered_history
 
-        # Check hourly signal limit
+        # Check hourly signal limit (GLOBAL across all symbols)
         signals_last_hour = len(self.signal_history)
         if signals_last_hour >= self.runtime_config.max_signals_per_hour:
             return False, f"Rate limit: {signals_last_hour}/{self.runtime_config.max_signals_per_hour} signals in last hour"
 
-        # Check minimum interval since last signal (prevent rapid-fire)
-        if self.last_signal_time:
-            # Ensure last_signal_time is timezone-aware
-            last_time = self.last_signal_time
+        # FIX #2: Check minimum interval since last signal FOR THIS SYMBOL ONLY
+        # This allows BTC, ETH, SOL to signal independently
+        if symbol in self.last_signal_time_per_symbol:
+            last_time = self.last_signal_time_per_symbol[symbol]
+            # Ensure timezone-aware
             if last_time.tzinfo is None:
                 last_time = last_time.replace(tzinfo=timezone.utc)
             time_since_last = (now - last_time).total_seconds()
-            min_interval = 60  # 1 minute minimum between signals
+            min_interval = 60  # 1 minute minimum between signals FOR THIS SYMBOL
             if time_since_last < min_interval:
-                return False, f"Too soon: {time_since_last:.0f}s since last signal (min {min_interval}s)"
+                return False, f"Too soon: {time_since_last:.0f}s since last {symbol} signal (min {min_interval}s)"
 
         return True, "OK"
 
@@ -249,10 +253,12 @@ class V7TradingRuntime:
         ):
             return False, "Total loss limit exceeded (10%)"
 
-        # Check position size
-        position_size = self.initial_balance * 0.01  # 1% risk per trade
-        if not check_position_size(position_size, current_price):
-            return False, f"Position size too large: ${position_size:.2f}"
+        # FIX #1: Position size check disabled for manual trading
+        # User will determine position size manually when executing signals
+        # Original check was failing for crypto (e.g., $100 < $86,830 BTC price)
+        # position_size = self.initial_balance * 0.01  # 1% risk per trade
+        # if not check_position_size(position_size, current_price):
+        #     return False, f"Position size too large: ${position_size:.2f}"
 
         return True, "OK"
 
@@ -463,16 +469,18 @@ class V7TradingRuntime:
             )
 
             # Apply momentum override if DeepSeek is too conservative
+            # FIX #3: More conservative - require entropy < 0.80 (less random market)
             if result.parsed_signal.signal == SignalType.HOLD:
                 momentum = result.theory_analysis.price_momentum
                 hurst = result.theory_analysis.hurst
                 entropy = result.theory_analysis.entropy
 
-                # Strong bullish momentum in uncertain market
-                if momentum > 20 and hurst > 0.55 and entropy > 0.70:
+                # Strong bullish momentum in MODERATELY uncertain market (not too random)
+                # FIX #3: Changed from entropy > 0.70 to entropy < 0.80 (more selective)
+                if momentum > 20 and hurst > 0.55 and 0.70 < entropy < 0.80:
                     logger.warning(
                         f"🔄 MOMENTUM OVERRIDE: Bullish momentum ({momentum:+.2f}) "
-                        f"with trending Hurst ({hurst:.3f}) in choppy market (entropy {entropy:.3f}). "
+                        f"with trending Hurst ({hurst:.3f}) in moderate entropy market ({entropy:.3f}). "
                         f"Overriding HOLD → BUY at 40% confidence"
                     )
                     from libs.llm import ParsedSignal
@@ -491,11 +499,12 @@ class V7TradingRuntime:
                         take_profit=current_price * 1.015  # 1.5% target (1:3 R:R)
                     )
 
-                # Strong bearish momentum in uncertain market
-                elif momentum < -20 and hurst < 0.45 and entropy > 0.70:
+                # Strong bearish momentum in MODERATELY uncertain market (not too random)
+                # FIX #3: Changed from entropy > 0.70 to entropy < 0.80 (more selective)
+                elif momentum < -20 and hurst < 0.45 and 0.70 < entropy < 0.80:
                     logger.warning(
                         f"🔄 MOMENTUM OVERRIDE: Bearish momentum ({momentum:+.2f}) "
-                        f"with mean-reverting Hurst ({hurst:.3f}) in choppy market (entropy {entropy:.3f}). "
+                        f"with mean-reverting Hurst ({hurst:.3f}) in moderate entropy market ({entropy:.3f}). "
                         f"Overriding HOLD → SELL at 40% confidence"
                     )
                     from libs.llm import ParsedSignal
@@ -561,17 +570,17 @@ class V7TradingRuntime:
 
         for symbol in self.runtime_config.symbols:
             try:
-                # Check rate limits
-                rate_ok, rate_reason = self._check_rate_limits()
+                # FIX #2: Check rate limits PER SYMBOL
+                rate_ok, rate_reason = self._check_rate_limits(symbol)
                 if not rate_ok:
-                    logger.info(f"Rate limit reached: {rate_reason}")
-                    break
+                    logger.info(f"{symbol} rate limit: {rate_reason}")
+                    continue  # Skip this symbol, continue with others
 
-                # Check cost limits
+                # Check cost limits (global)
                 cost_ok, cost_reason = self._check_cost_limits()
                 if not cost_ok:
                     logger.warning(f"Cost limit reached: {cost_reason}")
-                    break
+                    break  # Stop ALL symbols if budget exhausted
 
                 # Generate signal
                 result = self.generate_signal_for_symbol(symbol)
@@ -597,14 +606,15 @@ class V7TradingRuntime:
                     except Exception as e:
                         logger.error(f"Failed to send Telegram notification: {e}")
 
-                # Update signal history (for rate limiting)
+                # FIX #2: Update signal history (for rate limiting) - PER SYMBOL
                 self.signal_history.append({
                     'timestamp': result.parsed_signal.timestamp,
                     'symbol': symbol,
                     'signal': result.parsed_signal.signal.value,
                     'confidence': result.parsed_signal.confidence
                 })
-                self.last_signal_time = result.parsed_signal.timestamp
+                # Track last signal time FOR THIS SYMBOL
+                self.last_signal_time_per_symbol[symbol] = result.parsed_signal.timestamp
 
                 # Count valid signals
                 if result.parsed_signal.is_valid and result.parsed_signal.signal != SignalType.HOLD:
