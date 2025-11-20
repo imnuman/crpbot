@@ -152,10 +152,16 @@ class V7TradingRuntime:
 
         # Remove signals older than 1 hour
         one_hour_ago = now - timedelta(hours=1)
-        self.signal_history = [
-            s for s in self.signal_history
-            if s['timestamp'] > one_hour_ago
-        ]
+        # Filter and ensure all timestamps are timezone-aware
+        filtered_history = []
+        for s in self.signal_history:
+            ts = s['timestamp']
+            # Make timezone-naive timestamps aware (assume UTC)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts > one_hour_ago:
+                filtered_history.append(s)
+        self.signal_history = filtered_history
 
         # Check hourly signal limit
         signals_last_hour = len(self.signal_history)
@@ -604,7 +610,9 @@ class V7TradingRuntime:
                 time.sleep(2)
 
             except Exception as e:
+                import traceback
                 logger.error(f"Error processing {symbol}: {e}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 continue
 
         logger.info(f"Scan complete | Valid signals: {valid_signals}/{len(self.runtime_config.symbols)}")
