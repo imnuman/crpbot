@@ -153,39 +153,60 @@ aws s3 sync models/ s3://crpbot-ml-data/models/v6_retrained/
 
 ---
 
-## 📋 V7 Ultimate Implementation Guide
+## 📋 V7 Ultimate - Production System
 
-**CRITICAL**: V7 STEP 4 COMPLETE - Ready for cloud deployment on `feature/v7-ultimate` branch.
+**STATUS**: ✅ **ALL STEPS COMPLETE - RUNNING IN PRODUCTION**
 
 ### What is V7 Ultimate?
 
-V7 Ultimate is a manual trading system (signal generation only) based on Renaissance Technologies methodology:
-- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Market Regime, Risk Metrics, Fractal Dimension, **Market Context (CoinGecko)** ⭐ **NEW**
-- **Enhanced ML**: 4-layer FNN with BatchNorm, Dropout, Temperature Scaling
-- **Premium Data**: CoinGecko Analyst API ($129/month) ✅ **INTEGRATED**
-- **LLM Synthesis**: DeepSeek API integration ($5/day budget) ✅ **COMPLETE**
-- **Expected Performance**: 58-65% initially → 70-75% with learning
+V7 Ultimate is a manual trading system (signal generation only) based on Renaissance Technologies methodology, now fully deployed and running 24/7 in production.
 
-### Implementation Status
+**Core Components** (All Live ✅):
+- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Market Regime, Risk Metrics, Fractal Dimension, Market Context (CoinGecko)
+- **DeepSeek LLM**: AI synthesis of mathematical signals into trading decisions
+- **Premium Data**: CoinGecko Analyst API + Coinbase Advanced Trade API
+- **Signal Tracking**: Automated entry/exit detection with win rate calculation
+- **Telegram Bot**: Real-time notifications with price predictions
+- **Web Dashboard**: Live visualization at http://178.156.136.185:5000
 
-**Current Step**: STEP 4 COMPLETE → Ready for STEP 5 (Dashboard/Telegram)
+### Production Implementation Status
 
-✅ **Completed Components**:
-1. ✅ V7 Runtime Orchestrator (551 lines) - `apps/runtime/v7_runtime.py`
-2. ✅ **7 Mathematical Theories** - All implemented in `libs/theories/` (including CoinGecko Market Context)
-3. ✅ **CoinGecko Integration** - `libs/data/coingecko_client.py` + `libs/theories/market_context.py`
-4. ✅ DeepSeek LLM Integration - Complete in `libs/llm/` ($5/day budget)
-5. ✅ Bayesian Learning Framework - `libs/bayesian/bayesian_learner.py`
-6. ✅ Rate Limiting (30 signals/hour)
-7. ✅ Cost Controls ($5/day, $150/month budgets)
-8. ✅ FTMO Rules Integration
-9. ✅ Documentation Cleanup (172 → 7 essential files)
+✅ **ALL STEPS COMPLETE**:
 
-📋 **Next Steps**:
-- Deploy to cloud server (178.156.136.185)
-- Add DeepSeek API key to `.env`
-- Run continuous V7 runtime
-- STEP 5: Dashboard/Telegram integration
+**STEP 1-4: Core Implementation** ✅
+1. ✅ V7 Runtime Orchestrator (33KB) - `apps/runtime/v7_runtime.py`
+2. ✅ 7 Mathematical Theories - `libs/analysis/*` (Shannon, Hurst, Kolmogorov, etc.)
+3. ✅ CoinGecko Integration - Market context and macro analysis
+4. ✅ DeepSeek LLM Integration - `libs/llm/*` (4 files)
+5. ✅ Bayesian Learning - `libs/bayesian/bayesian_learner.py`
+6. ✅ Rate Limiting - 30 signals/hour (aggressive FTMO mode)
+7. ✅ Cost Controls - $5/day, $150/month budgets
+8. ✅ FTMO Rules - Daily/total loss limits enforced
+
+**STEP 5: Dashboard & Visualization** ✅
+- ✅ V7 signal display with price predictions (Entry/SL/TP)
+- ✅ Live statistics (BUY/SELL/HOLD counts, confidence, API costs)
+- ✅ Signal breakdown charts (direction, symbol, confidence tier)
+- ✅ DeepSeek AI analysis display box
+
+**STEP 6: Telegram Integration** ✅
+- ✅ Real-time signal notifications with formatting
+- ✅ Price predictions (Entry, Stop Loss, Take Profit)
+- ✅ DeepSeek reasoning display
+- ✅ FTMO compliance status
+
+**STEP 7: Monitoring & Analytics** ✅
+- ✅ Performance tracking and cost monitoring
+- ✅ Signal results tracking system
+- ✅ Bayesian win rate calculation
+- ✅ Production logging and alerting
+
+**STEP 8: Production Deployment** ✅
+- ✅ 24/7 runtime on cloud server (178.156.136.185)
+- ✅ Momentum override for trend capture
+- ✅ Structured LLM output format
+- ✅ Signal timestamp conversion to EST
+- ✅ Comprehensive documentation (V7_MONITORING.md)
 
 ### V7 Key Principles
 
@@ -195,10 +216,10 @@ V7 Ultimate is a manual trading system (signal generation only) based on Renaiss
 4. **Risk Management**: Monte Carlo simulation for every trade
 5. **Quality over Quantity**: 2-5 high-quality signals/day (not 20-30 low-quality)
 
-### V7 Files Created (13 New Files)
+### V7 Production Files
 
-**Runtime**:
-- `apps/runtime/v7_runtime.py` (551 lines) - Main V7 orchestrator
+**Runtime** (Production):
+- `apps/runtime/v7_runtime.py` (33KB) - Main V7 orchestrator, running 24/7
 
 **LLM Integration** (`libs/llm/`):
 - `deepseek_client.py` - DeepSeek API client
@@ -206,50 +227,76 @@ V7 Ultimate is a manual trading system (signal generation only) based on Renaiss
 - `signal_parser.py` - LLM response → structured signal parser
 - `signal_generator.py` - Complete signal generation orchestrator
 
-**Mathematical Theories** (`libs/theories/`):
+**Mathematical Theories** (`libs/analysis/`):
 - `shannon_entropy.py` - Market predictability analysis
 - `hurst_exponent.py` - Trend persistence detection
 - `kolmogorov_complexity.py` - Pattern complexity measurement
-- `market_regime.py` - Bull/bear/sideways classification
-- `risk_metrics.py` - VaR, Sharpe ratio, volatility
-- `fractal_dimension.py` - Market structure analysis
-- `market_context.py` - **CoinGecko macro analysis (7th theory)** ⭐ **NEW**
+- `markov_chain.py` - 6-state regime detection
+- `kalman_filter.py` - Price denoising and momentum
+- `bayesian_inference.py` - Online learning from outcomes
+- `monte_carlo.py` - 10k scenario risk simulation
 
-**CoinGecko Integration** (`libs/data/`):
-- `coingecko_client.py` - CoinGecko Analyst API client ($129/month)
+**Data Sources** (`libs/data/`):
+- `coingecko_pro_client.py` - CoinGecko Analyst API ($129/month)
+- `coinbase_websocket.py` - Real-time market data
+- `yahoo_finance_client.py` - Macro market context
 
-**Bayesian Learning** (`libs/bayesian/`):
-- `bayesian_learner.py` - Beta distribution learning from outcomes
+**Dashboard & Notifications**:
+- `apps/dashboard/app.py` - Web dashboard with V7 visualization
+- `libs/notifications/telegram_bot.py` - Real-time Telegram alerts
 
-**Documentation**:
-- `V7_CLOUD_DEPLOYMENT.md` - Complete deployment guide ⭐
+**Documentation** (Production Guides):
+- `V7_MONITORING.md` - Production monitoring guide ⭐
+- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix documentation
+- `V7_SIGNAL_FIXES.md` - Signal generation improvements
+- `V7_CLOUD_DEPLOYMENT.md` - Original deployment guide
 
-### Deploying V7 to Cloud
+### Managing V7 in Production
 
-**Prerequisites**:
-1. DeepSeek API key (get from https://platform.deepseek.com/)
-2. Add to `.env`: `DEEPSEEK_API_KEY=sk-...`
-
-**Deployment Commands** (see `V7_CLOUD_DEPLOYMENT.md` for full guide):
+**Check Status**:
 ```bash
-# On cloud server (178.156.136.185)
-cd ~/crpbot
-git pull origin feature/v7-ultimate
+# V7 runtime status
+ps aux | grep v7_runtime.py | grep -v grep
 
-# Add DeepSeek API key to .env
-nano .env
+# View live logs
+tail -f /tmp/v7_production.log
 
-# Test with 1 iteration
-.venv/bin/python3 apps/runtime/v7_runtime.py --iterations 1 --sleep-seconds 10
+# Check recent signals
+sqlite3 tradingai.db "SELECT timestamp, symbol, direction, confidence
+FROM signals WHERE model_version='v7_ultimate'
+ORDER BY timestamp DESC LIMIT 10"
+```
 
-# Run continuous (background)
+**Restart V7** (if needed):
+```bash
+# Stop V7
+pkill -f v7_runtime.py
+
+# Start V7 (aggressive FTMO mode)
 nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
   --iterations -1 \
   --sleep-seconds 120 \
-  > /tmp/v7_runtime.log 2>&1 &
+  --aggressive \
+  --max-signals-per-hour 30 \
+  > /tmp/v7_production.log 2>&1 &
 
-# Monitor
-tail -f /tmp/v7_runtime.log
+# Verify it's running
+tail -100 /tmp/v7_production.log | grep "V7 ULTIMATE"
+```
+
+**Monitor Performance**:
+```bash
+# Cost tracking
+tail -100 /tmp/v7_production.log | grep "V7 Statistics" -A 6
+
+# Signal breakdown (24 hours)
+sqlite3 tradingai.db "SELECT direction, COUNT(*), AVG(confidence)
+FROM signals WHERE model_version='v7_ultimate'
+AND timestamp > datetime('now', '-24 hours')
+GROUP BY direction"
+
+# Dashboard access
+curl http://localhost:5000/api/v7/signals/recent/20
 ```
 
 ---
@@ -358,15 +405,24 @@ make smoke              # Run 5-min smoke backtest
 
 ### Runtime
 ```bash
-# Dryrun mode (testing, no real trades)
+# V7 Ultimate (PRODUCTION - Currently Running)
+# Start V7 runtime (aggressive FTMO mode)
+nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
+  --iterations -1 --sleep-seconds 120 --aggressive --max-signals-per-hour 30 \
+  > /tmp/v7_production.log 2>&1 &
+
+# Monitor V7 logs
+tail -f /tmp/v7_production.log
+
+# Check V7 status
+ps aux | grep v7_runtime.py | grep -v grep
+
+# Dashboard (already running in production)
+# Access: http://178.156.136.185:5000
+# Or restart: .venv/bin/python3 -m apps.dashboard.app
+
+# Legacy V6 Runtime (deprecated)
 ./run_runtime_with_env.sh --mode dryrun --iterations 5
-
-# Live mode (production)
-./run_runtime_with_env.sh --mode live --iterations -1
-
-# Dashboard (monitor signals)
-cd apps/dashboard && uv run python app.py
-# Access: http://localhost:8050
 ```
 
 ### Training (AWS GPU ONLY)
@@ -438,31 +494,37 @@ Kraken         + CoinGecko            (g4dn.xlarge)  promoted/      + Telegram
 
 ### Model System
 
-**Current Development**: V7 Ultimate (Enhanced 4-layer FNN + Mathematical Framework)
-- **BTC-USD**: 71.4% RF accuracy, 71.1% NN accuracy, 72 features
-- **ETH-USD**: 68.9% RF accuracy, 69.8% NN accuracy, 72 features
-- **SOL-USD**: 70.9% RF accuracy, 69.7% NN accuracy, 72 features
-- **Architecture**: 72→256→128→64→3 with BatchNorm + Dropout (0.3)
-- **Status**: In development (feature/v7-ultimate branch)
+**Current Production**: V7 Ultimate (Mathematical Framework + DeepSeek LLM)
+- **Status**: ✅ **LIVE IN PRODUCTION** - Running 24/7 on cloud server
+- **Method**: Renaissance Technologies methodology (7 mathematical theories + AI synthesis)
+- **Symbols**: BTC-USD, ETH-USD, SOL-USD
+- **Signal Rate**: 30 signals/hour max (aggressive FTMO mode)
+- **Performance**: Real-time signal tracking with Bayesian learning
+- **Cost**: ~$0.01-0.02/day (well under $5/day budget)
 
-**V7 Enhancements**:
-- Temperature scaling (T=2.5) for calibrated confidence
-- Batch normalization layers
-- Dropout regularization (0.3)
-- 6 mathematical theories integration (Shannon, Hurst, Markov, Kalman, Bayesian, Monte Carlo)
-- CoinGecko Analyst API data enrichment
-- DeepSeek LLM synthesis (planned)
+**V7 Ultimate Architecture** (Production):
+- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Markov Chain (6-state regime), Kalman Filter, Bayesian Inference, Monte Carlo Simulation
+- **DeepSeek LLM**: Synthesizes theory outputs into coherent trading signals
+- **CoinGecko Premium**: Market context and macro analysis (7th theory)
+- **Signal Tracking**: Automated entry/exit detection with win rate calculation
+- **Momentum Override**: Captures trending markets (recent fix)
+- **Rate Limiting**: 30 signals/hour with sliding window
+- **Cost Controls**: $5/day, $150/month budgets enforced
+- **FTMO Rules**: Daily/total loss limits checked before each signal
 
 **Model Evolution**:
-- V5 FIXED: 3-layer LSTM (73/54 features, multi-TF for BTC/SOL only)
-- V6 Real: 2-layer LSTM (31 features, uniform across symbols)
-- V6 Enhanced: 4-layer FNN (72 features, Amazon Q engineered)
-- V7 Ultimate: Enhanced FNN + Mathematical Framework ⭐ **IN DEVELOPMENT**
+- V5 FIXED: 3-layer LSTM (73/54 features, multi-TF for BTC/SOL only) - Deprecated
+- V6 Real: 2-layer LSTM (31 features, uniform across symbols) - Deprecated
+- V6 Enhanced: 4-layer FNN (72 features, Amazon Q engineered) - Deprecated
+- **V7 Ultimate**: Mathematical Framework + LLM Synthesis ⭐ **PRODUCTION**
 
-**Ensemble System** (`apps/runtime/ensemble.py`):
-- Loads best available model per symbol
-- Confidence threshold: 60-65% (configurable via CONFIDENCE_THRESHOLD env var)
-- Manual signal generation (no auto-execution)
+**V7 Signal Generation** (`apps/runtime/v7_runtime.py`):
+- Mathematical theory analysis (Shannon, Hurst, etc.)
+- DeepSeek LLM synthesis with structured output
+- Price predictions (Entry, Stop Loss, Take Profit)
+- Confidence scoring with reasoning
+- FTMO compliance verification
+- Manual signal delivery (no auto-execution)
 
 ---
 
@@ -679,31 +741,36 @@ TELEGRAM_CHAT_ID=...
 
 ## 📚 Key Documentation
 
-**V7 Documentation** (CURRENT):
-- `V7_CLOUD_DEPLOYMENT.md` - **STEP 4 Complete - Cloud deployment guide** ⭐
-- `apps/runtime/v7_runtime.py` - Main V7 runtime orchestrator (551 lines)
-- `V7_PROJECT_STATUS_AND_ROADMAP.md` - Original implementation roadmap
+**V7 Production Documentation** (CURRENT):
+- `V7_MONITORING.md` - **Production monitoring and management guide** ⭐ **PRIMARY**
+- `apps/runtime/v7_runtime.py` - V7 runtime (33KB, running 24/7)
+- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix for trend capture
+- `V7_SIGNAL_FIXES.md` - Signal generation improvements
+- `V7_MATHEMATICAL_THEORIES.md` - Theory explanations
+- `V7_CLOUD_DEPLOYMENT.md` - Original deployment guide (completed)
 - `PROJECT_MEMORY.md` - Session continuity and dual-environment setup
-- `v7_training_summary.json` - Latest training metrics
-- `V6_DIAGNOSTIC_AND_V7_PLAN.md` - Why V7 was needed
 
-**Training & Infrastructure**:
+**Infrastructure & Training**:
 - `MASTER_TRAINING_WORKFLOW.md` - AUTHORITATIVE training guide
 - `CLAUDE.md` - This file (project architecture)
 - `README.md` - Project overview
+- `AWS_AUTO_TERMINATION_SUMMARY.md` - Auto-termination for GPU instances
 
-**Architecture** (Code):
-- `apps/trainer/models/lstm.py` - Model architectures
-- `apps/runtime/ensemble.py` - Model loading and inference
-- `apps/runtime/runtime_features.py` - Runtime feature pipeline
-- `apps/runtime/signal_formatter.py` - V7 signal formatting
+**V7 Production Architecture** (Code):
+- `apps/runtime/v7_runtime.py` - Main V7 orchestrator (production)
+- `libs/llm/*` - DeepSeek client, synthesizer, parser, generator
+- `libs/analysis/*` - 7 mathematical theories (Shannon, Hurst, etc.)
+- `libs/data/coingecko_pro_client.py` - Premium market data
+- `apps/dashboard/app.py` - Web dashboard with V7 visualization
+- `libs/notifications/telegram_bot.py` - Real-time Telegram alerts
 - `libs/config/config.py` - Configuration system
 
 **Deprecated** (ignore these):
 - Any docs mentioning Colab training
 - Any docs mentioning local CPU training
-- Any docs predating 2025-11-15
-- V6-specific deployment docs (superseded by V7)
+- V6-specific runtime/deployment docs (superseded by V7)
+- V5 FIXED documentation (outdated)
+- Any planning docs marked "STEP X" (all steps complete)
 
 ---
 
@@ -722,52 +789,81 @@ TELEGRAM_CHAT_ID=...
 ## 🔮 Current Status (Nov 2025)
 
 **Active Branch**: `feature/v7-ultimate`
-**Current Phase**: V7 Ultimate - Manual Signal System (Implementation)
+**Current Phase**: V7 Ultimate - PRODUCTION (All Steps Complete)
 
-**V7 Status**:
-- **STEP 4 COMPLETE**: Signal generation pipeline fully implemented (13 new files)
-- **Ready for cloud deployment**: Just needs DeepSeek API key added to `.env`
-- Training metrics: 70.2% avg accuracy (RF), 60.2% avg confidence
-- Architecture: Enhanced 4-layer FNN with BatchNorm + Dropout
-- Runtime: 551-line orchestrator with 6 theories + DeepSeek LLM synthesis
-- Method: Manual trading (signal generation only, no auto-execution)
-- Cost: ~$0.0003 per signal (~$1.75/month at 6 signals/hour)
+**V7 Status**: ✅ **FULLY DEPLOYED AND RUNNING IN PRODUCTION**
+- **ALL STEPS COMPLETE** (Steps 1-8): Implementation, Dashboard, Telegram, Monitoring
+- **Production Runtime**: Running 24/7 on cloud server (178.156.136.185)
+- **Live Signals**: 30 signals/hour max, aggressive mode enabled
+- **Dashboard**: Live at http://178.156.136.185:5000 with signal visualization
+- **Telegram**: Real-time notifications with price predictions (Entry/SL/TP)
+- **Performance**: Momentum override implemented, signal tracking active
+- **Method**: Manual trading (signal generation only, no auto-execution)
 
-**V7 Framework** (All Implemented ✅):
-- 6 mathematical theories (Shannon, Hurst, Kolmogorov, Market Regime, Risk Metrics, Fractal)
-- DeepSeek LLM synthesis ($0.27/M input, $1.10/M output tokens)
-- CoinGecko Analyst API integration ($129/month)
-- Rate limiting: 6 signals/hour
-- Cost controls: $3/day, $100/month budgets
-- Bayesian learning from trade outcomes
-- Expected: 58-65% win rate initially → 70-75% with learning
+**V7 Framework** (Production Deployed ✅):
+- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Market Regime, Risk Metrics, Fractal Dimension, Market Context (CoinGecko)
+- **DeepSeek LLM**: Synthesis of theories into trade signals ($5/day budget)
+- **CoinGecko Premium**: Market context and macro analysis ($129/month)
+- **Rate Limiting**: 30 signals/hour (aggressive FTMO mode)
+- **Cost Controls**: $5/day, $150/month budgets
+- **Bayesian Learning**: Beta distribution updates from trade outcomes
+- **Signal Tracking**: Automated entry/exit detection and win rate calculation
 
-**Symbols Tracked**: BTC-USD, ETH-USD, SOL-USD
-**Data Sources**: Coinbase Advanced Trade API + CoinGecko Premium
-**Runtime Mode**: Ready for deployment (V7 STEP 4 complete, awaiting cloud deployment)
+**Production Metrics**:
+- Runtime: 24/7 continuous operation
+- Symbols: BTC-USD, ETH-USD, SOL-USD
+- Data Sources: Coinbase REST API + CoinGecko Premium
+- Cost per signal: ~$0.0003-0.0005
+- Daily cost: ~$0.01-0.02 (well under $5 budget)
 
-**Key Files**:
-- `V7_CLOUD_DEPLOYMENT.md` - **STEP 4 deployment guide** ⭐
-- `apps/runtime/v7_runtime.py` - Main V7 runtime (551 lines)
+**Key Production Files**:
+- `apps/runtime/v7_runtime.py` - Main V7 runtime (33KB, production)
+- `apps/dashboard/app.py` - Dashboard with V7 signal visualization
 - `libs/llm/*` - DeepSeek integration (4 files)
-- `libs/theories/*` - 6 mathematical theories (6 files)
-- `libs/bayesian/*` - Bayesian learning (1 file)
-- `PROJECT_MEMORY.md` - Session continuity and dual-environment setup
-- `v7_training_summary.json` - Latest training metrics
+- `libs/analysis/*` - 6 mathematical theories (6 files)
+- `libs/notifications/telegram_bot.py` - Telegram notifications
+- `V7_MONITORING.md` - Production monitoring guide ⭐
+- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix documentation
 
-**Monitoring**:
+**Production Monitoring**:
 ```bash
-# Dashboard
-cd apps/dashboard && uv run python app.py
+# Check V7 runtime status
+ps aux | grep v7_runtime.py | grep -v grep
 
-# Logs (check latest log file)
-ls -lt /tmp/*.log | head -3
+# View live logs
+tail -f /tmp/v7_production.log
 
-# Database
-sqlite3 tradingai.db "SELECT * FROM signals ORDER BY timestamp DESC LIMIT 10"
+# Dashboard (already running)
+curl http://localhost:5000/api/v7/signals/recent/10
+
+# Database signals (last hour)
+sqlite3 tradingai.db "SELECT timestamp, symbol, direction, confidence, entry_price
+FROM signals WHERE model_version='v7_ultimate'
+AND timestamp > datetime('now', '-1 hour')
+ORDER BY timestamp DESC LIMIT 20"
+
+# Check Telegram bot status
+ps aux | grep telegram | grep -v grep
+```
+
+**Production Commands**:
+```bash
+# Restart V7 runtime
+pkill -f v7_runtime.py
+nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
+  --iterations -1 --sleep-seconds 120 --aggressive --max-signals-per-hour 30 \
+  > /tmp/v7_production.log 2>&1 &
+
+# Monitor costs
+tail -100 /tmp/v7_production.log | grep "V7 Statistics" -A 6
+
+# Check signal performance
+sqlite3 tradingai.db "SELECT direction, COUNT(*), AVG(confidence)
+FROM signals WHERE model_version='v7_ultimate'
+AND timestamp > datetime('now', '-24 hours') GROUP BY direction"
 ```
 
 ---
 
-**Last Updated**: 2025-11-18
-**Next Milestone**: Deploy V7 to cloud server → STEP 5 (Dashboard/Telegram integration)
+**Last Updated**: 2025-11-19
+**Status**: V7 Ultimate is LIVE in production on cloud server
