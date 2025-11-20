@@ -140,27 +140,38 @@ class V7State(rx.State):
             self.is_loading = False
 
     def fetch_market_prices(self):
-        """Fetch latest market prices"""
+        """Fetch live market prices from Coinbase API"""
         try:
-            session = self._get_session()
+            from coinbase.rest import RESTClient
+            import os
 
-            # Get most recent signals to extract prices
+            # Get Coinbase API credentials
+            api_key = os.getenv('COINBASE_API_KEY_NAME')
+            api_secret = os.getenv('COINBASE_API_PRIVATE_KEY')
+
+            if not api_key or not api_secret:
+                print("Coinbase API credentials not configured")
+                return
+
+            client = RESTClient(api_key=api_key, api_secret=api_secret)
+
+            # Fetch live prices for each symbol
             for symbol in ['BTC-USD', 'ETH-USD', 'SOL-USD']:
-                latest = session.query(Signal).filter(
-                    Signal.symbol == symbol
-                ).order_by(desc(Signal.timestamp)).first()
+                try:
+                    product = client.get_product(symbol)
+                    price = float(product['price'])
 
-                if latest and latest.entry_price:
                     if symbol == 'BTC-USD':
-                        self.btc_price = latest.entry_price
+                        self.btc_price = price
                     elif symbol == 'ETH-USD':
-                        self.eth_price = latest.entry_price
+                        self.eth_price = price
                     elif symbol == 'SOL-USD':
-                        self.sol_price = latest.entry_price
+                        self.sol_price = price
+                except Exception as symbol_error:
+                    print(f"Error fetching {symbol}: {symbol_error}")
 
-            session.close()
         except Exception as e:
-            print(f"Error fetching prices: {e}")
+            print(f"Error fetching market prices: {e}")
 
     def on_load(self):
         """Called when page loads - trigger data fetch"""
