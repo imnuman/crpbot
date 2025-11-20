@@ -167,7 +167,8 @@ class SignalGenerator:
         timeframe: str = "1h",
         volume: Optional[float] = None,
         spread: Optional[float] = None,
-        additional_context: Optional[str] = None
+        additional_context: Optional[str] = None,
+        coingecko_context: Optional[Dict[str, Any]] = None
     ) -> SignalGenerationResult:
         """
         Generate trading signal from price data
@@ -181,6 +182,7 @@ class SignalGenerator:
             volume: Optional current volume
             spread: Optional bid-ask spread
             additional_context: Optional additional context (news, events)
+            coingecko_context: Optional CoinGecko market context (7th theory)
 
         Returns:
             SignalGenerationResult with complete analysis and signal
@@ -226,7 +228,8 @@ class SignalGenerator:
             prompt_messages = self.signal_synthesizer.build_prompt(
                 context=market_context,
                 analysis=theory_analysis,
-                additional_context=additional_context
+                additional_context=additional_context,
+                coingecko_context=coingecko_context
             )
 
             # Validate prompt

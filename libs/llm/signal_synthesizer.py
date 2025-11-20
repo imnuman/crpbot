@@ -106,11 +106,17 @@ You analyze market conditions using 7 theories:
 6. Monte Carlo - Risk assessment and scenario analysis
 7. Market Context (CoinGecko) - Macro market conditions, sentiment, and liquidity
 
-Your outputs must be:
-- Concise: 2-3 sentences maximum
-- Actionable: Clear BUY/SELL/HOLD recommendation
-- Quantified: Include confidence percentage (0-100%)
-- Justified: Brief explanation based on theory synthesis
+**CRITICAL OUTPUT FORMAT REQUIREMENT:**
+You MUST respond in this EXACT format - do NOT deviate from this structure:
+
+SIGNAL: [BUY/SELL/HOLD]
+CONFIDENCE: [0-100]%
+ENTRY PRICE: $[number or N/A]
+STOP LOSS: $[number or N/A]
+TAKE PROFIT: $[number or N/A]
+REASONING: [2-3 sentences explaining signal and price levels]
+
+This format is MANDATORY. Your response will be parsed programmatically, so any deviation will cause system errors.
 
 IMPORTANT: This is a MANUAL trading system. You generate signals for a human trader to review and execute. Do NOT execute trades automatically."""
 
@@ -207,51 +213,41 @@ Apply proper risk management and position sizing.
 
 Recommend BUY/SELL when momentum is clear, even if other metrics are mixed. HOLD only when truly no edge exists."""
 
-        # Request format with price targets
+        # Request format with price targets (SIMPLIFIED - system prompt now has format requirement)
         user_prompt += """
 
-**Task:**
-Based on the mathematical analysis above, provide a trading signal with specific price targets:
+**YOUR RESPONSE MUST FOLLOW THIS EXACT FORMAT:**
 
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]%
-ENTRY PRICE: $[specific price to enter - use current price or better level]
-STOP LOSS: $[price to exit if wrong - based on support/resistance, ATR, or recent swing points]
-TAKE PROFIT: $[price to exit if right - based on resistance/support, Fibonacci, or volatility bands]
-REASONING: [Brief 2-3 sentence explanation synthesizing theories AND price level justification]
+ENTRY PRICE: $[number or N/A for HOLD]
+STOP LOSS: $[number or N/A for HOLD]
+TAKE PROFIT: $[number or N/A for HOLD]
+REASONING: [2-3 sentences - explain signal + justify price levels]
 
-**Example for BUY signal:**
+**Examples:**
+
+BUY Signal:
 SIGNAL: BUY
 CONFIDENCE: 75%
 ENTRY PRICE: $91,234
 STOP LOSS: $90,500
 TAKE PROFIT: $92,800
-REASONING: Strong bullish momentum (Hurst 0.72 trending) + bull regime (65% confidence). Enter at current price, SL below recent support at $90,500 (0.8% risk), TP at 1.618 Fibonacci extension $92,800 (1.7% reward, R:R 1:2.1).
+REASONING: Strong bullish momentum (Hurst 0.72 trending) + bull regime (65%). SL at support $90,500 (0.8% risk), TP at Fib 1.618 $92,800 (1.7% reward, R:R 1:2.1).
 
-**Example for SELL signal:**
-SIGNAL: SELL
-CONFIDENCE: 78%
-ENTRY PRICE: $91,234
-STOP LOSS: $92,100
-TAKE PROFIT: $89,500
-REASONING: Bear regime detected with negative momentum. Enter at current price, SL above resistance at $92,100 (0.9% risk), TP at support zone $89,500 (1.9% reward, R:R 1:2.1).
-
-**Example for HOLD signal:**
+HOLD Signal:
 SIGNAL: HOLD
 CONFIDENCE: 45%
 ENTRY PRICE: N/A
 STOP LOSS: N/A
 TAKE PROFIT: N/A
-REASONING: High entropy (0.89) indicates random market conditions. Insufficient edge for trade entry.
+REASONING: High entropy (0.89) indicates random market. Insufficient edge for trade.
 
-**Important:**
-- Entry price should be current price or a specific limit order level
-- Stop loss should provide 0.5-2% risk from entry
-- Take profit should aim for at least 1:1.5 risk/reward ratio
-- For HOLD signals, use N/A for all prices
-- Include brief justification for price levels in reasoning
-
-Be concise and actionable. This is for manual execution by a human trader."""
+**Price Level Guidelines:**
+- Entry: Current price or specific limit level
+- Stop Loss: 0.5-2% risk from entry
+- Take Profit: Minimum 1:1.5 R:R ratio
+- HOLD signals: Use N/A for all prices"""
 
         # Build messages list
         messages = [
