@@ -189,6 +189,13 @@ function formatPrice(price) {
 function formatTime(timestamp) {
     if (!timestamp) return 'N/A';
     const date = new Date(timestamp);
+
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+        console.error('Invalid timestamp:', timestamp);
+        return 'Invalid';
+    }
+
     return date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
