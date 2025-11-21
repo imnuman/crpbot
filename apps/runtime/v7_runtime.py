@@ -86,7 +86,11 @@ class V7TradingRuntime:
         """
         self.config = config or Settings()
         self.runtime_config = runtime_config or V7RuntimeConfig(
-            symbols=["BTC-USD", "ETH-USD", "SOL-USD"]
+            symbols=[
+                "BTC-USD", "ETH-USD", "SOL-USD",  # Original 3
+                "XRP-USD", "DOGE-USD", "ADA-USD", "AVAX-USD",  # New 4
+                "LINK-USD", "MATIC-USD", "LTC-USD"  # New 3
+            ]
         )
 
         # Initialize database
@@ -926,8 +930,12 @@ def main():
     parser.add_argument(
         "--symbols",
         nargs="+",
-        default=["BTC-USD", "ETH-USD", "SOL-USD"],
-        help="Symbols to scan (default: BTC-USD ETH-USD SOL-USD)"
+        default=[
+            "BTC-USD", "ETH-USD", "SOL-USD",  # Original 3
+            "XRP-USD", "DOGE-USD", "ADA-USD", "AVAX-USD",  # New 4
+            "LINK-USD", "MATIC-USD", "LTC-USD"  # New 3
+        ],
+        help="Symbols to scan (default: BTC ETH SOL XRP DOGE ADA AVAX LINK MATIC LTC)"
     )
     parser.add_argument(
         "--aggressive",
