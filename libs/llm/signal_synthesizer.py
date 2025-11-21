@@ -36,7 +36,7 @@ class MarketContext:
 
 @dataclass
 class TheoryAnalysis:
-    """Analysis results from all 6 theories"""
+    """Analysis results from all 10 theories (6 original + 4 new statistical)"""
     # Shannon Entropy
     entropy: float
     entropy_interpretation: Dict[str, Any]
@@ -59,6 +59,31 @@ class TheoryAnalysis:
 
     # Monte Carlo
     risk_metrics: Dict[str, float]
+
+    # NEW: Random Forest Ensemble (7th theory)
+    rf_bullish_prob: Optional[float] = None
+    rf_bearish_prob: Optional[float] = None
+    rf_confidence: Optional[float] = None
+    rf_signal: Optional[int] = None
+
+    # NEW: Variance Tests / Heteroscedasticity (8th theory)
+    variance_ratio: Optional[float] = None
+    is_heteroscedastic: Optional[bool] = None
+    variance_stability: Optional[float] = None
+    regime_change_prob: Optional[float] = None
+
+    # NEW: Autocorrelation Analysis (9th theory)
+    acf_lag1: Optional[float] = None
+    acf_mean: Optional[float] = None
+    trend_strength: Optional[float] = None
+    mean_reversion_score: Optional[float] = None
+    optimal_strategy: Optional[str] = None
+
+    # NEW: Stationarity Test / ADF (10th theory)
+    is_stationary: Optional[bool] = None
+    adf_score: Optional[float] = None
+    stationarity_trend_strength: Optional[float] = None
+    recommended_strategy: Optional[str] = None
 
 
 class SignalSynthesizer:

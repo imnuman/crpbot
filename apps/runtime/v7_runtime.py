@@ -741,6 +741,15 @@ class V7TradingRuntime:
                 if result is None:
                     continue
 
+                # FIX #4: Filter by confidence threshold (focus on high-quality signals)
+                MIN_CONFIDENCE = 0.55  # 55% minimum confidence for quality trades
+                if result.parsed_signal.confidence < MIN_CONFIDENCE:
+                    logger.info(
+                        f"❌ Signal REJECTED (low confidence): {symbol} {result.parsed_signal.signal.value} "
+                        f"confidence {result.parsed_signal.confidence:.1%} < {MIN_CONFIDENCE:.1%} threshold"
+                    )
+                    continue  # Skip low-confidence signals
+
                 # Get current price for formatting
                 df = self.data_fetcher.fetch_latest_candles(symbol=symbol, num_candles=1)
                 current_price = float(df['close'].iloc[-1]) if not df.empty else 0.0

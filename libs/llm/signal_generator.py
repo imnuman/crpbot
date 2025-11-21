@@ -30,6 +30,12 @@ from libs.analysis import (
 )
 from libs.analysis.markov_chain import detect_market_regime
 
+# Import new statistical theories
+from libs.theories.random_forest_validator import RandomForestValidator
+from libs.theories.variance_tests import VarianceAnalyzer
+from libs.theories.autocorrelation_analyzer import AutocorrelationAnalyzer
+from libs.theories.stationarity_test import StationarityAnalyzer
+
 # Import LLM components
 from .deepseek_client import DeepSeekClient, DeepSeekResponse
 from .signal_synthesizer import (
@@ -145,6 +151,12 @@ class SignalGenerator:
         # Bayesian learner with symmetric prior at 50% (α=11, β=11 → 10 wins, 10 losses)
         self.bayesian_learner = BayesianWinRateLearner(alpha_prior=11.0, beta_prior=11.0)
         # Note: MonteCarloSimulator is instantiated per-signal with actual market parameters
+
+        # Initialize new statistical theories (7-10)
+        self.rf_validator = RandomForestValidator(n_estimators=100, max_depth=10)
+        self.variance_analyzer = VarianceAnalyzer(window_size=20)
+        self.autocorr_analyzer = AutocorrelationAnalyzer(max_lags=10)
+        self.stationarity_analyzer = StationarityAnalyzer(window_size=20)
 
         # Configuration
         self.lookback_window = lookback_window
@@ -416,8 +428,21 @@ class SignalGenerator:
             'profit_probability': risk_metrics_obj.prob_profit
         }
 
-        # Build TheoryAnalysis
+        # 7. Random Forest Ensemble Validator
+        rf_result = self.rf_validator.analyze(prices)
+
+        # 8. Variance Tests (Heteroscedasticity)
+        variance_result = self.variance_analyzer.analyze(prices)
+
+        # 9. Autocorrelation Analysis
+        autocorr_result = self.autocorr_analyzer.analyze(prices)
+
+        # 10. Stationarity Test (ADF)
+        stationarity_result = self.stationarity_analyzer.analyze(prices)
+
+        # Build TheoryAnalysis with all 10 theories
         analysis = TheoryAnalysis(
+            # Original 6 theories
             entropy=entropy,
             entropy_interpretation=entropy_interpretation,
             hurst=hurst,
@@ -428,14 +453,35 @@ class SignalGenerator:
             price_momentum=price_momentum,
             win_rate_estimate=win_rate_estimate,
             win_rate_confidence=win_rate_confidence,
-            risk_metrics=risk_metrics
+            risk_metrics=risk_metrics,
+            # New 4 theories (7-10)
+            rf_bullish_prob=rf_result.get('rf_bullish_prob'),
+            rf_bearish_prob=rf_result.get('rf_bearish_prob'),
+            rf_confidence=rf_result.get('rf_confidence'),
+            rf_signal=rf_result.get('rf_signal'),
+            variance_ratio=variance_result.get('variance_ratio'),
+            is_heteroscedastic=variance_result.get('is_heteroscedastic'),
+            variance_stability=variance_result.get('variance_stability'),
+            regime_change_prob=variance_result.get('regime_change_prob'),
+            acf_lag1=autocorr_result.get('acf_lag1'),
+            acf_mean=autocorr_result.get('acf_mean'),
+            trend_strength=autocorr_result.get('trend_strength'),
+            mean_reversion_score=autocorr_result.get('mean_reversion_score'),
+            optimal_strategy=autocorr_result.get('optimal_strategy'),
+            is_stationary=stationarity_result.get('is_stationary'),
+            adf_score=stationarity_result.get('adf_score'),
+            stationarity_trend_strength=stationarity_result.get('trend_strength'),
+            recommended_strategy=stationarity_result.get('recommended_strategy')
         )
 
         logger.debug(
-            f"Mathematical analysis complete | "
+            f"Mathematical analysis complete (10 theories) | "
             f"Entropy: {entropy:.3f} | "
             f"Hurst: {hurst:.3f} | "
-            f"Regime: {current_regime}"
+            f"Regime: {current_regime} | "
+            f"RF Confidence: {rf_result.get('rf_confidence', 0):.1%} | "
+            f"Variance Stable: {variance_result.get('variance_stability', 0):.1%} | "
+            f"Stationary: {stationarity_result.get('is_stationary', False)}"
         )
 
         return analysis
