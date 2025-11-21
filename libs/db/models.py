@@ -154,6 +154,81 @@ class ModelDeployment(Base):
         )
 
 
+class SignalResult(Base):
+    """Signal results tracking for performance analysis (paper trading)."""
+
+    __tablename__ = "signal_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    signal_id = Column(Integer, nullable=False, unique=True, index=True)  # FK to signals.id
+
+    # Entry tracking
+    entry_price = Column(Float, nullable=False)
+    entry_timestamp = Column(DateTime, nullable=False, index=True)
+
+    # Exit tracking
+    exit_price = Column(Float, nullable=True)
+    exit_timestamp = Column(DateTime, nullable=True, index=True)
+    exit_reason = Column(String(50), nullable=True)  # 'tp_hit', 'sl_hit', 'manual', 'timeout'
+
+    # P&L tracking
+    pnl_percent = Column(Float, nullable=True)
+    pnl_usd = Column(Float, nullable=True)
+
+    # Outcome
+    outcome = Column(String(20), nullable=False, default='open', index=True)  # 'open', 'win', 'loss', 'breakeven'
+
+    # Duration
+    hold_duration_minutes = Column(Integer, nullable=True)
+
+    # Metadata
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("idx_signal_outcome", "signal_id", "outcome"),
+        Index("idx_entry_timestamp", "entry_timestamp"),
+        Index("idx_exit_timestamp", "exit_timestamp"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<SignalResult(signal_id={self.signal_id}, outcome={self.outcome}, "
+            f"pnl_percent={self.pnl_percent:.2f if self.pnl_percent else 0.0}%)>"
+        )
+
+
+class TheoryPerformance(Base):
+    """Track individual theory contributions to signal performance."""
+
+    __tablename__ = "theory_performance"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    signal_id = Column(Integer, nullable=False, index=True)  # FK to signals.id
+    theory_name = Column(String(100), nullable=False, index=True)
+    contribution_score = Column(Float, nullable=False)  # How strongly theory influenced signal
+    was_correct = Column(Boolean, nullable=True)  # Whether theory's prediction was correct
+
+    # Metadata
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("idx_signal_theory", "signal_id", "theory_name"),
+        Index("idx_theory_correct", "theory_name", "was_correct"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<TheoryPerformance(signal_id={self.signal_id}, theory={self.theory_name}, "
+            f"contribution={self.contribution_score:.2f})>"
+        )
+
+
 def create_tables(db_url: str = "sqlite:///tradingai.db") -> None:
     """Create all database tables."""
 
