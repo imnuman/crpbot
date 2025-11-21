@@ -56,10 +56,8 @@ class V7State(rx.State):
     hold_count: int = 0
     avg_confidence: float = 0.0
 
-    # Market prices
-    btc_price: float = 0.0
-    eth_price: float = 0.0
-    sol_price: float = 0.0
+    # Market prices (dynamic for all symbols)
+    market_prices: Dict[str, float] = {}
 
     # Cost tracking
     daily_cost: float = 0.0
@@ -190,22 +188,26 @@ class V7State(rx.State):
             session.close()
 
     def fetch_market_prices(self):
-        """Fetch latest market prices"""
+        """Fetch latest market prices for all symbols"""
         session = self.get_session()
         try:
-            # Get most recent signals to extract prices
-            for symbol in ['BTC-USD', 'ETH-USD', 'SOL-USD']:
+            # Define all symbols (current + planned)
+            all_symbols = [
+                'BTC-USD', 'ETH-USD', 'SOL-USD',  # Existing
+                'XRP-USD', 'DOGE-USD', 'ADA-USD', 'AVAX-USD',  # New
+                'LINK-USD', 'MATIC-USD', 'LTC-USD'  # New
+            ]
+
+            prices = {}
+            for symbol in all_symbols:
                 latest = session.query(Signal).filter(
                     Signal.symbol == symbol
                 ).order_by(desc(Signal.timestamp)).first()
 
                 if latest and latest.entry_price:
-                    if symbol == 'BTC-USD':
-                        self.btc_price = latest.entry_price
-                    elif symbol == 'ETH-USD':
-                        self.eth_price = latest.entry_price
-                    elif symbol == 'SOL-USD':
-                        self.sol_price = latest.entry_price
+                    prices[symbol] = latest.entry_price
+
+            self.market_prices = prices
 
         except Exception as e:
             print(f"Error fetching prices: {e}")
@@ -385,6 +387,49 @@ def signal_card(signal: Dict[str, Any]) -> rx.Component:
     )
 
 
+def price_card_grid() -> rx.Component:
+    """Render market prices in a responsive grid layout"""
+    # Define all symbols with display names
+    symbols = [
+        ('BTC-USD', 'BTC'),
+        ('ETH-USD', 'ETH'),
+        ('SOL-USD', 'SOL'),
+        ('XRP-USD', 'XRP'),
+        ('DOGE-USD', 'DOGE'),
+        ('ADA-USD', 'ADA'),
+        ('AVAX-USD', 'AVAX'),
+        ('LINK-USD', 'LINK'),
+        ('MATIC-USD', 'MATIC'),
+        ('LTC-USD', 'LTC'),
+    ]
+
+    price_cards = []
+    for symbol, display_name in symbols:
+        # Get price from state, default to 0.0 if not available
+        price = V7State.market_prices.get(symbol, 0.0)
+
+        price_cards.append(
+            rx.vstack(
+                rx.text(display_name, size="2", color='gray', weight='medium'),
+                rx.heading(
+                    f"${price:,.2f}" if price > 0 else "—",
+                    size="6",
+                    color='blue' if price > 0 else 'gray'
+                ),
+                align_items="start",
+                spacing="1",
+            )
+        )
+
+    # Arrange in 2 rows × 5 columns grid
+    return rx.grid(
+        *price_cards,
+        columns="5",
+        spacing="6",
+        width="100%",
+    )
+
+
 def index() -> rx.Component:
     """Main dashboard page"""
     return rx.container(
@@ -453,27 +498,10 @@ def index() -> rx.Component:
             margin_bottom="6",
         ),
 
-        # Market Prices
+        # Market Prices - Now supports all 10 symbols in grid layout
         rx.card(
             rx.heading("Live Market Prices", size="5", margin_bottom="3"),
-            rx.hstack(
-                rx.vstack(
-                    rx.text("BTC", size="2", color='gray'),
-                    rx.heading(f"${V7State.btc_price:,.2f}", size="6"),
-                    align_items="start",
-                ),
-                rx.vstack(
-                    rx.text("ETH", size="2", color='gray'),
-                    rx.heading(f"${V7State.eth_price:,.2f}", size="6"),
-                    align_items="start",
-                ),
-                rx.vstack(
-                    rx.text("SOL", size="2", color='gray'),
-                    rx.heading(f"${V7State.sol_price:,.2f}", size="6"),
-                    align_items="start",
-                ),
-                spacing="8",
-            ),
+            price_card_grid(),
             margin_bottom="6",
         ),
 
