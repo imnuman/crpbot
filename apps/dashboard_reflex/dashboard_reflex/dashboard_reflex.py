@@ -389,41 +389,60 @@ def signal_card(signal: Dict[str, Any]) -> rx.Component:
 
 def price_card_grid() -> rx.Component:
     """Render market prices in a responsive grid layout"""
-    # Define all symbols with display names
-    symbols = [
-        ('BTC-USD', 'BTC'),
-        ('ETH-USD', 'ETH'),
-        ('SOL-USD', 'SOL'),
-        ('XRP-USD', 'XRP'),
-        ('DOGE-USD', 'DOGE'),
-        ('ADA-USD', 'ADA'),
-        ('AVAX-USD', 'AVAX'),
-        ('LINK-USD', 'LINK'),
-        ('MATIC-USD', 'MATIC'),
-        ('LTC-USD', 'LTC'),
-    ]
-
-    price_cards = []
-    for symbol, display_name in symbols:
-        # Get price from state, default to 0.0 if not available
-        price = V7State.market_prices.get(symbol, 0.0)
-
-        price_cards.append(
-            rx.vstack(
-                rx.text(display_name, size="2", color='gray', weight='medium'),
-                rx.heading(
-                    f"${price:,.2f}" if price > 0 else "—",
-                    size="6",
-                    color='blue' if price > 0 else 'gray'
-                ),
-                align_items="start",
-                spacing="1",
-            )
-        )
-
-    # Arrange in 2 rows × 5 columns grid
+    # Create price cards for all 10 symbols
     return rx.grid(
-        *price_cards,
+        # Row 1
+        rx.vstack(
+            rx.text("BTC", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("BTC-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("ETH", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("ETH-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("SOL", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("SOL-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("XRP", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("XRP-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("DOGE", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("DOGE-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        # Row 2
+        rx.vstack(
+            rx.text("ADA", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("ADA-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("AVAX", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("AVAX-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("LINK", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("LINK-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("MATIC", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("MATIC-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
+        rx.vstack(
+            rx.text("LTC", size="2", color='gray', weight='medium'),
+            rx.heading("$" + V7State.market_prices.get("LTC-USD", "0").to_string(), size="6", color='blue'),
+            align_items="start", spacing="1",
+        ),
         columns="5",
         spacing="6",
         width="100%",
