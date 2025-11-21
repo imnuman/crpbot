@@ -59,6 +59,9 @@ class Signal(Base):
     model_version = Column(String(20))
     notes = Column(Text)
 
+    # A/B Testing
+    strategy = Column(String(50), default="v7_full_math")  # 'v7_full_math' or 'v7_deepseek_only'
+
     def __repr__(self) -> str:
         return (
             f"<Signal(id={self.id}, symbol={self.symbol}, "

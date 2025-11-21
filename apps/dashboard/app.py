@@ -1043,4 +1043,7 @@ if __name__ == '__main__':
     print("   /api/v7/signals/confidence-distribution - Confidence histogram")
     print("\n💡 Press Ctrl+C to stop\n")
 
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    # Support configurable port via environment variable
+    import os
+    port = int(os.getenv('DASHBOARD_PORT', '5000'))
+    app.run(host='0.0.0.0', port=port, debug=False)

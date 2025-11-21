@@ -265,6 +265,108 @@ REASONING: High entropy (0.89) indicates random market. Insufficient edge for tr
 
         return messages
 
+    def build_minimal_prompt(
+        self,
+        context: MarketContext,
+        additional_context: Optional[str] = None
+    ) -> List[Dict[str, str]]:
+        """
+        Build MINIMAL prompt with ONLY price/volume data - NO mathematical theories
+
+        This is for A/B testing to determine if our mathematical analysis actually helps.
+        DeepSeek will use ONLY its own knowledge with basic price data.
+
+        Args:
+            context: Market context (symbol, price, timeframe, recent prices)
+            additional_context: Optional additional context (news, etc.)
+
+        Returns:
+            List of message dicts for DeepSeek chat API
+        """
+        # Build simple user prompt with only basic data
+        user_prompt = f"""**Market Context:**
+Symbol: {context.symbol}
+Current Price: ${context.current_price:,.2f}
+Timeframe: {context.timeframe}
+Timestamp: {context.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
+"""
+
+        # Add spread if available
+        if context.spread is not None:
+            user_prompt += f"Spread: {context.spread:.2f}%\n"
+
+        # Add volume if available
+        if context.volume is not None:
+            user_prompt += f"Volume: {context.volume:,.0f}\n"
+
+        # Add recent price action if available
+        if context.recent_prices is not None and len(context.recent_prices) > 0:
+            user_prompt += f"\n**Recent Price Action (last {len(context.recent_prices)} candles):**\n"
+            # Show last 10 prices to give context
+            recent = context.recent_prices[-10:] if len(context.recent_prices) > 10 else context.recent_prices
+            user_prompt += f"Prices: " + ", ".join([f"${p:,.2f}" for p in recent]) + "\n"
+
+            # Simple price change
+            if len(context.recent_prices) >= 2:
+                price_change = ((context.recent_prices[-1] - context.recent_prices[0]) / context.recent_prices[0]) * 100
+                user_prompt += f"Price Change: {price_change:+.2f}%\n"
+
+        # Add additional context if provided
+        if additional_context:
+            user_prompt += f"\n**Additional Context:**\n{additional_context}\n"
+
+        # Simple task instruction
+        user_prompt += """
+**Your Task:**
+Analyze this cryptocurrency market using your knowledge and experience.
+Generate a trading signal: BUY, SELL, or HOLD.
+
+**YOUR RESPONSE MUST FOLLOW THIS EXACT FORMAT:**
+
+SIGNAL: [BUY/SELL/HOLD]
+CONFIDENCE: [0-100]%
+ENTRY PRICE: $[number or N/A for HOLD]
+STOP LOSS: $[number or N/A for HOLD]
+TAKE PROFIT: $[number or N/A for HOLD]
+REASONING: [2-3 sentences explaining signal and price levels]
+
+**Price Level Guidelines:**
+- Entry: Current price or specific limit level
+- Stop Loss: 0.5-2% risk from entry
+- Take Profit: Minimum 1:1.5 R:R ratio
+- HOLD signals: Use N/A for all prices"""
+
+        # Simplified system prompt (no theory mentions)
+        minimal_system_prompt = """You are an expert cryptocurrency trading analyst. Your role is to analyze market conditions and generate actionable trading signals.
+
+**CRITICAL OUTPUT FORMAT REQUIREMENT:**
+You MUST respond in this EXACT format - do NOT deviate from this structure:
+
+SIGNAL: [BUY/SELL/HOLD]
+CONFIDENCE: [0-100]%
+ENTRY PRICE: $[number or N/A]
+STOP LOSS: $[number or N/A]
+TAKE PROFIT: $[number or N/A]
+REASONING: [2-3 sentences explaining signal and price levels]
+
+This format is MANDATORY. Your response will be parsed programmatically, so any deviation will cause system errors.
+
+IMPORTANT: This is a MANUAL trading system. You generate signals for a human trader to review and execute. Do NOT execute trades automatically."""
+
+        # Build messages list
+        messages = [
+            {"role": "system", "content": minimal_system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        logger.debug(
+            f"Built MINIMAL prompt for {context.symbol} | "
+            f"Strategy: v7_deepseek_only (NO math theories) | "
+            f"A/B Test Mode"
+        )
+
+        return messages
+
     def _format_theory_analysis(self, analysis: TheoryAnalysis) -> str:
         """
         Format theory analysis into human-readable text

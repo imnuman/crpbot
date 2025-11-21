@@ -168,7 +168,8 @@ class SignalGenerator:
         volume: Optional[float] = None,
         spread: Optional[float] = None,
         additional_context: Optional[str] = None,
-        coingecko_context: Optional[Dict[str, Any]] = None
+        coingecko_context: Optional[Dict[str, Any]] = None,
+        strategy: str = "v7_full_math"
     ) -> SignalGenerationResult:
         """
         Generate trading signal from price data
@@ -183,6 +184,7 @@ class SignalGenerator:
             spread: Optional bid-ask spread
             additional_context: Optional additional context (news, events)
             coingecko_context: Optional CoinGecko market context (7th theory)
+            strategy: Strategy type ("v7_full_math" or "v7_deepseek_only") for A/B testing
 
         Returns:
             SignalGenerationResult with complete analysis and signal
@@ -224,13 +226,22 @@ class SignalGenerator:
                 spread=spread
             )
 
-            # STEP 3: Generate LLM Prompt
-            prompt_messages = self.signal_synthesizer.build_prompt(
-                context=market_context,
-                analysis=theory_analysis,
-                additional_context=additional_context,
-                coingecko_context=coingecko_context
-            )
+            # STEP 3: Generate LLM Prompt (choose based on A/B test strategy)
+            if strategy == "v7_deepseek_only":
+                # Minimal prompt WITHOUT mathematical theories (A/B test mode)
+                prompt_messages = self.signal_synthesizer.build_minimal_prompt(
+                    context=market_context,
+                    additional_context=additional_context
+                )
+                logger.info(f"📊 A/B TEST MODE: Using MINIMAL prompt (DeepSeek-only, NO math theories)")
+            else:
+                # Full prompt WITH all mathematical theories (default v7_full_math)
+                prompt_messages = self.signal_synthesizer.build_prompt(
+                    context=market_context,
+                    analysis=theory_analysis,
+                    additional_context=additional_context,
+                    coingecko_context=coingecko_context
+                )
 
             # Validate prompt
             if not self.signal_synthesizer.validate_prompt(prompt_messages):

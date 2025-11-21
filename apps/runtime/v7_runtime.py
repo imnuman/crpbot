@@ -43,6 +43,8 @@ from libs.bayesian import BayesianLearner
 from libs.data.coingecko_client import CoinGeckoClient
 from libs.theories.market_context import MarketContextTheory
 from libs.theories.market_microstructure import MarketMicrostructure
+from libs.tracking.performance_tracker import PerformanceTracker
+from libs.tracking.paper_trader import PaperTrader, PaperTradeConfig
 
 
 @dataclass
@@ -55,6 +57,8 @@ class V7RuntimeConfig:
     max_cost_per_month: float = 150.00  # Hard monthly limit (increased from $100)
     signal_interval_seconds: int = 120  # 2 minutes between scans
     conservative_mode: bool = True  # Conservative LLM prompting
+    enable_paper_trading: bool = True  # Enable automatic paper trading
+    paper_trading_aggressive: bool = True  # Paper trade all signals regardless of confidence
 
 
 class V7TradingRuntime:
@@ -103,6 +107,22 @@ class V7TradingRuntime:
         # Initialize Bayesian learner for continuous improvement
         self.bayesian_learner = BayesianLearner(db_url=self.config.db_url)
         logger.info("✅ Bayesian learner initialized (adaptive confidence calibration)")
+
+        # Initialize Performance Tracker for measuring signal outcomes
+        self.performance_tracker = PerformanceTracker()
+        logger.info("✅ Performance tracker initialized (signal outcome tracking)")
+
+        # Initialize Paper Trader for automatic practice trading
+        if self.runtime_config.enable_paper_trading:
+            paper_config = PaperTradeConfig(
+                aggressive_mode=self.runtime_config.paper_trading_aggressive,
+                min_confidence=0.0 if self.runtime_config.paper_trading_aggressive else 0.60
+            )
+            self.paper_trader = PaperTrader(config=paper_config, settings=self.config)
+            logger.info(f"✅ Paper trader initialized (aggressive={paper_config.aggressive_mode}, auto-trade enabled)")
+        else:
+            self.paper_trader = None
+            logger.info("⚠️  Paper trading disabled")
 
         # Initialize CoinGecko client for market context (7th theory)
         if self.config.coingecko_api_key:
@@ -342,7 +362,8 @@ class V7TradingRuntime:
         self,
         symbol: str,
         result: SignalGenerationResult,
-        current_price: float
+        current_price: float,
+        strategy: str = "v7_full_math"
     ):
         """Save signal to database with complete V7 analysis as JSON"""
         try:
@@ -402,24 +423,136 @@ class V7TradingRuntime:
                 sl_price=result.parsed_signal.stop_loss,
                 tp_price=result.parsed_signal.take_profit,
                 model_version="v7_ultimate",
-                notes=notes_json  # Store complete V7 analysis as JSON
+                notes=notes_json,  # Store complete V7 analysis as JSON
+                strategy=strategy  # A/B test strategy tracking
             )
 
             session.add(signal)
+            logger.debug(f"Signal added to session: {symbol} {direction}")
+            session.flush()  # Force write to database before commit
+            logger.debug(f"Session flushed successfully")
+
+            # Get the signal ID after flush (before commit)
+            signal_id = signal.id
+
             session.commit()
+            logger.debug(f"Session committed successfully")
             session.close()
+            logger.debug(f"Session closed successfully")
 
             logger.debug(f"Signal saved to database: {symbol} {direction} @ {result.parsed_signal.confidence:.1%}")
 
+            # Record theory contributions to performance tracker
+            self._record_theory_contributions(signal_id, result)
+
+            # Automatically enter paper trade if enabled
+            if self.paper_trader:
+                self.paper_trader.enter_paper_trade(signal_id)
+
         except Exception as e:
             logger.error(f"Failed to save signal to database: {e}")
+            logger.error(f"Signal data that failed: timestamp={result.parsed_signal.timestamp}, symbol={symbol}, direction={direction}, confidence={result.parsed_signal.confidence}")
+            logger.error(f"Entry price={result.parsed_signal.entry_price}, SL={result.parsed_signal.stop_loss}, TP={result.parsed_signal.take_profit}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
 
-    def generate_signal_for_symbol(self, symbol: str) -> Optional[SignalGenerationResult]:
+    def _record_theory_contributions(self, signal_id: int, result: SignalGenerationResult):
+        """
+        Record theory contributions to performance tracker
+
+        This allows us to measure which theories contribute to winning vs losing signals
+
+        Args:
+            signal_id: Database ID of the saved signal
+            result: SignalGenerationResult containing theory analysis
+        """
+        try:
+            # Extract theory contributions from the analysis
+            theory_analysis = result.theory_analysis
+
+            # Map each theory to a contribution score (based on how strong their signal was)
+            theory_contributions = {}
+
+            # Shannon Entropy: Higher entropy = less predictable (0.0-1.0 scale)
+            if hasattr(theory_analysis, 'entropy') and theory_analysis.entropy is not None:
+                # Normalize: Low entropy (predictable) = higher contribution
+                entropy_score = max(0.0, min(1.0, 1.0 - float(theory_analysis.entropy)))
+                theory_contributions['Shannon Entropy'] = entropy_score
+
+            # Hurst Exponent: >0.5 = trending, <0.5 = mean reverting
+            if hasattr(theory_analysis, 'hurst') and theory_analysis.hurst is not None:
+                # Contribution based on how far from 0.5 (random walk)
+                hurst_val = float(theory_analysis.hurst)
+                hurst_score = abs(hurst_val - 0.5) * 2.0  # 0.0-1.0 scale
+                theory_contributions['Hurst Exponent'] = min(1.0, hurst_score)
+
+            # Market Regime: Contribution based on regime confidence
+            if hasattr(theory_analysis, 'regime_probabilities') and theory_analysis.regime_probabilities:
+                # Max probability = regime confidence
+                max_prob = max(theory_analysis.regime_probabilities.values()) if theory_analysis.regime_probabilities else 0.0
+                theory_contributions['Market Regime'] = float(max_prob)
+
+            # Win Rate Estimate: Direct confidence from Bayesian analysis
+            if hasattr(theory_analysis, 'win_rate_estimate') and theory_analysis.win_rate_estimate is not None:
+                theory_contributions['Bayesian Win Rate'] = float(theory_analysis.win_rate_estimate)
+
+            # Risk Metrics: Contribution based on favorable risk/reward
+            if hasattr(theory_analysis, 'risk_metrics') and theory_analysis.risk_metrics:
+                risk = theory_analysis.risk_metrics
+                # If we have Sharpe ratio or similar, use that
+                if 'sharpe_ratio' in risk and risk['sharpe_ratio'] is not None:
+                    # Normalize Sharpe ratio to 0-1 (assume 0-3 range)
+                    sharpe_score = max(0.0, min(1.0, float(risk['sharpe_ratio']) / 3.0))
+                    theory_contributions['Risk Metrics'] = sharpe_score
+                elif 'volatility' in risk and risk['volatility'] is not None:
+                    # Lower volatility = higher contribution (inverse relationship)
+                    vol_score = max(0.0, min(1.0, 1.0 - (float(risk['volatility']) / 100.0)))
+                    theory_contributions['Risk Metrics'] = vol_score
+
+            # Price Momentum: Strong momentum = higher contribution
+            if hasattr(theory_analysis, 'price_momentum') and theory_analysis.price_momentum is not None:
+                # Normalize momentum to 0-1 scale (assume -10 to +10 range)
+                momentum = float(theory_analysis.price_momentum)
+                momentum_score = max(0.0, min(1.0, (abs(momentum) / 10.0)))
+                theory_contributions['Price Momentum'] = momentum_score
+
+            # Kalman Filter: Contribution based on denoised price vs actual
+            if hasattr(theory_analysis, 'denoised_price') and theory_analysis.denoised_price is not None:
+                # If denoised price significantly different from current, it's informative
+                # This is a placeholder - would need current price to calculate properly
+                theory_contributions['Kalman Filter'] = 0.5  # Default medium contribution
+
+            # Monte Carlo: Contribution based on simulation confidence
+            # (Not directly in theory_analysis, but included in overall confidence)
+            theory_contributions['Monte Carlo'] = float(result.parsed_signal.confidence)
+
+            # Record each theory contribution
+            for theory_name, contribution_score in theory_contributions.items():
+                try:
+                    self.performance_tracker.record_theory_contribution(
+                        signal_id=signal_id,
+                        theory_name=theory_name,
+                        contribution_score=contribution_score,
+                        was_correct=None  # Will be updated when trade outcome is known
+                    )
+                    logger.debug(f"Recorded {theory_name} contribution: {contribution_score:.2f} for signal {signal_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to record {theory_name} contribution: {e}")
+
+            logger.info(f"✅ Recorded {len(theory_contributions)} theory contributions for signal {signal_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to record theory contributions for signal {signal_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+    def generate_signal_for_symbol(self, symbol: str, strategy: str = "v7_full_math") -> Optional[SignalGenerationResult]:
         """
         Generate V7 signal for a specific symbol
 
         Args:
             symbol: Trading symbol (e.g., "BTC-USD")
+            strategy: Strategy type ("v7_full_math" or "v7_deepseek_only") for A/B testing
 
         Returns:
             SignalGenerationResult or None if failed
@@ -466,14 +599,15 @@ class V7TradingRuntime:
                 except Exception as e:
                     logger.warning(f"CoinGecko fetch failed: {e}")
 
-            # Generate signal using V7 system (with CoinGecko market context)
+            # Generate signal using V7 system (with CoinGecko market context and A/B test strategy)
             result = self.signal_generator.generate_signal(
                 symbol=symbol,
                 prices=prices,
                 timestamps=timestamps,
                 current_price=current_price,
                 timeframe="1m",
-                coingecko_context=market_context  # Pass 7th theory data to DeepSeek LLM
+                coingecko_context=market_context,  # Pass 7th theory data to DeepSeek LLM
+                strategy=strategy  # A/B test: "v7_full_math" or "v7_deepseek_only"
             )
 
             # Apply momentum override if DeepSeek is too conservative
@@ -576,7 +710,18 @@ class V7TradingRuntime:
 
         valid_signals = 0
 
+        # A/B test: Alternate between strategies PER SIGNAL (not per scan)
+        # Initialize counter if first run
+        if not hasattr(self, '_ab_test_counter'):
+            self._ab_test_counter = 0
+
         for symbol in self.runtime_config.symbols:
+            # Increment counter and determine strategy for THIS signal
+            self._ab_test_counter += 1
+
+            # Alternate strategies: odd = full math, even = deepseek only
+            strategy = "v7_full_math" if self._ab_test_counter % 2 == 1 else "v7_deepseek_only"
+            logger.info(f"🧪 A/B TEST: Using strategy '{strategy}' for {symbol} (signal #{self._ab_test_counter})")
             try:
                 # FIX #2: Check rate limits PER SYMBOL
                 rate_ok, rate_reason = self._check_rate_limits(symbol)
@@ -590,8 +735,8 @@ class V7TradingRuntime:
                     logger.warning(f"Cost limit reached: {cost_reason}")
                     break  # Stop ALL symbols if budget exhausted
 
-                # Generate signal
-                result = self.generate_signal_for_symbol(symbol)
+                # Generate signal with A/B test strategy
+                result = self.generate_signal_for_symbol(symbol, strategy=strategy)
 
                 if result is None:
                     continue
@@ -604,8 +749,8 @@ class V7TradingRuntime:
                 output = self._format_signal_output(symbol, result, current_price)
                 print(output)
 
-                # Save to database
-                self._save_signal_to_db(symbol, result, current_price)
+                # Save to database with strategy tag
+                self._save_signal_to_db(symbol, result, current_price, strategy=strategy)
 
                 # Send to Telegram
                 if self.telegram.enabled:
@@ -681,6 +826,24 @@ class V7TradingRuntime:
 
                 # Run single scan
                 valid_signals = self.run_single_scan()
+
+                # Check and exit paper trades (if enabled)
+                if self.paper_trader:
+                    try:
+                        # Fetch current prices for all symbols
+                        current_prices = {}
+                        for symbol in self.runtime_config.symbols:
+                            df = self.data_fetcher.fetch_latest_candles(symbol=symbol, num_candles=1)
+                            if not df.empty:
+                                current_prices[symbol] = float(df['close'].iloc[-1])
+
+                        # Check exit conditions and close positions
+                        exited_trades = self.paper_trader.check_and_exit_trades(current_prices)
+
+                        if exited_trades:
+                            logger.info(f"📊 Closed {len(exited_trades)} paper trades this iteration")
+                    except Exception as e:
+                        logger.error(f"Failed to check/exit paper trades: {e}")
 
                 # Print statistics
                 stats = self.signal_generator.get_statistics()

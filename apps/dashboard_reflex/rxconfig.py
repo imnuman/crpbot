@@ -3,7 +3,7 @@
 import reflex as rx
 
 config = rx.Config(
-    app_name="v7_dashboard",
+    app_name="dashboard_reflex",
     # Use port 3000 to not conflict with Flask on 5000
     frontend_port=3000,
     backend_port=8000,
