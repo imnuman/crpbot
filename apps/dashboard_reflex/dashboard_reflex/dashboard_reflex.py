@@ -188,34 +188,47 @@ class V7State(rx.State):
             session.close()
 
     def fetch_market_prices(self):
-        """Fetch latest market prices for all symbols"""
-        session = self.get_session()
+        """Fetch real-time market prices directly from Coinbase API"""
         try:
-            # Define all symbols (current + planned)
+            from coinbase.rest import RESTClient
+            import os
+
+            # Define all symbols
             all_symbols = [
                 'BTC-USD', 'ETH-USD', 'SOL-USD',  # Existing
                 'XRP-USD', 'DOGE-USD', 'ADA-USD', 'AVAX-USD',  # New
-                'LINK-USD', 'MATIC-USD', 'LTC-USD'  # New
+                'LINK-USD', 'POL-USD', 'LTC-USD'  # New (POL = Polygon, formerly MATIC)
             ]
+
+            # Initialize Coinbase client
+            client = RESTClient(
+                api_key=os.getenv("COINBASE_API_KEY_NAME"),
+                api_secret=os.getenv("COINBASE_API_PRIVATE_KEY")
+            )
 
             prices = {}
             for symbol in all_symbols:
-                latest = session.query(Signal).filter(
-                    Signal.symbol == symbol
-                ).order_by(desc(Signal.timestamp)).first()
-
-                if latest and latest.entry_price:
-                    prices[symbol] = latest.entry_price
+                try:
+                    # Get current ticker price from Coinbase
+                    product = client.get_product(symbol)
+                    if product and hasattr(product, 'price'):
+                        prices[symbol] = float(product.price)
+                    else:
+                        # Fallback: keep previous price if API fails
+                        if symbol in self.market_prices:
+                            prices[symbol] = self.market_prices[symbol]
+                except Exception as e:
+                    print(f"Error fetching {symbol}: {e}")
+                    # Keep previous price if available
+                    if symbol in self.market_prices:
+                        prices[symbol] = self.market_prices[symbol]
 
             self.market_prices = prices
 
         except Exception as e:
-            print(f"Error fetching prices: {e}")
+            print(f"Error fetching prices from Coinbase: {e}")
             import traceback
             print(traceback.format_exc())
-        finally:
-            # CRITICAL: Always close session to prevent connection leaks
-            session.close()
 
     def fetch_performance(self):
         """Fetch performance tracking data"""
@@ -490,11 +503,11 @@ def price_card_grid() -> rx.Component:
             align_items="start", spacing="1",
         ),
         rx.vstack(
-            rx.text("MATIC", size="2", color='gray', weight='medium'),
+            rx.text("POL", size="2", color='gray', weight='medium'),
             rx.heading(
                 rx.cond(
-                    V7State.market_prices.contains("MATIC-USD"),
-                    "$" + V7State.market_prices["MATIC-USD"].to(str),
+                    V7State.market_prices.contains("POL-USD"),
+                    "$" + V7State.market_prices["POL-USD"].to(str),
                     "—"
                 ),
                 size="6", color='blue'
@@ -522,11 +535,33 @@ def price_card_grid() -> rx.Component:
 def index() -> rx.Component:
     """Main dashboard page"""
     return rx.container(
+        # Auto-refresh prices every 1 second using JavaScript setInterval
+        rx.html("""
+            <script>
+                // Auto-refresh market prices every 1 second
+                setInterval(function() {
+                    // Find and click the hidden refresh button
+                    const refreshBtn = document.getElementById('auto-refresh-prices-btn');
+                    if (refreshBtn) {
+                        refreshBtn.click();
+                    }
+                }, 1000);  // 1000ms = 1 second
+            </script>
+        """),
+
+        # Hidden button to trigger price refresh (clicked by JavaScript)
+        rx.button(
+            "Auto Refresh",
+            on_click=V7State.fetch_market_prices,
+            id="auto-refresh-prices-btn",
+            style={"display": "none"},  # Hidden from user
+        ),
+
         # Header
         rx.heading("V7 Ultimate Trading Dashboard", size="8", margin_bottom="4"),
         rx.hstack(
             rx.text(
-                f"Real-time signal monitoring with WebSocket updates",
+                f"Real-time signal monitoring - Prices update every 1 second",
                 size="3",
                 color='gray',
             ),
@@ -589,7 +624,7 @@ def index() -> rx.Component:
 
         # Market Prices - Now supports all 10 symbols in grid layout
         rx.card(
-            rx.heading("Live Market Prices", size="5", margin_bottom="3"),
+            rx.heading("Live Market Prices (Auto-updating)", size="5", margin_bottom="3"),
             price_card_grid(),
             margin_bottom="6",
         ),

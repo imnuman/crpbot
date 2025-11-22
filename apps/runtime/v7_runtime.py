@@ -89,7 +89,7 @@ class V7TradingRuntime:
             symbols=[
                 "BTC-USD", "ETH-USD", "SOL-USD",  # Original 3
                 "XRP-USD", "DOGE-USD", "ADA-USD", "AVAX-USD",  # New 4
-                "LINK-USD", "MATIC-USD", "LTC-USD"  # New 3
+                "LINK-USD", "POL-USD", "LTC-USD"  # New 3 (POL = Polygon, formerly MATIC)
             ]
         )
 
