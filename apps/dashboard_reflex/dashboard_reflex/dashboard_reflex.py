@@ -394,53 +394,123 @@ def price_card_grid() -> rx.Component:
         # Row 1
         rx.vstack(
             rx.text("BTC", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("BTC-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("BTC-USD"),
+                    "$" + V7State.market_prices["BTC-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("ETH", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("ETH-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("ETH-USD"),
+                    "$" + V7State.market_prices["ETH-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("SOL", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("SOL-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("SOL-USD"),
+                    "$" + V7State.market_prices["SOL-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("XRP", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("XRP-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("XRP-USD"),
+                    "$" + V7State.market_prices["XRP-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("DOGE", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("DOGE-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("DOGE-USD"),
+                    "$" + V7State.market_prices["DOGE-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         # Row 2
         rx.vstack(
             rx.text("ADA", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("ADA-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("ADA-USD"),
+                    "$" + V7State.market_prices["ADA-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("AVAX", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("AVAX-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("AVAX-USD"),
+                    "$" + V7State.market_prices["AVAX-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("LINK", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("LINK-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("LINK-USD"),
+                    "$" + V7State.market_prices["LINK-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("MATIC", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("MATIC-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("MATIC-USD"),
+                    "$" + V7State.market_prices["MATIC-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         rx.vstack(
             rx.text("LTC", size="2", color='gray', weight='medium'),
-            rx.heading("$" + V7State.market_prices.get("LTC-USD", "0").to_string(), size="6", color='blue'),
+            rx.heading(
+                rx.cond(
+                    V7State.market_prices.contains("LTC-USD"),
+                    "$" + V7State.market_prices["LTC-USD"].to(str),
+                    "—"
+                ),
+                size="6", color='blue'
+            ),
             align_items="start", spacing="1",
         ),
         columns="5",
