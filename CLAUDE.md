@@ -4,387 +4,92 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🚨 CRITICAL: Training Infrastructure Rules
+## 🚨 CRITICAL: Dual-Environment Setup
 
-**BEFORE ANY TRAINING OR FEATURE ENGINEERING**:
-```bash
-cat MASTER_TRAINING_WORKFLOW.md
-```
-
-### Key Rules
-1. **NEVER train locally** - ONLY on AWS g4dn.xlarge GPU instance
-2. **USE all premium APIs** - CoinGecko Premium (CG-VQhq64e59sGxchtK8mRgdxXW) is paid for
-3. **ALWAYS verify feature alignment** - Training features = Runtime features = Model input_size
-4. **ALWAYS terminate AWS instances after training** - Prevent unexpected charges
-
----
-
-## 🤝 Dual-Environment Setup: QC Claude vs Builder Claude
-
-This project operates across **two environments** with distinct roles:
-
-### Identify Your Environment
+This project operates across **two environments** - identify yours first:
 
 ```bash
-# Check your working directory
 pwd
-
-# If output is: /home/numan/crpbot
-#   → You are QC Claude (Local Machine)
-
-# If output is: /root/crpbot
-#   → You are Builder Claude (Cloud Server)
+# /home/numan/crpbot  → QC Claude (Local - Quality Control & Training)
+# /root/crpbot        → Builder Claude (Cloud - Production & Deployment)
 ```
 
-### QC Claude (Local Machine: `/home/numan/crpbot`)
+### QC Claude (Local: `/home/numan/crpbot`)
+- **Quality Control**: Review before deployment
+- **AWS Training**: GPU training on g4dn.xlarge (NEVER local)
+- **Documentation**: Maintain CLAUDE.md, handoff docs
+- **Testing**: Local verification
 
-**Primary Responsibilities**:
-- ✅ **Quality Control**: Review Builder Claude's work before deployment
-- ✅ **Documentation**: Maintain CLAUDE.md, PROJECT_MEMORY.md, and project docs
-- ✅ **Testing**: Verify changes locally before cloud deployment
-- ✅ **AWS Operations**: Run GPU training jobs on AWS (has AWS credentials)
-- ✅ **Coordination**: Create handoff docs for Builder Claude
+### Builder Claude (Cloud: `root@178.156.136.185`)
+- **Production Runtime**: V7 running 24/7
+- **Deployment**: Primary development and bug fixes
+- **Monitoring**: Live system, database, logs
+- **Database**: SQLite (`/root/crpbot/tradingai.db`)
 
-**Key Capabilities**:
-- Has AWS credentials (`~/.aws/credentials`) for EC2 and S3 operations
-- Can launch training jobs, upload/download from S3
-- Local development environment for testing
-
-**Common Tasks**:
+### Sync Protocol
 ```bash
-# Review Builder Claude's changes
+# ALWAYS sync before work
 git pull origin main
-git diff HEAD~5  # Review recent changes
 
-# Run AWS training
-aws s3 sync data/features/ s3://crpbot-ml-data/features/
-# Then launch GPU instance for training
-
-# Create handoff document
-cat > HANDOFF_TO_BUILDER_CLAUDE.md <<EOF
-# Changes Ready for Deployment
-
-## What Changed
-- [List changes made]
-
-## Testing Done
-- [List tests run]
-
-## Deployment Steps
-1. Pull latest from main
-2. [Specific deployment commands]
-EOF
-git add HANDOFF_TO_BUILDER_CLAUDE.md
-git commit -m "docs: handoff for deployment"
-git push
-```
-
-### Builder Claude (Cloud Server: `root@178.156.136.185:~/crpbot`)
-
-**Primary Responsibilities**:
-- ✅ **Development**: Primary code development and implementation
-- ✅ **Debugging**: Fix bugs and issues in production
-- ✅ **Production Runtime**: Deploy and monitor live trading bot
-- ✅ **Cloud Execution**: Run runtime, dashboard, and production services
-
-**Key Capabilities**:
-- Direct access to production environment
-- Runs 24/7 live trading bot
-- Has production database and logs
-
-**Common Tasks**:
-```bash
-# Deploy changes
-git pull origin main
-# Restart runtime if needed
-
-# Monitor production
-tail -f /tmp/v6_65pct.log
-cd apps/dashboard && uv run python app.py
-
-# Check production status
-sqlite3 tradingai.db "SELECT COUNT(*) FROM signals"
-ps aux | grep python
-```
-
-### Coordination Protocol
-
-**When QC Claude makes changes**:
-1. Test locally first
-2. Update documentation (CLAUDE.md, PROJECT_MEMORY.md)
-3. Create handoff document with deployment steps
-4. Push to GitHub
-5. Notify Builder Claude (via handoff doc in repo)
-
-**When Builder Claude makes changes**:
-1. Develop and test on cloud
-2. Commit with clear messages
-3. Push to GitHub
-4. Update QC Claude if review needed
-
-**Cross-Environment Sync**:
-```bash
-# QC Claude → Builder Claude (code changes)
-git push origin main
-# Builder Claude pulls with: git pull origin main
-
-# QC Claude → Builder Claude (models from AWS training)
-aws s3 sync models/ s3://crpbot-ml-data/models/v6_retrained/
-# Builder Claude downloads with: aws s3 sync s3://crpbot-ml-data/models/v6_retrained/ models/promoted/
-
-# Builder Claude → QC Claude (production data/logs for analysis)
-# Use git for small files, S3 for large data
-```
-
-### Decision Matrix: Who Does What?
-
-| Task | QC Claude | Builder Claude |
-|------|-----------|----------------|
-| AWS GPU Training | ✅ Primary | ✅ Can do (has creds) |
-| Code Development | ✅ Review/Test | ✅ Primary |
-| Documentation Updates | ✅ Primary | ✅ Can update |
-| Production Deployment | ❌ No access | ✅ Primary |
-| Bug Fixes | ✅ Can fix locally | ✅ Primary for prod |
-| Model Evaluation | ✅ Primary | ✅ Can help |
-| Live Runtime Monitoring | ❌ No access | ✅ Primary |
-| Feature Engineering | ✅ Primary | ✅ Can help |
-
-**Note**: Both environments have AWS credentials configured. QC Claude is designated as primary for training operations, but Builder Claude can handle AWS operations when needed.
-
----
-
-## 📋 V7 Ultimate - Production System
-
-**STATUS**: ✅ **ALL STEPS COMPLETE - RUNNING IN PRODUCTION**
-
-### What is V7 Ultimate?
-
-V7 Ultimate is a manual trading system (signal generation only) based on Renaissance Technologies methodology, now fully deployed and running 24/7 in production.
-
-**Core Components** (All Live ✅):
-- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Market Regime, Risk Metrics, Fractal Dimension, Market Context (CoinGecko)
-- **DeepSeek LLM**: AI synthesis of mathematical signals into trading decisions
-- **Premium Data**: CoinGecko Analyst API + Coinbase Advanced Trade API
-- **Signal Tracking**: Automated entry/exit detection with win rate calculation
-- **Telegram Bot**: Real-time notifications with price predictions
-- **Web Dashboard**: Live visualization at http://178.156.136.185:5000
-
-### Production Implementation Status
-
-✅ **ALL STEPS COMPLETE**:
-
-**STEP 1-4: Core Implementation** ✅
-1. ✅ V7 Runtime Orchestrator (33KB) - `apps/runtime/v7_runtime.py`
-2. ✅ 7 Mathematical Theories - `libs/analysis/*` (Shannon, Hurst, Kolmogorov, etc.)
-3. ✅ CoinGecko Integration - Market context and macro analysis
-4. ✅ DeepSeek LLM Integration - `libs/llm/*` (4 files)
-5. ✅ Bayesian Learning - `libs/bayesian/bayesian_learner.py`
-6. ✅ Rate Limiting - 30 signals/hour (aggressive FTMO mode)
-7. ✅ Cost Controls - $5/day, $150/month budgets
-8. ✅ FTMO Rules - Daily/total loss limits enforced
-
-**STEP 5: Dashboard & Visualization** ✅
-- ✅ V7 signal display with price predictions (Entry/SL/TP)
-- ✅ Live statistics (BUY/SELL/HOLD counts, confidence, API costs)
-- ✅ Signal breakdown charts (direction, symbol, confidence tier)
-- ✅ DeepSeek AI analysis display box
-
-**STEP 6: Telegram Integration** ✅
-- ✅ Real-time signal notifications with formatting
-- ✅ Price predictions (Entry, Stop Loss, Take Profit)
-- ✅ DeepSeek reasoning display
-- ✅ FTMO compliance status
-
-**STEP 7: Monitoring & Analytics** ✅
-- ✅ Performance tracking and cost monitoring
-- ✅ Signal results tracking system
-- ✅ Bayesian win rate calculation
-- ✅ Production logging and alerting
-
-**STEP 8: Production Deployment** ✅
-- ✅ 24/7 runtime on cloud server (178.156.136.185)
-- ✅ Momentum override for trend capture
-- ✅ Structured LLM output format
-- ✅ Signal timestamp conversion to EST
-- ✅ Comprehensive documentation (V7_MONITORING.md)
-
-### V7 Key Principles
-
-1. **No Auto-Execution**: Manual trading only (human confirms each signal)
-2. **Mathematical Foundation**: Every signal backed by mathematical evidence
-3. **Continuous Learning**: Bayesian updates from trade outcomes
-4. **Risk Management**: Monte Carlo simulation for every trade
-5. **Quality over Quantity**: 2-5 high-quality signals/day (not 20-30 low-quality)
-
-### V7 Production Files
-
-**Runtime** (Production):
-- `apps/runtime/v7_runtime.py` (33KB) - Main V7 orchestrator, running 24/7
-
-**LLM Integration** (`libs/llm/`):
-- `deepseek_client.py` - DeepSeek API client
-- `signal_synthesizer.py` - Theory → LLM prompt converter
-- `signal_parser.py` - LLM response → structured signal parser
-- `signal_generator.py` - Complete signal generation orchestrator
-
-**Mathematical Theories** (`libs/analysis/`):
-- `shannon_entropy.py` - Market predictability analysis
-- `hurst_exponent.py` - Trend persistence detection
-- `kolmogorov_complexity.py` - Pattern complexity measurement
-- `markov_chain.py` - 6-state regime detection
-- `kalman_filter.py` - Price denoising and momentum
-- `bayesian_inference.py` - Online learning from outcomes
-- `monte_carlo.py` - 10k scenario risk simulation
-
-**Data Sources** (`libs/data/`):
-- `coingecko_pro_client.py` - CoinGecko Analyst API ($129/month)
-- `coinbase_websocket.py` - Real-time market data
-- `yahoo_finance_client.py` - Macro market context
-
-**Dashboard & Notifications**:
-- `apps/dashboard/app.py` - Web dashboard with V7 visualization
-- `libs/notifications/telegram_bot.py` - Real-time Telegram alerts
-
-**Documentation** (Production Guides):
-- `V7_MONITORING.md` - Production monitoring guide ⭐
-- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix documentation
-- `V7_SIGNAL_FIXES.md` - Signal generation improvements
-- `V7_CLOUD_DEPLOYMENT.md` - Original deployment guide
-
-### Managing V7 in Production
-
-**Check Status**:
-```bash
-# V7 runtime status
-ps aux | grep v7_runtime.py | grep -v grep
-
-# View live logs
-tail -f /tmp/v7_production.log
-
-# Check recent signals
-sqlite3 tradingai.db "SELECT timestamp, symbol, direction, confidence
-FROM signals WHERE model_version='v7_ultimate'
-ORDER BY timestamp DESC LIMIT 10"
-```
-
-**Restart V7** (if needed):
-```bash
-# Stop V7
-pkill -f v7_runtime.py
-
-# Start V7 (aggressive FTMO mode)
-nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
-  --iterations -1 \
-  --sleep-seconds 120 \
-  --aggressive \
-  --max-signals-per-hour 30 \
-  > /tmp/v7_production.log 2>&1 &
-
-# Verify it's running
-tail -100 /tmp/v7_production.log | grep "V7 ULTIMATE"
-```
-
-**Monitor Performance**:
-```bash
-# Cost tracking
-tail -100 /tmp/v7_production.log | grep "V7 Statistics" -A 6
-
-# Signal breakdown (24 hours)
-sqlite3 tradingai.db "SELECT direction, COUNT(*), AVG(confidence)
-FROM signals WHERE model_version='v7_ultimate'
-AND timestamp > datetime('now', '-24 hours')
-GROUP BY direction"
-
-# Dashboard access
-curl http://localhost:5000/api/v7/signals/recent/20
+# Push changes after work
+git add . && git commit -m "message" && git push origin main
 ```
 
 ---
 
-## 🔄 GitHub Sync Protocol (CRITICAL)
+## 🎯 V7 Ultimate - Current Production System
 
-**ALWAYS sync with GitHub before and after work** to keep both environments in sync.
+**STATUS**: ✅ **OPERATIONAL** - Monitoring phase (2025-11-22 to 2025-11-25)
 
-### Pre-Work Sync (ALWAYS RUN FIRST)
+### Architecture
 
-```bash
-# Pull latest changes before starting any work
-git pull origin main
+**V7 Ultimate = 11 Mathematical Theories + DeepSeek LLM**
 
-# If you have local changes that conflict:
-git stash                    # Save your work temporarily
-git pull origin main         # Pull latest
-git stash pop                # Restore your work
-# Resolve conflicts if needed
+**Theories** (Production):
+1. Shannon Entropy - Market predictability
+2. Hurst Exponent - Trend persistence
+3. Markov Regime (6-state) - Market state detection
+4. Kalman Filter - Price denoising
+5. Bayesian Inference - Win rate learning
+6. Monte Carlo - Risk simulation (10k scenarios)
+7. Random Forest - Pattern validation
+8. Autocorrelation - Time series dependencies
+9. Stationarity - Mean reversion testing
+10. Variance Analysis - Volatility regimes
+11. Market Context (CoinGecko) - Macro analysis
+
+**Signal Flow**:
+```
+Market Data (Coinbase)
+  → 11 Theory Analysis
+  → DeepSeek LLM Synthesis
+  → Signal Parsing
+  → Paper Trading
+  → Performance Tracking
 ```
 
-### Post-Work Sync (ALWAYS RUN AFTER CHANGES)
+**Key Files**:
+- `apps/runtime/v7_runtime.py` - Main runtime (33KB)
+- `libs/llm/signal_generator.py` - Orchestrates theory → LLM → signal
+- `libs/analysis/*` - Core 6 theories (Shannon, Hurst, Markov, Kalman, Bayesian, Monte Carlo)
+- `libs/theories/*` - Statistical 4 theories (RF, Autocorr, Stationarity, Variance)
+- `libs/theories/market_context.py` - CoinGecko integration
 
-```bash
-# After making changes, commit and push
-git add .
-git status                   # Review what you're committing
-git commit -m "descriptive message"
-git push origin main
-```
+### Production Status (2025-11-22)
+- **Runtime**: PID 2620770, 6 hours uptime
+- **Symbols**: 10 (BTC, ETH, SOL, XRP, DOGE, ADA, AVAX, LINK, POL, LTC)
+- **Paper Trades**: 13 (target: 20+ for statistical analysis)
+- **Win Rate**: 53.8%, P&L: +5.48%
+- **Dashboard**: http://178.156.136.185:3000
+- **Database**: SQLite (local, 4,075 signals)
 
-### Sync Frequency
-
-**QC Claude (Local)**:
-- ✅ Pull before starting any documentation updates
-- ✅ Pull before AWS training operations
-- ✅ Push after updating CLAUDE.md or PROJECT_MEMORY.md
-- ✅ Push after creating handoff documents
-
-**Builder Claude (Cloud)**:
-- ✅ Pull at start of each session
-- ✅ Pull before deploying changes
-- ✅ Push after bug fixes or feature development
-- ✅ Push production status updates
-
-### Conflict Resolution
-
-If `git pull` shows conflicts:
-
-```bash
-# 1. Identify conflicted files
-git status
-
-# 2. Open conflicted files and resolve manually
-# Look for <<<<<<< HEAD markers
-
-# 3. After resolving:
-git add <resolved-files>
-git commit -m "fix: resolve merge conflicts"
-git push origin main
-```
-
-### Sync Verification
-
-```bash
-# Check if you're in sync
-git status
-# Should show: "Your branch is up to date with 'origin/main'"
-
-# See recent commits from other Claude
-git log --oneline -10
-
-# See what changed recently
-git diff HEAD~5
-```
-
-### Emergency: Force Sync (Use Carefully)
-
-```bash
-# If local changes should be discarded (DESTRUCTIVE):
-git fetch origin
-git reset --hard origin/main
-
-# If you want to keep a backup first:
-git branch backup-$(date +%Y%m%d-%H%M%S)
-git fetch origin
-git reset --hard origin/main
-```
+### Current Phase: Data Collection
+**Mission**: Collect 20+ paper trades before optimization
+**Review Date**: 2025-11-25 (Monday)
+**Decision Criteria**: Sharpe ratio calculation
+- Sharpe < 1.0 → Implement Phase 1 enhancements
+- Sharpe 1.0-1.5 → Monitor 1 more week
+- Sharpe > 1.5 → Continue as-is
 
 ---
 
@@ -392,280 +97,330 @@ git reset --hard origin/main
 
 ### Development
 ```bash
-# Setup (first run)
-make setup              # Install deps + pre-commit hooks
-
-# Code quality
+make setup              # Initial setup (deps + pre-commit hooks)
 make fmt                # Format with ruff
 make lint               # Lint with ruff + mypy
-make test               # Run all tests
-make unit               # Run unit tests only
-make smoke              # Run 5-min smoke backtest
+make test               # All tests
+make unit               # Unit tests only
+make smoke              # 5-min smoke backtest
 ```
 
-### Runtime
+### V7 Runtime (Production)
 ```bash
-# V7 Ultimate (PRODUCTION - Currently Running)
-# Start V7 runtime (aggressive FTMO mode)
+# Check V7 status (Builder Claude)
+ps aux | grep v7_runtime | grep -v grep
+
+# Monitor logs
+tail -f /tmp/v7_runtime_*.log
+
+# Restart V7 (if needed)
+pkill -f v7_runtime.py
 nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
-  --iterations -1 --sleep-seconds 120 --aggressive --max-signals-per-hour 30 \
-  > /tmp/v7_production.log 2>&1 &
+  --iterations -1 \
+  --sleep-seconds 300 \
+  --max-signals-per-hour 3 \
+  > /tmp/v7_runtime_$(date +%Y%m%d_%H%M).log 2>&1 &
 
-# Monitor V7 logs
-tail -f /tmp/v7_production.log
-
-# Check V7 status
-ps aux | grep v7_runtime.py | grep -v grep
-
-# Dashboard (already running in production)
-# Access: http://178.156.136.185:5000
-# Or restart: .venv/bin/python3 -m apps.dashboard.app
-
-# Legacy V6 Runtime (deprecated)
-./run_runtime_with_env.sh --mode dryrun --iterations 5
+# Check database
+sqlite3 tradingai.db "SELECT COUNT(*) FROM signals;"
+sqlite3 tradingai.db "SELECT COUNT(*) FROM signal_results;"
 ```
 
-### Training (AWS GPU ONLY)
+### AWS Training (QC Claude ONLY)
 ```bash
-# NEVER run locally! See MASTER_TRAINING_WORKFLOW.md for full workflow
+# CRITICAL: Read workflow first
+cat MASTER_TRAINING_WORKFLOW.md
 
-# On AWS GPU instance only:
-uv run python apps/trainer/main.py --task lstm --coin BTC --epochs 15
-uv run python apps/trainer/main.py --task lstm --coin ETH --epochs 15
-uv run python apps/trainer/main.py --task lstm --coin SOL --epochs 15
+# NEVER train locally - ONLY on AWS g4dn.xlarge GPU
+# Cost: $0.16/run (spot), ~10-15 min per model
+# ALWAYS terminate instance after training
+
+# Quick workflow:
+# 1. Engineer features locally
+# 2. Upload to S3
+# 3. Launch g4dn.xlarge spot instance
+# 4. Train on GPU
+# 5. Upload models to S3
+# 6. TERMINATE INSTANCE (critical!)
+# 7. Download and deploy
 ```
 
-### Testing
+### Database Operations
 ```bash
-# All tests
-uv run pytest tests/
+# Recent signals (last 24h)
+sqlite3 tradingai.db "
+SELECT timestamp, symbol, direction, confidence
+FROM signals
+WHERE timestamp > datetime('now', '-24 hours')
+ORDER BY timestamp DESC LIMIT 20;"
 
-# Specific test
-uv run pytest tests/unit/test_ftmo_rules.py -v
+# Paper trading performance
+sqlite3 tradingai.db "
+SELECT
+  COUNT(*) as total,
+  SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
+  ROUND(AVG(pnl_percent), 2) as avg_pnl
+FROM signal_results;"
 
-# With coverage
-uv run pytest tests/ --cov=apps --cov=libs --cov-report=html
-```
-
-### Debugging
-```bash
-# Check feature alignment (CRITICAL)
-python -c "import pandas as pd; df = pd.read_parquet('data/features/features_BTC-USD_1m_latest.parquet'); print(f'Features: {len([c for c in df.columns if c not in [\"timestamp\", \"open\", \"high\", \"low\", \"close\", \"volume\", \"session\", \"volatility_regime\"] and df[c].dtype in [\"float64\", \"int64\"]])}')"
-
-# Check model input size
-python -c "import torch; c = torch.load('models/promoted/lstm_BTC-USD_v6_enhanced.pt', map_location='cpu'); print(f'Model expects: {c[\"input_size\"]} features')"
-
-# Check runtime logs
-tail -100 /tmp/v5_live.log | grep "Numeric features selected"
-
-# Test Coinbase connection
-uv run python test_kraken_connection.py
+# Signal distribution
+sqlite3 tradingai.db "
+SELECT direction, COUNT(*), AVG(confidence)
+FROM signals
+WHERE timestamp > datetime('now', '-7 days')
+GROUP BY direction;"
 ```
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ Architecture
 
 ### Project Structure
 ```
 crpbot/
 ├── apps/
-│   ├── trainer/          # Model training (LSTM, Transformer)
-│   ├── runtime/          # Production signal generation
-│   └── dashboard/        # Flask monitoring dashboard
+│   ├── runtime/              # V7 runtime + legacy V6
+│   │   ├── v7_runtime.py     # ⭐ Main V7 orchestrator (production)
+│   │   ├── v7_telegram_bot_runner.py
+│   │   └── runtime_features.py (legacy V6)
+│   ├── trainer/              # Model training (AWS GPU only)
+│   ├── dashboard/            # Flask dashboard (deprecated)
+│   └── dashboard_reflex/     # ⭐ Reflex dashboard (production)
 ├── libs/
-│   ├── features/         # Feature engineering pipelines
-│   ├── config/           # Pydantic settings
-│   ├── db/              # SQLAlchemy models
-│   └── utils/           # Timezone, helpers
-├── scripts/             # Data fetching, feature engineering, monitoring
-├── models/              # Trained model weights (.pt files)
-├── data/                # Training data (parquet files)
-└── tests/               # Unit, integration, smoke tests
+│   ├── llm/                  # ⭐ V7 LLM integration (4 files)
+│   │   ├── signal_generator.py    # Main orchestrator
+│   │   ├── deepseek_client.py     # API client
+│   │   ├── signal_synthesizer.py  # Theory → Prompt
+│   │   └── signal_parser.py       # LLM → Signal
+│   ├── analysis/             # ⭐ Core 6 theories
+│   │   ├── shannon_entropy.py
+│   │   ├── hurst_exponent.py
+│   │   ├── markov_chain.py
+│   │   ├── kalman_filter.py
+│   │   ├── bayesian_inference.py
+│   │   └── monte_carlo.py
+│   ├── theories/             # ⭐ Statistical 4 theories + context
+│   │   ├── random_forest_validator.py
+│   │   ├── autocorrelation_analyzer.py
+│   │   ├── stationarity_test.py
+│   │   ├── variance_tests.py
+│   │   └── market_context.py
+│   ├── tracking/             # Performance tracking
+│   │   ├── performance_tracker.py
+│   │   └── paper_trader.py
+│   ├── data/                 # Data clients
+│   │   ├── coinbase_client.py
+│   │   └── coingecko_client.py
+│   ├── db/                   # SQLAlchemy models
+│   ├── config/               # Pydantic settings
+│   └── utils/                # Helpers
+├── models/                   # Model weights (.pt files)
+├── data/                     # Training data (parquet files)
+└── tests/                    # Tests
 ```
 
-### Data Flow
+### Data Flow (V7 Ultimate)
 ```
-Raw API Data → Feature Engineering → Model Training → S3 Storage → Runtime Inference
-     ↓              ↓                      ↓              ↓              ↓
-Coinbase/      73/54/72 features      AWS GPU       models/        Live signals
-Kraken         + CoinGecko            (g4dn.xlarge)  promoted/      + Telegram
+Coinbase API → OHLCV Data (200+ candles)
+                     ↓
+            11 Theories Analysis
+                     ↓
+         Theory Results → LLM Prompt
+                     ↓
+              DeepSeek API
+                     ↓
+         Parse LLM Response → Signal
+                     ↓
+              FTMO Validation
+                     ↓
+         Rate Limit Check (3/hour)
+                     ↓
+            Store in SQLite DB
+                     ↓
+    Paper Trading + Performance Tracking
+                     ↓
+          Telegram + Dashboard
 ```
-
-### Model System
-
-**Current Production**: V7 Ultimate (Mathematical Framework + DeepSeek LLM)
-- **Status**: ✅ **LIVE IN PRODUCTION** - Running 24/7 on cloud server
-- **Method**: Renaissance Technologies methodology (7 mathematical theories + AI synthesis)
-- **Symbols**: BTC-USD, ETH-USD, SOL-USD
-- **Signal Rate**: 30 signals/hour max (aggressive FTMO mode)
-- **Performance**: Real-time signal tracking with Bayesian learning
-- **Cost**: ~$0.01-0.02/day (well under $5/day budget)
-
-**V7 Ultimate Architecture** (Production):
-- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Markov Chain (6-state regime), Kalman Filter, Bayesian Inference, Monte Carlo Simulation
-- **DeepSeek LLM**: Synthesizes theory outputs into coherent trading signals
-- **CoinGecko Premium**: Market context and macro analysis (7th theory)
-- **Signal Tracking**: Automated entry/exit detection with win rate calculation
-- **Momentum Override**: Captures trending markets (recent fix)
-- **Rate Limiting**: 30 signals/hour with sliding window
-- **Cost Controls**: $5/day, $150/month budgets enforced
-- **FTMO Rules**: Daily/total loss limits checked before each signal
-
-**Model Evolution**:
-- V5 FIXED: 3-layer LSTM (73/54 features, multi-TF for BTC/SOL only) - Deprecated
-- V6 Real: 2-layer LSTM (31 features, uniform across symbols) - Deprecated
-- V6 Enhanced: 4-layer FNN (72 features, Amazon Q engineered) - Deprecated
-- **V7 Ultimate**: Mathematical Framework + LLM Synthesis ⭐ **PRODUCTION**
-
-**V7 Signal Generation** (`apps/runtime/v7_runtime.py`):
-- Mathematical theory analysis (Shannon, Hurst, etc.)
-- DeepSeek LLM synthesis with structured output
-- Price predictions (Entry, Stop Loss, Take Profit)
-- Confidence scoring with reasoning
-- FTMO compliance verification
-- Manual signal delivery (no auto-execution)
 
 ---
 
 ## 🔑 Critical Concepts
 
-### Feature Count Alignment (MOST IMPORTANT)
+### Database Architecture
 
-**The Problem**: If training uses 73 features but runtime generates 54, predictions are random (~50%).
+**Production**: SQLite (local file)
+- Location: `/root/crpbot/tradingai.db` (cloud server)
+- Tables: `signals`, `signal_results`, `theory_performance`
+- **NOT using RDS** (RDS stopped 2025-11-22, saves $49/month)
 
-**The Solution**: Ensure exact match across all three:
-1. **Training data** (parquet files in `data/features/`)
-2. **Runtime generation** (`apps/runtime/runtime_features.py`)
-3. **Model expectations** (saved in checkpoint['input_size'])
-
-**Verification**:
+**Configuration** (`.env`):
 ```bash
-# 1. Training data
-python -c "import pandas as pd; df = pd.read_parquet('data/features/features_BTC-USD_1m_latest.parquet'); print(len([c for c in df.columns if c not in ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session', 'volatility_regime'] and df[c].dtype in ['float64', 'int64']]))"
-
-# 2. Runtime logs
-tail -100 /tmp/v5_live.log | grep "Numeric features selected"
-
-# 3. Model checkpoint
-python -c "import torch; c = torch.load('models/promoted/lstm_BTC-USD_v6_enhanced.pt', map_location='cpu'); print(c['input_size'])"
+DB_URL=sqlite:///tradingai.db  # ✅ Active
+# PostgreSQL option commented out (not used)
 ```
 
-**All three MUST match!**
+### V7 Signal Generation
 
-### Feature Engineering Pipeline
+**SignalGenerator Flow** (`libs/llm/signal_generator.py`):
+1. **Initialize** - Load all 11 theory analyzers
+2. **Analyze** - Run each theory on market data
+3. **Synthesize** - Convert theory results to LLM prompt
+4. **Generate** - Call DeepSeek API
+5. **Parse** - Extract structured signal from LLM response
+6. **Validate** - Check FTMO rules, rate limits
+7. **Return** - SignalGenerationResult with full metadata
 
-**V6 Enhanced Features** (72 total):
-- Base technical: SMA, EMA (5/10/20/50/200)
-- Momentum: ROC, momentum over multiple windows
-- Oscillators: RSI (14/21/30), Stochastic, Williams %R
-- Trend: MACD (12/26 and 5/35 variants), Bollinger Bands (20/50)
-- Price channels, volatility, ATR
-- Lagged features: returns and volume (lag 1/2/3/5)
-- Price ratios: high/low, close/open, price to SMA/EMA ratios
+**Theory Integration**:
+- Each theory returns analysis dict with numeric scores
+- SignalSynthesizer formats into natural language prompt
+- DeepSeek LLM receives 6-theory summary + market context
+- Parser extracts: direction, confidence, entry/SL/TP, reasoning
 
-**Feature Exclusions** (always exclude from model input):
-- `timestamp`, `open`, `high`, `low`, `close`, `volume` (raw OHLCV)
-- `session`, `volatility_regime` (categorical - convert to numeric if needed)
+### A/B Testing
 
-**Multi-Timeframe Features** (V5/V6 Real only):
-- 5m/15m/1h OHLCV data
-- TF alignment scores
-- Higher timeframe technical indicators
+Two variants running concurrently:
+- **v7_deepseek_only**: Pure LLM signals (69.2% avg confidence)
+- **v7_full_math**: Math-heavy signals (47.2% avg confidence)
 
-**CoinGecko Premium Features** (if using):
-- Market cap trends, ATH distance, volume changes
-- Requires `COINGECKO_API_KEY=CG-VQhq64e59sGxchtK8mRgdxXW`
+Distribution: Random 50/50 split per signal
+Tracking: `signal_variant` column in database
+
+### Cost Controls
+
+**Budget Enforcement** (`apps/runtime/v7_runtime.py`):
+- Daily: $5 max (DeepSeek API)
+- Monthly: $150 max
+- Per signal: ~$0.0003-0.0005
+- Current usage: $0.19/$150 (0.13%)
+
+**Rate Limiting**:
+- Max: 3 signals/hour (conservative mode)
+- Sliding window: Last 60 minutes
+- Prevents DeepSeek API overuse
 
 ### FTMO Risk Management
 
 **Hard Limits** (`apps/runtime/ftmo_rules.py`):
-- Daily loss: 4.5% max (enforced strictly)
+- Daily loss: 4.5% max (enforced before each signal)
 - Total loss: 9% max (account termination)
 - Position sizing: Risk-based (1-2% per trade)
 
-**Rate Limiting** (`apps/runtime/rate_limiter.py`):
-- High tier: 5 signals/hour max
-- Medium tier: 10 signals/hour max
-- Low tier: Unlimited (logged only)
-
 **Kill Switch**:
-- Set `KILL_SWITCH=true` in `.env` to halt all trading
-- Instant stop via Telegram command (if configured)
+```bash
+# Emergency stop
+export KILL_SWITCH=true  # In .env
+```
+
+### Paper Trading
+
+**Automated Tracking** (`libs/tracking/paper_trader.py`):
+- Detects entry when price hits signal entry ±0.5%
+- Monitors for SL/TP hit
+- Records outcome: win/loss
+- Updates Bayesian win rate
+- Stores in `signal_results` table
+
+**Current Status**:
+- 13 paper trades completed
+- 53.8% win rate
+- +5.48% total P&L
+- Need 20+ for statistical significance
 
 ---
 
-## 🧪 Testing Strategy
+## 🧪 Testing
 
-### Test Types
-
-**Unit Tests** (`tests/unit/`):
-- FTMO rules enforcement
-- Confidence scoring
-- Rate limiting
-- Dataset utilities
-
-**Integration Tests** (`tests/integration/`):
-- Runtime guardrails (FTMO + rate limiter + kill switch)
-
-**Smoke Tests** (`tests/smoke/`):
-- 5-minute backtest to verify end-to-end flow
+### Test Structure
+```bash
+tests/
+├── unit/                     # Unit tests
+│   ├── test_ftmo_rules.py
+│   ├── test_confidence_scoring.py
+│   └── test_rate_limiter.py
+├── integration/              # Integration tests
+│   └── test_runtime_guardrails.py
+└── smoke/                    # 5-min backtest
+    └── test_end_to_end.py
+```
 
 ### Running Tests
-
 ```bash
-# All tests
-make test  # or: uv run pytest tests/
-
-# Specific category
-make unit   # Unit tests only
-make smoke  # Smoke tests only
-
-# Single test file
-uv run pytest tests/unit/test_ftmo_rules.py -v
-
-# With verbose output and logging
-uv run pytest tests/ -v -s
-
-# With coverage report
-uv run pytest tests/ --cov=apps --cov=libs --cov-report=html
+make test         # All tests
+make unit         # Unit only
+make smoke        # Smoke only
+pytest tests/unit/test_ftmo_rules.py -v  # Specific test
+pytest tests/ --cov=apps --cov=libs      # With coverage
 ```
 
 ---
 
 ## ☁️ AWS Infrastructure
 
-### GPU Training (g4dn.xlarge)
-- **GPU**: NVIDIA T4 (16GB VRAM)
-- **Cost**: $0.526/hour on-demand, $0.158/hour spot
-- **Region**: us-east-1 (N. Virginia)
-- **Training time**: ~10-15 min per model, ~1 hour for all 3
+### Current State (2025-11-22)
 
-### S3 Storage
-- **Bucket**: `crpbot-ml-data` or `crpbot-ml-data-20251110`
-- **Structure**:
-  - `raw/` - Historical OHLCV data
-  - `features/` - Engineered features (parquet)
-  - `models/v6_retrained/` - Trained model weights
+**Active**:
+- S3 buckets (~$1-5/month):
+  - `crpbot-ml-data-20251110` - Training data
+  - `sagemaker-us-east-1-*` - SageMaker artifacts
 
-### Training Workflow (AWS GPU)
+**Stopped/Deleted** (Cost cleanup):
+- ✅ RDS `crpbot-rds-postgres-db` - STOPPED (saves $35/month)
+- ✅ RDS `crpbot-dev` - STOPPED (saves $14/month)
+- ✅ Redis `crpbot-redis-dev` - DELETED (saves $12/month)
+- ✅ Redis `crp-re-wymqmkzvh0gm` - DELETED (saves $12/month)
+- **Total savings**: $61/month (bill: $140 → $79/month)
+
+**GPU Training** (On-demand only):
+- Instance: g4dn.xlarge (NVIDIA T4)
+- Cost: $0.16/run (spot), $0.53 (on-demand)
+- Duration: 10-15 min per model
+- **CRITICAL**: Always terminate after training
+
+### Training Workflow
+
+**NEVER train locally** - Follow `MASTER_TRAINING_WORKFLOW.md`:
+
+1. **Feature Engineering** (local):
 ```bash
-# See MASTER_TRAINING_WORKFLOW.md for complete workflow
-
-# Quick summary:
-1. Fetch data locally → Engineer features → Upload to S3
-2. Launch g4dn.xlarge spot instance
-3. SSH to instance → Clone repo → Download features from S3
-4. Train models on GPU (15 epochs each, ~10-15 min per model)
-5. Upload models to S3
-6. Terminate instance (CRITICAL - stop billing)
-7. Download models locally → Verify → Deploy
+# Engineer features for all symbols
+python scripts/engineer_features.py
 ```
 
-**Cost Tracking**:
-- One training run: ~$0.16 (spot) or ~$0.53 (on-demand)
-- Monthly (10-15 runs): ~$5-8
-- S3 storage (5GB): ~$0.12/month
+2. **Upload to S3**:
+```bash
+aws s3 sync data/features/ s3://crpbot-ml-data-20251110/features/
+```
+
+3. **Launch GPU Instance**:
+```bash
+aws ec2 run-instances --instance-type g4dn.xlarge --spot-instance
+```
+
+4. **Train on GPU**:
+```bash
+# On GPU instance
+uv run python apps/trainer/main.py --task lstm --coin BTC --epochs 15
+uv run python apps/trainer/main.py --task lstm --coin ETH --epochs 15
+uv run python apps/trainer/main.py --task lstm --coin SOL --epochs 15
+```
+
+5. **Upload Models**:
+```bash
+aws s3 sync models/ s3://crpbot-ml-data-20251110/models/
+```
+
+6. **TERMINATE INSTANCE** (CRITICAL):
+```bash
+aws ec2 terminate-instances --instance-ids <INSTANCE_ID>
+```
+
+7. **Download and Deploy**:
+```bash
+# QC Claude (local)
+aws s3 sync s3://crpbot-ml-data-20251110/models/ models/
+
+# Builder Claude (cloud)
+aws s3 sync s3://crpbot-ml-data-20251110/models/ models/promoted/
+```
 
 ---
 
@@ -673,197 +428,117 @@ uv run pytest tests/ --cov=apps --cov=libs --cov-report=html
 
 ### Environment Variables (`.env`)
 
-**Data Provider**:
+**Required**:
 ```bash
-DATA_PROVIDER=coinbase  # Options: coinbase, kraken, cryptocompare
-
-# Coinbase Advanced Trade API (JWT auth)
+# Data Provider
+DATA_PROVIDER=coinbase
 COINBASE_API_KEY_NAME=organizations/.../apiKeys/...
 COINBASE_API_PRIVATE_KEY=-----BEGIN EC PRIVATE KEY-----...
 
-# CoinGecko Premium
+# Premium APIs
 COINGECKO_API_KEY=CG-VQhq64e59sGxchtK8mRgdxXW
-```
+DEEPSEEK_API_KEY=sk-...
 
-**Runtime**:
-```bash
-CONFIDENCE_THRESHOLD=0.65  # Min confidence to emit signal
-KILL_SWITCH=false          # Emergency stop
-RUNTIME_MODE=dryrun        # or "live"
-```
-
-**Database**:
-```bash
+# Database (SQLite)
 DB_URL=sqlite:///tradingai.db
-# Or PostgreSQL: postgresql+psycopg://user:pass@localhost:5432/tradingai
+
+# Safety
+KILL_SWITCH=false
+CONFIDENCE_THRESHOLD=0.65
+MAX_SIGNALS_PER_HOUR=3
 ```
 
-**Telegram** (optional):
+**Optional**:
 ```bash
+# Telegram (notifications)
 TELEGRAM_TOKEN=...
 TELEGRAM_CHAT_ID=...
-```
 
-### Model Configuration
-- **Model path**: `models/promoted/` (production models)
-- **Model version**: Set via `MODEL_VERSION` env var
-- **Loading priority**: V6 Enhanced → V6 Real → V5 FIXED
+# FTMO (if trading live)
+FTMO_LOGIN=...
+FTMO_PASS=...
+FTMO_SERVER=...
+```
 
 ---
 
 ## 🚨 Common Pitfalls
 
-### 1. Training Locally on CPU
-**Symptom**: Training takes 60-90 min per model
-**Fix**: ALWAYS use AWS GPU (see `MASTER_TRAINING_WORKFLOW.md`)
+### 1. Training Locally
+**Symptom**: Training takes 60-90 min
+**Fix**: Use AWS g4dn.xlarge GPU only
 
-### 2. Feature Count Mismatch
+### 2. AWS Instance Not Terminated
+**Symptom**: Unexpected $40+ charges
+**Fix**: ALWAYS terminate: `aws ec2 terminate-instances --instance-ids <id>`
+
+### 3. RDS Connection Errors
+**Issue**: V7 does NOT use RDS (uses local SQLite)
+**If you see**: PostgreSQL errors → Check `.env` for `DB_URL=sqlite:///tradingai.db`
+
+### 4. Feature Count Mismatch
 **Symptom**: Models predict ~50% (random)
-**Fix**: Verify alignment (see "Feature Count Alignment" above)
+**Fix**: Verify training features = runtime features = model input_size
 
-### 3. Multi-TF Features Missing
-**Symptom**: Feature count too low (31 instead of 73)
-**Fix**: Set `include_multi_tf=True` in runtime feature engineering
+### 5. V7 Stopped Running
+**Check**:
+```bash
+ps aux | grep v7_runtime | grep -v grep  # Should show 1 process
+tail -100 /tmp/v7_runtime_*.log          # Check for errors
+```
 
-### 4. CoinGecko Features All Zeros
-**Symptom**: CoinGecko features show 0.0 values
-**Fix**: Export `COINGECKO_API_KEY=CG-VQhq64e59sGxchtK8mRgdxXW` before running
-
-### 5. AWS Instance Not Terminated
-**Symptom**: Unexpected AWS charges
-**Fix**: ALWAYS run `aws ec2 terminate-instances --instance-ids <id>` after training
-
-### 6. Predictions Too Low (<5%)
-**Symptom**: Confidence consistently below threshold
-**Expected**: Models are cautious during ranging/choppy markets (this is good!)
+### 6. Low Confidence Signals
+**Expected**: V7 is conservative (high HOLD rate = intentional)
+**Not a bug**: 76% HOLD signals is normal during ranging markets
 
 ---
 
 ## 📚 Key Documentation
 
-**V7 Production Documentation** (CURRENT):
-- `V7_MONITORING.md` - **Production monitoring and management guide** ⭐ **PRIMARY**
-- `apps/runtime/v7_runtime.py` - V7 runtime (33KB, running 24/7)
-- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix for trend capture
-- `V7_SIGNAL_FIXES.md` - Signal generation improvements
-- `V7_MATHEMATICAL_THEORIES.md` - Theory explanations
-- `V7_CLOUD_DEPLOYMENT.md` - Original deployment guide (completed)
-- `PROJECT_MEMORY.md` - Session continuity and dual-environment setup
+### Production (V7)
+- `CURRENT_STATUS_AND_NEXT_ACTIONS.md` - **Current phase & tasks** ⭐
+- `apps/runtime/v7_runtime.py` - Main runtime source
+- `QUANT_FINANCE_10_HOUR_PLAN.md` - Phase 1 enhancements (pending)
+- `QUANT_FINANCE_PHASE_2_PLAN.md` - Phase 2 advanced features (future)
 
-**Infrastructure & Training**:
-- `MASTER_TRAINING_WORKFLOW.md` - AUTHORITATIVE training guide
-- `CLAUDE.md` - This file (project architecture)
+### Infrastructure
+- `MASTER_TRAINING_WORKFLOW.md` - **GPU training workflow** ⭐
+- `DATABASE_VERIFICATION_2025-11-22.md` - Database setup verification
+- `AWS_COST_CLEANUP_2025-11-22.md` - AWS cost optimization
+- `CLAUDE.md` - This file
+
+### Reference
 - `README.md` - Project overview
-- `AWS_AUTO_TERMINATION_SUMMARY.md` - Auto-termination for GPU instances
-
-**V7 Production Architecture** (Code):
-- `apps/runtime/v7_runtime.py` - Main V7 orchestrator (production)
-- `libs/llm/*` - DeepSeek client, synthesizer, parser, generator
-- `libs/analysis/*` - 7 mathematical theories (Shannon, Hurst, etc.)
-- `libs/data/coingecko_pro_client.py` - Premium market data
-- `apps/dashboard/app.py` - Web dashboard with V7 visualization
-- `libs/notifications/telegram_bot.py` - Real-time Telegram alerts
-- `libs/config/config.py` - Configuration system
-
-**Deprecated** (ignore these):
-- Any docs mentioning Colab training
-- Any docs mentioning local CPU training
-- V6-specific runtime/deployment docs (superseded by V7)
-- V5 FIXED documentation (outdated)
-- Any planning docs marked "STEP X" (all steps complete)
+- `Makefile` - Available commands
+- `.env` - Configuration (DO NOT commit)
 
 ---
 
-## 🎯 Development Workflow
+## 🔮 Current Status (November 2025)
 
-1. **Create feature branch**: `git checkout -b feat/feature-name`
-2. **Make changes**: Edit code, write tests
-3. **Pre-commit hooks run automatically**: Format, lint, type-check
-4. **Run tests**: `make test` or `uv run pytest tests/`
-5. **Verify feature alignment** (if touching feature engineering)
-6. **Push and create PR**: CI checks must pass
-7. **Merge to main**: Deploy to production
+**Branch**: `feature/v7-ultimate`
+**Phase**: Monitoring & Data Collection (2025-11-22 to 2025-11-25)
 
----
+**V7 Ultimate**:
+- ✅ All 11 theories operational (100%)
+- ✅ DeepSeek LLM integration working
+- ✅ Paper trading active (13 trades, 53.8% win rate)
+- ✅ A/B testing running (2 variants)
+- ✅ Dashboard live (http://178.156.136.185:3000)
+- ⏳ Collecting data (need 20+ trades for Sharpe ratio)
 
-## 🔮 Current Status (Nov 2025)
+**Next Actions**:
+- **Builder Claude**: Daily monitoring (5-10 min/day)
+- **QC Claude**: Await Monday 2025-11-25 review
+- **Decision**: Based on Sharpe ratio, decide on Phase 1 enhancements
 
-**Active Branch**: `feature/v7-ultimate`
-**Current Phase**: V7 Ultimate - PRODUCTION (All Steps Complete)
-
-**V7 Status**: ✅ **FULLY DEPLOYED AND RUNNING IN PRODUCTION**
-- **ALL STEPS COMPLETE** (Steps 1-8): Implementation, Dashboard, Telegram, Monitoring
-- **Production Runtime**: Running 24/7 on cloud server (178.156.136.185)
-- **Live Signals**: 30 signals/hour max, aggressive mode enabled
-- **Dashboard**: Live at http://178.156.136.185:5000 with signal visualization
-- **Telegram**: Real-time notifications with price predictions (Entry/SL/TP)
-- **Performance**: Momentum override implemented, signal tracking active
-- **Method**: Manual trading (signal generation only, no auto-execution)
-
-**V7 Framework** (Production Deployed ✅):
-- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Market Regime, Risk Metrics, Fractal Dimension, Market Context (CoinGecko)
-- **DeepSeek LLM**: Synthesis of theories into trade signals ($5/day budget)
-- **CoinGecko Premium**: Market context and macro analysis ($129/month)
-- **Rate Limiting**: 30 signals/hour (aggressive FTMO mode)
-- **Cost Controls**: $5/day, $150/month budgets
-- **Bayesian Learning**: Beta distribution updates from trade outcomes
-- **Signal Tracking**: Automated entry/exit detection and win rate calculation
-
-**Production Metrics**:
-- Runtime: 24/7 continuous operation
-- Symbols: BTC-USD, ETH-USD, SOL-USD
-- Data Sources: Coinbase REST API + CoinGecko Premium
-- Cost per signal: ~$0.0003-0.0005
-- Daily cost: ~$0.01-0.02 (well under $5 budget)
-
-**Key Production Files**:
-- `apps/runtime/v7_runtime.py` - Main V7 runtime (33KB, production)
-- `apps/dashboard/app.py` - Dashboard with V7 signal visualization
-- `libs/llm/*` - DeepSeek integration (4 files)
-- `libs/analysis/*` - 6 mathematical theories (6 files)
-- `libs/notifications/telegram_bot.py` - Telegram notifications
-- `V7_MONITORING.md` - Production monitoring guide ⭐
-- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix documentation
-
-**Production Monitoring**:
-```bash
-# Check V7 runtime status
-ps aux | grep v7_runtime.py | grep -v grep
-
-# View live logs
-tail -f /tmp/v7_production.log
-
-# Dashboard (already running)
-curl http://localhost:5000/api/v7/signals/recent/10
-
-# Database signals (last hour)
-sqlite3 tradingai.db "SELECT timestamp, symbol, direction, confidence, entry_price
-FROM signals WHERE model_version='v7_ultimate'
-AND timestamp > datetime('now', '-1 hour')
-ORDER BY timestamp DESC LIMIT 20"
-
-# Check Telegram bot status
-ps aux | grep telegram | grep -v grep
-```
-
-**Production Commands**:
-```bash
-# Restart V7 runtime
-pkill -f v7_runtime.py
-nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
-  --iterations -1 --sleep-seconds 120 --aggressive --max-signals-per-hour 30 \
-  > /tmp/v7_production.log 2>&1 &
-
-# Monitor costs
-tail -100 /tmp/v7_production.log | grep "V7 Statistics" -A 6
-
-# Check signal performance
-sqlite3 tradingai.db "SELECT direction, COUNT(*), AVG(confidence)
-FROM signals WHERE model_version='v7_ultimate'
-AND timestamp > datetime('now', '-24 hours') GROUP BY direction"
-```
+**Production Environment**:
+- Runtime: Cloud server (178.156.136.185)
+- Database: SQLite (local file, 4,075 signals)
+- Cost: $0.19/$150 DeepSeek budget (0.13% used)
+- AWS: $79/month (down from $140 after cleanup)
 
 ---
 
-**Last Updated**: 2025-11-19
-**Status**: V7 Ultimate is LIVE in production on cloud server
+**Last Updated**: 2025-11-22
+**Next Review**: 2025-11-25 (Monday - Sharpe ratio decision)
