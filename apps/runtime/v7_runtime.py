@@ -61,7 +61,9 @@ from libs.safety import (
 from libs.risk.volatility_regime_detector import VolatilityRegimeDetector
 from libs.risk.sharpe_ratio_tracker import SharpeRatioTracker
 from libs.risk.cvar_calculator import CVaRCalculator
+from libs.risk.sortino_ratio_tracker import SortinoRatioTracker
 from libs.analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
+from libs.analysis.information_coefficient import InformationCoefficientAnalyzer
 
 
 @dataclass
@@ -256,6 +258,14 @@ class V7TradingRuntime:
         self.cvar_calculator = CVaRCalculator(max_history=500)
         logger.info("✅ CVaR Calculator initialized (tail risk & position sizing)")
 
+        # Initialize Sortino Ratio Tracker (downside risk-adjusted performance)
+        self.sortino_tracker = SortinoRatioTracker(risk_free_rate=0.05, max_history_days=90)
+        logger.info("✅ Sortino Ratio Tracker initialized (downside-focused performance)")
+
+        # Initialize Information Coefficient Analyzer (signal quality)
+        self.ic_analyzer = InformationCoefficientAnalyzer(max_history=500)
+        logger.info("✅ Information Coefficient Analyzer initialized (theory ranking)")
+
         # Load historical paper trades from database (last 90 days)
         self._load_historical_performance_data()
 
@@ -345,29 +355,29 @@ class V7TradingRuntime:
         logger.debug(f"Cost updated: +${actual_cost:.6f} | Daily: ${self.daily_cost:.4f} | Monthly: ${self.monthly_cost:.2f}")
 
     def _load_historical_performance_data(self):
-        """Load completed paper trades from database and populate Sharpe Tracker + CVaR Calculator"""
+        """Load completed paper trades from database and populate all performance trackers"""
         try:
             session = get_session(self.config.db_url)
 
             # Query completed paper trades from last 90 days
             cutoff_date = datetime.now() - timedelta(days=90)
 
-            # SQL query to get completed trades
+            # SQL query to get completed trades (FIX: use exit_timestamp not exit_time)
             from libs.db.models import SignalResult
             results = session.query(SignalResult).filter(
-                SignalResult.exit_time.isnot(None),
+                SignalResult.exit_timestamp.isnot(None),
                 SignalResult.pnl_percent.isnot(None),
-                SignalResult.exit_time >= cutoff_date
-            ).order_by(SignalResult.exit_time).all()
+                SignalResult.exit_timestamp >= cutoff_date
+            ).order_by(SignalResult.exit_timestamp).all()
 
             loaded_count = 0
             for result in results:
-                if result.pnl_percent is not None:
+                if result.pnl_percent is not None and result.exit_timestamp is not None:
                     return_pct = result.pnl_percent / 100.0  # Convert to decimal
 
                     # Record to Sharpe Tracker
                     self.sharpe_tracker.record_trade_return(
-                        timestamp=result.exit_time,
+                        timestamp=result.exit_timestamp,
                         return_pct=return_pct,
                         symbol=result.symbol
                     )
@@ -375,7 +385,13 @@ class V7TradingRuntime:
                     # Record to CVaR Calculator
                     self.cvar_calculator.record_return(
                         return_pct=return_pct,
-                        timestamp=result.exit_time
+                        timestamp=result.exit_timestamp
+                    )
+
+                    # Record to Sortino Tracker
+                    self.sortino_tracker.record_return(
+                        return_pct=return_pct,
+                        timestamp=result.exit_timestamp
                     )
 
                     loaded_count += 1
@@ -386,10 +402,14 @@ class V7TradingRuntime:
                 # Get initial metrics
                 sharpe_metrics = self.sharpe_tracker.get_sharpe_metrics()
                 cvar_metrics = self.cvar_calculator.get_cvar_metrics()
+                sortino_metrics = self.sortino_tracker.get_sortino_metrics(
+                    sharpe_ratio=sharpe_metrics.sharpe_ratio_30d
+                )
 
                 logger.info(
                     f"📊 Loaded {loaded_count} historical paper trades | "
                     f"30d Sharpe: {sharpe_metrics.sharpe_ratio_30d:.2f} | "
+                    f"30d Sortino: {sortino_metrics.sortino_ratio_30d:.2f} | "
                     f"Win Rate: {sharpe_metrics.win_rate:.1%} | "
                     f"95% CVaR: {cvar_metrics.cvar_95_historical:.2%} ({cvar_metrics.risk_level})"
                 )
@@ -1266,7 +1286,7 @@ class V7TradingRuntime:
                         if exited_trades:
                             logger.info(f"📊 Closed {len(exited_trades)} paper trades this iteration")
 
-                            # Record each trade to Sharpe Tracker and CVaR Calculator
+                            # Record each trade to performance trackers
                             for trade in exited_trades:
                                 return_pct = trade['pnl_percent'] / 100.0  # Convert to decimal
 
@@ -1279,6 +1299,12 @@ class V7TradingRuntime:
 
                                 # Record to CVaR Calculator
                                 self.cvar_calculator.record_return(
+                                    return_pct=return_pct,
+                                    timestamp=trade['exit_time']
+                                )
+
+                                # Record to Sortino Tracker
+                                self.sortino_tracker.record_return(
                                     return_pct=return_pct,
                                     timestamp=trade['exit_time']
                                 )
@@ -1324,6 +1350,22 @@ class V7TradingRuntime:
                     if cvar_metrics.warnings:
                         for warning in cvar_metrics.warnings:
                             logger.info(f"  {warning}")
+
+                # Print Sortino Ratio metrics (if enough trades)
+                if sharpe_metrics.total_trades >= 5:
+                    sortino_metrics = self.sortino_tracker.get_sortino_metrics(
+                        sharpe_ratio=sharpe_metrics.sharpe_ratio_30d
+                    )
+                    logger.info(f"\n📈 Sortino Ratio (Downside Risk):")
+                    logger.info(f"  7-day Sortino:         {sortino_metrics.sortino_ratio_7d:.2f}")
+                    logger.info(f"  14-day Sortino:        {sortino_metrics.sortino_ratio_14d:.2f}")
+                    logger.info(f"  30-day Sortino:        {sortino_metrics.sortino_ratio_30d:.2f}")
+                    logger.info(f"  Downside Deviation:    {sortino_metrics.downside_deviation:.1%}")
+                    logger.info(f"  Upside Deviation:      {sortino_metrics.upside_deviation:.1%}")
+                    if sortino_metrics.sortino_sharpe_ratio > 0:
+                        logger.info(f"  Sortino / Sharpe:      {sortino_metrics.sortino_sharpe_ratio:.2f}x")
+                        if sortino_metrics.sortino_sharpe_ratio > 1.0:
+                            logger.info(f"  ✅ Favorable asymmetry (wins > losses)")
 
                 # Sleep until next iteration
                 if iterations == -1 or iteration < iterations:
