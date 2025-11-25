@@ -1,12 +1,65 @@
 """Real-time market data fetcher for production runtime."""
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Union
 
 import pandas as pd
 from coinbase.rest import RESTClient
 from loguru import logger
 
 from libs.config.config import Settings
+
+
+def granularity_to_enum(granularity: Union[int, str]) -> tuple[str, int]:
+    """
+    Convert granularity to Coinbase enum and seconds.
+
+    Args:
+        granularity: Either integer seconds or Coinbase enum string
+
+    Returns:
+        Tuple of (enum_string, seconds)
+
+    Examples:
+        >>> granularity_to_enum(60)
+        ('ONE_MINUTE', 60)
+        >>> granularity_to_enum('ONE_HOUR')
+        ('ONE_HOUR', 3600)
+    """
+    # If already a string, validate and return
+    if isinstance(granularity, str):
+        granularity_map = {
+            'ONE_MINUTE': 60,
+            'FIVE_MINUTE': 300,
+            'FIFTEEN_MINUTE': 900,
+            'THIRTY_MINUTE': 1800,
+            'ONE_HOUR': 3600,
+            'TWO_HOUR': 7200,
+            'SIX_HOUR': 21600,
+            'ONE_DAY': 86400
+        }
+        if granularity not in granularity_map:
+            raise ValueError(f"Invalid granularity enum: {granularity}")
+        return granularity, granularity_map[granularity]
+
+    # Convert integer seconds to enum
+    seconds_to_enum = {
+        60: 'ONE_MINUTE',
+        300: 'FIVE_MINUTE',
+        900: 'FIFTEEN_MINUTE',
+        1800: 'THIRTY_MINUTE',
+        3600: 'ONE_HOUR',
+        7200: 'TWO_HOUR',
+        21600: 'SIX_HOUR',
+        86400: 'ONE_DAY'
+    }
+
+    if granularity not in seconds_to_enum:
+        raise ValueError(
+            f"Invalid granularity: {granularity}. "
+            f"Must be one of: {list(seconds_to_enum.keys())}"
+        )
+
+    return seconds_to_enum[granularity], granularity
 
 
 class MarketDataFetcher:
@@ -99,7 +152,7 @@ class MarketDataFetcher:
         symbol: str,
         start: datetime,
         end: datetime,
-        granularity: str = "ONE_MINUTE"
+        granularity: Union[int, str] = "ONE_MINUTE"
     ) -> pd.DataFrame:
         """
         Fetch historical candles for backtesting (handles Coinbase 350 candle limit via batching).
@@ -108,7 +161,8 @@ class MarketDataFetcher:
             symbol: Trading pair (e.g., 'BTC-USD')
             start: Start datetime (UTC)
             end: End datetime (UTC)
-            granularity: Candle granularity ("ONE_MINUTE", "FIVE_MINUTE", etc.)
+            granularity: Candle granularity - either integer seconds (60, 300, 3600, etc.)
+                        or Coinbase enum ("ONE_MINUTE", "FIVE_MINUTE", "ONE_HOUR", etc.)
 
         Returns:
             DataFrame with ['timestamp', 'open', 'high', 'low', 'close', 'volume']
@@ -117,12 +171,17 @@ class MarketDataFetcher:
             logger.error("Coinbase client not initialized")
             return pd.DataFrame()
 
-        logger.info(f"Fetching historical candles for {symbol} from {start} to {end}")
+        # Convert granularity to enum and seconds
+        granularity_enum, granularity_seconds = granularity_to_enum(granularity)
+
+        logger.info(
+            f"Fetching historical candles for {symbol} from {start} to {end} "
+            f"(granularity: {granularity_enum} = {granularity_seconds}s)"
+        )
 
         # Coinbase API limit: 350 candles per request
-        # For 1-minute candles: 350 minutes = ~5.8 hours per batch
-        candle_limit = 350
-        granularity_seconds = 60  # 1 minute (adjust if using other granularities)
+        # Use 300 to be safe (API appears to count inclusively)
+        candle_limit = 300
 
         all_candles = []
 
@@ -134,18 +193,27 @@ class MarketDataFetcher:
                 if batch_end > end:
                     batch_end = end
 
+                # Double-check: ensure we're not requesting more than 350 candles
+                time_span_seconds = (batch_end - current_start).total_seconds()
+                num_candles = int(time_span_seconds / granularity_seconds)
+                if num_candles > candle_limit:
+                    # Recalculate batch_end to cap at 350 candles
+                    batch_end = current_start + timedelta(seconds=(candle_limit - 1) * granularity_seconds)
+                    num_candles = candle_limit - 1
+                    logger.debug(f"Capped batch to {num_candles} candles")
+
                 # Convert to Unix timestamp
                 start_unix = int(current_start.timestamp())
                 end_unix = int(batch_end.timestamp())
 
-                logger.debug(f"Fetching batch: {current_start} to {batch_end}")
+                logger.debug(f"Fetching batch: {current_start} to {batch_end} ({num_candles} candles)")
 
                 # Fetch batch
                 response = self.client.get_candles(
                     product_id=symbol,
                     start=start_unix,
                     end=end_unix,
-                    granularity=granularity
+                    granularity=granularity_enum
                 )
 
                 if response and response.candles:
