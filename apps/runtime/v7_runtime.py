@@ -62,6 +62,8 @@ from libs.risk.volatility_regime_detector import VolatilityRegimeDetector
 from libs.risk.sharpe_ratio_tracker import SharpeRatioTracker
 from libs.risk.cvar_calculator import CVaRCalculator
 from libs.risk.sortino_ratio_tracker import SortinoRatioTracker
+from libs.risk.calmar_ratio_tracker import CalmarRatioTracker
+from libs.risk.omega_ratio_calculator import OmegaRatioCalculator
 from libs.analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
 from libs.analysis.information_coefficient import InformationCoefficientAnalyzer
 from libs.portfolio.optimizer import PortfolioOptimizer
@@ -275,6 +277,14 @@ class V7TradingRuntime:
         )
         logger.info("✅ Portfolio Optimizer initialized (Markowitz MPT, 10 assets)")
 
+        # Initialize Calmar Ratio Tracker (return/max drawdown)
+        self.calmar_tracker = CalmarRatioTracker(max_history_days=365)
+        logger.info("✅ Calmar Ratio Tracker initialized (return/max drawdown)")
+
+        # Initialize Omega Ratio Calculator (probability-weighted gains/losses)
+        self.omega_calculator = OmegaRatioCalculator(risk_free_rate=0.05, max_history=500)
+        logger.info("✅ Omega Ratio Calculator initialized (full distribution analysis)")
+
         # Load historical paper trades from database (last 90 days)
         self._load_historical_performance_data()
 
@@ -399,6 +409,18 @@ class V7TradingRuntime:
 
                     # Record to Sortino Tracker
                     self.sortino_tracker.record_return(
+                        return_pct=return_pct,
+                        timestamp=result.exit_timestamp
+                    )
+
+                    # Record to Calmar Tracker
+                    self.calmar_tracker.record_return(
+                        return_pct=return_pct,
+                        timestamp=result.exit_timestamp
+                    )
+
+                    # Record to Omega Calculator
+                    self.omega_calculator.record_return(
                         return_pct=return_pct,
                         timestamp=result.exit_timestamp
                     )
@@ -1317,6 +1339,18 @@ class V7TradingRuntime:
                                     return_pct=return_pct,
                                     timestamp=trade['exit_time']
                                 )
+
+                                # Record to Calmar Tracker
+                                self.calmar_tracker.record_return(
+                                    return_pct=return_pct,
+                                    timestamp=trade['exit_time']
+                                )
+
+                                # Record to Omega Calculator
+                                self.omega_calculator.record_return(
+                                    return_pct=return_pct,
+                                    timestamp=trade['exit_time']
+                                )
                     except Exception as e:
                         logger.error(f"Failed to check/exit paper trades: {e}")
 
@@ -1375,6 +1409,37 @@ class V7TradingRuntime:
                         logger.info(f"  Sortino / Sharpe:      {sortino_metrics.sortino_sharpe_ratio:.2f}x")
                         if sortino_metrics.sortino_sharpe_ratio > 1.0:
                             logger.info(f"  ✅ Favorable asymmetry (wins > losses)")
+
+                # Print Calmar Ratio metrics (if enough trades)
+                if sharpe_metrics.total_trades >= 5:
+                    calmar_metrics = self.calmar_tracker.get_calmar_metrics()
+                    logger.info(f"\n📉 Calmar Ratio (Return/Max Drawdown):")
+                    logger.info(f"  30-day Calmar:         {calmar_metrics.calmar_ratio_30d:.2f}")
+                    if calmar_metrics.calmar_ratio_90d:
+                        logger.info(f"  90-day Calmar:         {calmar_metrics.calmar_ratio_90d:.2f}")
+                    logger.info(f"  Max Drawdown:          {calmar_metrics.max_drawdown:.1%}")
+                    logger.info(f"  Current Drawdown:      {calmar_metrics.current_drawdown:.1%}")
+                    logger.info(f"  Max DD Duration:       {calmar_metrics.max_drawdown_duration_days} days")
+                    if calmar_metrics.time_to_recovery_days:
+                        logger.info(f"  Recovery Time:         {calmar_metrics.time_to_recovery_days} days")
+                    logger.info(f"  Quality:               {calmar_metrics.calmar_quality.upper()}")
+
+                # Print Omega Ratio metrics (if enough trades)
+                if sharpe_metrics.total_trades >= 20:
+                    omega_metrics = self.omega_calculator.calculate_omega()
+                    logger.info(f"\n🎲 Omega Ratio (Gain/Loss Distribution):")
+                    logger.info(f"  Omega (0%):            {omega_metrics.omega_0pct:.2f}")
+                    logger.info(f"  Omega (RF):            {omega_metrics.omega_rf:.2f}")
+                    logger.info(f"  Expected Gain:         {omega_metrics.expected_gains:.2%}")
+                    logger.info(f"  Expected Loss:         {omega_metrics.expected_losses:.2%}")
+                    logger.info(f"  Skewness:              {omega_metrics.skewness:.2f}")
+                    logger.info(f"  Kurtosis (excess):     {omega_metrics.kurtosis:.2f}")
+                    logger.info(f"  Quality:               {omega_metrics.omega_quality.upper()}")
+
+                    if omega_metrics.skewness > 0:
+                        logger.info(f"  ✅ Positive skew (favorable asymmetry)")
+                    elif omega_metrics.skewness < -0.5:
+                        logger.info(f"  ⚠️  Negative skew (large losses)")
 
                 # Run Portfolio Optimization (every 10 iterations or when we have enough data)
                 if iteration % 10 == 0:
