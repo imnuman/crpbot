@@ -325,8 +325,8 @@ REASONING: High entropy (0.89) indicates random market. Insufficient edge for tr
 
 **Price Level Guidelines:**
 - Entry: Current price or specific limit level
-- Stop Loss: 0.5-2% risk from entry
-- Take Profit: Minimum 1:1.5 R:R ratio
+- Stop Loss: 2-4% risk from entry (WIDENED for crypto volatility - prevents instant stop-outs)
+- Take Profit: Minimum 1:2 R:R ratio (maintain risk/reward balance)
 - HOLD signals: Use N/A for all prices"""
 
         # Build messages list
@@ -419,8 +419,8 @@ REASONING: [2-3 sentences explaining signal and price levels]
 
 **Price Level Guidelines:**
 - Entry: Current price or specific limit level
-- Stop Loss: 0.5-2% risk from entry
-- Take Profit: Minimum 1:1.5 R:R ratio
+- Stop Loss: 2-4% risk from entry (WIDENED for crypto volatility - prevents instant stop-outs)
+- Take Profit: Minimum 1:2 R:R ratio (maintain risk/reward balance)
 - HOLD signals: Use N/A for all prices"""
 
         # Simplified system prompt (no theory mentions)
