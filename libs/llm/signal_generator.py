@@ -36,6 +36,9 @@ from libs.theories.variance_tests import VarianceAnalyzer
 from libs.theories.autocorrelation_analyzer import AutocorrelationAnalyzer
 from libs.theories.stationarity_test import StationarityAnalyzer
 
+# Import Order Flow analysis (Phase 2)
+from libs.order_flow.order_flow_integration import OrderFlowAnalyzer
+
 # Import LLM components
 from .deepseek_client import DeepSeekClient, DeepSeekResponse
 from .signal_synthesizer import (
@@ -158,6 +161,9 @@ class SignalGenerator:
         self.autocorr_analyzer = AutocorrelationAnalyzer(max_lags=10)
         self.stationarity_analyzer = StationarityAnalyzer(window_size=20)
 
+        # Initialize Order Flow analyzer (Phase 2 - institutional-level analysis)
+        self.order_flow_analyzer = OrderFlowAnalyzer()
+
         # Configuration
         self.lookback_window = lookback_window
         self.temperature = temperature
@@ -167,7 +173,8 @@ class SignalGenerator:
             f"SignalGenerator initialized | "
             f"Conservative: {conservative_mode} | "
             f"Strict Parsing: {strict_parsing} | "
-            f"Lookback: {lookback_window}"
+            f"Lookback: {lookback_window} | "
+            f"OrderFlow: enabled"
         )
 
     def generate_signal(
@@ -181,7 +188,9 @@ class SignalGenerator:
         spread: Optional[float] = None,
         additional_context: Optional[str] = None,
         coingecko_context: Optional[Dict[str, Any]] = None,
-        strategy: str = "v7_full_math"
+        strategy: str = "v7_full_math",
+        candles_df: Optional[pd.DataFrame] = None,
+        order_book: Optional[Dict] = None
     ) -> SignalGenerationResult:
         """
         Generate trading signal from price data
@@ -195,8 +204,10 @@ class SignalGenerator:
             volume: Optional current volume
             spread: Optional bid-ask spread
             additional_context: Optional additional context (news, events)
-            coingecko_context: Optional CoinGecko market context (7th theory)
+            coingecko_context: Optional CoinGecko market context (theory 11)
             strategy: Strategy type ("v7_full_math" or "v7_deepseek_only") for A/B testing
+            candles_df: Optional OHLCV DataFrame for Order Flow analysis
+            order_book: Optional order book data (bids/asks) for OFI/Microstructure
 
         Returns:
             SignalGenerationResult with complete analysis and signal
@@ -227,7 +238,22 @@ class SignalGenerator:
                 current_price=current_price
             )
 
-            # STEP 2: Build Market Context
+            # STEP 2: Run Order Flow Analysis (Phase 2 - institutional level)
+            order_flow_features = None
+            if candles_df is not None and not candles_df.empty:
+                try:
+                    logger.debug(f"Running Order Flow analysis for {symbol}")
+                    order_flow_features = self.order_flow_analyzer.analyze(
+                        symbol=symbol,
+                        candles_df=candles_df,
+                        current_order_book=order_book  # Note: 'current_order_book' not 'order_book'
+                    )
+                    logger.info(f"Order Flow analysis complete | Features: {len(order_flow_features)}")
+                except Exception as e:
+                    logger.warning(f"Order Flow analysis failed: {e}")
+                    order_flow_features = None
+
+            # STEP 3: Build Market Context
             market_context = MarketContext(
                 symbol=symbol,
                 current_price=current_price,
@@ -238,7 +264,7 @@ class SignalGenerator:
                 spread=spread
             )
 
-            # STEP 3: Generate LLM Prompt (choose based on A/B test strategy)
+            # STEP 4: Generate LLM Prompt (choose based on A/B test strategy)
             if strategy == "v7_deepseek_only":
                 # Minimal prompt WITHOUT mathematical theories (A/B test mode)
                 prompt_messages = self.signal_synthesizer.build_minimal_prompt(
@@ -252,14 +278,15 @@ class SignalGenerator:
                     context=market_context,
                     analysis=theory_analysis,
                     additional_context=additional_context,
-                    coingecko_context=coingecko_context
+                    coingecko_context=coingecko_context,
+                    order_flow_features=order_flow_features
                 )
 
             # Validate prompt
             if not self.signal_synthesizer.validate_prompt(prompt_messages):
                 raise ValueError("Prompt validation failed")
 
-            # STEP 4: Query DeepSeek LLM
+            # STEP 5: Query DeepSeek LLM
             logger.debug(f"Sending prompt to DeepSeek ({len(prompt_messages)} messages)")
             llm_response = self.deepseek_client.chat(
                 messages=prompt_messages,
@@ -273,7 +300,7 @@ class SignalGenerator:
                 f"Cost: ${llm_response.cost_usd:.6f}"
             )
 
-            # STEP 5: Parse LLM Response
+            # STEP 6: Parse LLM Response
             parsed_signal = self.signal_parser.parse(llm_response.content)
 
             # Additional validation

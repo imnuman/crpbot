@@ -240,13 +240,32 @@ class VolumeProfile:
                     'volume_pct': (volume_histogram[i] / total_volume) * 100
                 })
 
+        # 5. Calculate trading bias (distribution of volume)
+        # If more volume above POC = BULLISH, below POC = BEARISH
+        volume_above_poc = sum(volume_histogram[poc_bin+1:])
+        volume_below_poc = sum(volume_histogram[:poc_bin])
+
+        if volume_above_poc > volume_below_poc * 1.2:
+            bias = 'BULLISH'
+            bias_strength = min((volume_above_poc / volume_below_poc) / 2.0, 1.0) if volume_below_poc > 0 else 0.8
+        elif volume_below_poc > volume_above_poc * 1.2:
+            bias = 'BEARISH'
+            bias_strength = min((volume_below_poc / volume_above_poc) / 2.0, 1.0) if volume_above_poc > 0 else 0.8
+        else:
+            bias = 'NEUTRAL'
+            bias_strength = 0.5
+
         return {
             'poc': poc_price,
+            'poc_price': poc_price,  # Alias for compatibility
             'poc_volume': poc_volume,
             'poc_volume_pct': (poc_volume / total_volume) * 100,
             'val': val_price,
             'vah': vah_price,
+            'value_area_volume': value_area_volume,  # Absolute volume
             'value_area_volume_pct': (value_area_volume / total_volume) * 100,
+            'bias': bias,
+            'bias_strength': bias_strength,
             'hvn': hvn_prices[:10],  # Top 10 HVN
             'lvn': lvn_prices[:10],  # Top 10 LVN
             'total_volume': total_volume,
@@ -309,12 +328,22 @@ class VolumeProfile:
             resistance_levels.append(poc)
             resistance_levels = sorted(resistance_levels)[:num_levels]
 
+        # Check if price is at HVN
+        at_hvn, hvn_info = self.is_price_at_hvn(symbol, current_price)
+
+        # Find nearest support/resistance
+        nearest_support = support_levels[0] if support_levels else profile['val']
+        nearest_resistance = resistance_levels[0] if resistance_levels else profile['vah']
+
         return {
             'support': support_levels,
             'resistance': resistance_levels,
             'poc': poc,
             'val': profile['val'],
-            'vah': profile['vah']
+            'vah': profile['vah'],
+            'at_hvn': at_hvn,
+            'nearest_support': nearest_support,
+            'nearest_resistance': nearest_resistance
         }
 
     def is_price_at_hvn(

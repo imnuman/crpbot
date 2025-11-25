@@ -163,16 +163,18 @@ IMPORTANT: This is a MANUAL trading system. You generate signals for a human tra
         context: MarketContext,
         analysis: TheoryAnalysis,
         additional_context: Optional[str] = None,
-        coingecko_context: Optional[Dict[str, Any]] = None
+        coingecko_context: Optional[Dict[str, Any]] = None,
+        order_flow_features: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
         """
         Build DeepSeek chat prompt from market context and theory analysis
 
         Args:
             context: Market context (symbol, price, timeframe)
-            analysis: Results from all 7 theories (6 mathematical + CoinGecko)
+            analysis: Results from all 10 theories (6 mathematical + 4 statistical)
             additional_context: Optional additional context (news, etc.)
-            coingecko_context: Optional CoinGecko market context (7th theory)
+            coingecko_context: Optional CoinGecko market context (theory 11)
+            order_flow_features: Optional Order Flow analysis (Volume Profile, OFI, Microstructure)
 
         Returns:
             List of message dicts for DeepSeek chat API
@@ -209,6 +211,59 @@ Timestamp: {context.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
             user_prompt += f"   - Market Strength: {coingecko_context.get('market_strength', 0):.1%}\n"
             if coingecko_context.get('notes'):
                 user_prompt += f"   - Notes: {coingecko_context['notes']}\n"
+
+        # Add Order Flow analysis if available (Phase 2)
+        if order_flow_features:
+            user_prompt += "\n**8. Order Flow Analysis (Institutional Level):**\n"
+
+            # Volume Profile
+            if 'vp_poc' in order_flow_features:
+                user_prompt += "   **Volume Profile:**\n"
+                user_prompt += f"      - POC (Point of Control): ${order_flow_features['vp_poc']:,.2f}\n"
+                user_prompt += f"      - Value Area: ${order_flow_features['vp_val']:,.2f} - ${order_flow_features['vp_vah']:,.2f}\n"
+                user_prompt += f"      - Trading Bias: {order_flow_features['vp_trading_bias']} (strength: {order_flow_features.get('vp_bias_strength', 0):.2f})\n"
+                user_prompt += f"      - Value Area Volume: {order_flow_features['vp_value_area_volume']:.1%}\n"
+
+                if order_flow_features.get('vp_at_hvn'):
+                    user_prompt += f"      - ⚠️ Price at High Volume Node (strong support/resistance)\n"
+
+                if order_flow_features.get('vp_support_levels'):
+                    user_prompt += f"      - Support Levels: " + ", ".join([f"${level:,.2f}" for level in order_flow_features['vp_support_levels'][:3]]) + "\n"
+
+                if order_flow_features.get('vp_resistance_levels'):
+                    user_prompt += f"      - Resistance Levels: " + ", ".join([f"${level:,.2f}" for level in order_flow_features['vp_resistance_levels'][:3]]) + "\n"
+
+            # Order Flow Imbalance
+            if 'ofi_imbalance' in order_flow_features:
+                user_prompt += "   **Order Flow Imbalance (OFI):**\n"
+                user_prompt += f"      - Imbalance: {order_flow_features['ofi_imbalance']:+.3f} "
+                user_prompt += f"({'more bids' if order_flow_features['ofi_imbalance'] > 0 else 'more asks'})\n"
+                user_prompt += f"      - Bid/Ask Ratio: {order_flow_features['ofi_ratio']:.2f}\n"
+
+                if order_flow_features.get('ofi_whale_detected'):
+                    user_prompt += f"      - 🐋 Whale Activity Detected (large orders present)\n"
+
+            # Market Microstructure
+            if 'ms_vwap' in order_flow_features:
+                user_prompt += "   **Market Microstructure:**\n"
+                user_prompt += f"      - VWAP: ${order_flow_features['ms_vwap']:,.2f}\n"
+                user_prompt += f"      - VWAP Deviation: {order_flow_features['ms_vwap_deviation_pct']:+.2f}%\n"
+
+                if abs(order_flow_features['ms_vwap_deviation_pct']) > 1.0:
+                    if order_flow_features['ms_vwap_deviation_pct'] > 0:
+                        user_prompt += f"      - ⚠️ Trading {order_flow_features['ms_vwap_deviation_pct']:.2f}% above VWAP (expensive)\n"
+                    else:
+                        user_prompt += f"      - ✅ Trading {abs(order_flow_features['ms_vwap_deviation_pct']):.2f}% below VWAP (cheap)\n"
+
+                if 'ms_spread_bps' in order_flow_features:
+                    user_prompt += f"      - Spread: {order_flow_features['ms_spread_bps']:.1f} bps ({order_flow_features.get('ms_spread_quality', 'N/A')})\n"
+
+                if 'ms_depth_imbalance' in order_flow_features:
+                    depth_imb = order_flow_features['ms_depth_imbalance']
+                    user_prompt += f"      - Depth Imbalance: {depth_imb:+.3f} ({'bid support' if depth_imb > 0 else 'ask pressure'})\n"
+
+                if 'ms_buy_pressure' in order_flow_features:
+                    user_prompt += f"      - Buy Pressure: {order_flow_features['ms_buy_pressure']:.1%}\n"
 
         # Add additional context if provided
         if additional_context:
@@ -280,11 +335,18 @@ REASONING: High entropy (0.89) indicates random market. Insufficient edge for tr
             {"role": "user", "content": user_prompt}
         ]
 
-        theories_count = 7 if coingecko_context else 6
+        # Count theories (6 core + CoinGecko + Order Flow)
+        theories_count = 6
+        if coingecko_context:
+            theories_count += 1
+        if order_flow_features:
+            theories_count += 1
+
         logger.debug(
             f"Built prompt for {context.symbol} | "
             f"Theories: {theories_count} | "
             f"CoinGecko: {bool(coingecko_context)} | "
+            f"OrderFlow: {bool(order_flow_features)} | "
             f"Conservative: {self.conservative_mode}"
         )
 

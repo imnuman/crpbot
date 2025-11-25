@@ -1,23 +1,30 @@
 """
 V7 Ultimate Trading Runtime
-Integrates 6 mathematical theories + DeepSeek LLM for signal generation.
+Integrates 11 mathematical theories + Order Flow + DeepSeek LLM for signal generation.
 
 Architecture:
-1. Fetch live market data (100+ minutes of 1m candles)
-2. Run mathematical analysis (Shannon, Hurst, Markov, Kalman, Bayesian, Monte Carlo)
-3. Send analysis to DeepSeek LLM for signal synthesis
-4. Parse LLM response into structured signal
-5. Apply FTMO rules and rate limiting
-6. Output signal (console, database, Telegram)
+1. Fetch live market data (200+ 1m candles for analysis)
+2. Run mathematical analysis:
+   - 6 Core Theories: Shannon, Hurst, Markov, Kalman, Bayesian, Monte Carlo
+   - 4 Statistical Theories: Random Forest, Variance, Autocorrelation, Stationarity
+   - 1 Market Context: CoinGecko macro data
+3. Run Order Flow analysis (Phase 2):
+   - Volume Profile: POC, VAH/VAL, support/resistance
+   - Order Flow Imbalance: Bid/ask liquidity changes (if order book available)
+   - Market Microstructure: VWAP, spreads, depth analysis
+4. Send all analysis to DeepSeek LLM for signal synthesis
+5. Parse LLM response into structured signal
+6. Apply FTMO rules and rate limiting
+7. Output signal (console, database, Telegram)
 
 Cost Controls:
 - Track cumulative API costs
-- Enforce daily/monthly budget limits
-- Rate limit signal generation (max signals per hour)
+- Enforce daily/monthly budget limits ($5/day, $150/month)
+- Rate limit signal generation (max 3-6 signals per hour)
 
 Usage:
     runtime = V7TradingRuntime()
-    runtime.run(iterations=-1, sleep_seconds=120)  # Run continuously
+    runtime.run(iterations=-1, sleep_seconds=300)  # Run continuously (5 min intervals)
 """
 import time
 from datetime import datetime, timedelta, timezone
@@ -45,6 +52,16 @@ from libs.theories.market_context import MarketContextTheory
 from libs.theories.market_microstructure import MarketMicrostructure
 from libs.tracking.performance_tracker import PerformanceTracker
 from libs.tracking.paper_trader import PaperTrader, PaperTradeConfig
+from libs.safety import (
+    MarketRegimeDetector,
+    DrawdownCircuitBreaker,
+    CorrelationManager,
+    RejectionLogger
+)
+from libs.risk.volatility_regime_detector import VolatilityRegimeDetector
+from libs.risk.sharpe_ratio_tracker import SharpeRatioTracker
+from libs.risk.cvar_calculator import CVaRCalculator
+from libs.analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
 
 
 @dataclass
@@ -60,20 +77,30 @@ class V7RuntimeConfig:
     enable_paper_trading: bool = True  # Enable automatic paper trading
     paper_trading_aggressive: bool = True  # Paper trade all signals regardless of confidence
 
+    # Safety Guards configuration
+    enable_safety_guards: bool = True  # Enable Safety Guard modules
+    regime_adx_threshold: float = 20.0  # ADX threshold for regime detection (< 20 = choppy)
+    drawdown_warning_pct: float = 0.03  # 3% daily loss warning
+    drawdown_emergency_pct: float = 0.05  # 5% daily loss emergency
+    drawdown_shutdown_pct: float = 0.09  # 9% total loss shutdown (FTMO)
+    correlation_threshold: float = 0.7  # Base correlation threshold
+    max_portfolio_beta: float = 2.0  # Max BTC exposure (200%)
+
 
 class V7TradingRuntime:
     """
     V7 Ultimate Trading Runtime
 
-    Combines 6 mathematical theories with DeepSeek LLM for signal generation.
+    Combines 11 mathematical theories + Order Flow analysis with DeepSeek LLM for signal generation.
 
     Workflow:
-    1. Fetch live market data
-    2. Run mathematical analysis (6 theories)
-    3. Generate LLM signal
-    4. Apply FTMO rules
-    5. Rate limiting and cost controls
-    6. Output signal
+    1. Fetch live market data (OHLCV candles)
+    2. Run mathematical analysis (11 theories)
+    3. Run Order Flow analysis (Volume Profile, OFI, Microstructure)
+    4. Generate LLM signal (DeepSeek synthesis)
+    5. Apply FTMO rules
+    6. Rate limiting and cost controls
+    7. Output signal (DB, Telegram, console)
     """
 
     def __init__(self, config: Optional[Settings] = None, runtime_config: Optional[V7RuntimeConfig] = None):
@@ -171,6 +198,67 @@ class V7TradingRuntime:
         self.cost_reset_day = datetime.now(timezone.utc).day
         self.cost_reset_month = datetime.now(timezone.utc).month
 
+        # Initialize Safety Guards
+        if self.runtime_config.enable_safety_guards:
+            # Market Regime Detector (uses hardcoded thresholds: ADX > 25 = trend, ADX < 20 = chop)
+            self.regime_detector = MarketRegimeDetector()
+            logger.info("✅ Market Regime Detector initialized (ADX thresholds: >25 trend, <20 chop)")
+
+            # Drawdown Circuit Breaker
+            self.circuit_breaker = DrawdownCircuitBreaker(
+                starting_balance=self.initial_balance,
+                daily_loss_warning=self.runtime_config.drawdown_warning_pct,
+                daily_loss_emergency=self.runtime_config.drawdown_emergency_pct,
+                total_loss_shutdown=self.runtime_config.drawdown_shutdown_pct
+            )
+            logger.info(
+                f"✅ Drawdown Circuit Breaker initialized "
+                f"(thresholds: {self.runtime_config.drawdown_warning_pct:.0%}/"
+                f"{self.runtime_config.drawdown_emergency_pct:.0%}/"
+                f"{self.runtime_config.drawdown_shutdown_pct:.0%})"
+            )
+
+            # Correlation Manager
+            self.correlation_manager = CorrelationManager(
+                base_threshold=self.runtime_config.correlation_threshold
+            )
+            logger.info(f"✅ Correlation Manager initialized (threshold: {self.runtime_config.correlation_threshold:.0%})")
+
+            # Rejection Logger
+            self.rejection_logger = RejectionLogger(db_path=self.config.db_url.replace('sqlite:///', ''))
+            logger.info("✅ Rejection Logger initialized (tracking rejected signals)")
+
+            # Track open positions for correlation checks
+            self.open_positions: list[Dict[str, Any]] = []
+
+            logger.info("🛡️  Safety Guards ENABLED (4 modules active)")
+        else:
+            self.regime_detector = None
+            self.circuit_breaker = None
+            self.correlation_manager = None
+            self.rejection_logger = None
+            self.open_positions = []
+            logger.warning("⚠️  Safety Guards DISABLED")
+
+        # Initialize Volatility Regime Detector (always enabled for adaptive strategies)
+        self.volatility_detector = VolatilityRegimeDetector()
+        logger.info("✅ Volatility Regime Detector initialized (adaptive stop/target sizing)")
+
+        # Initialize Multi-Timeframe Analyzer (always enabled for signal confirmation)
+        self.mtf_analyzer = MultiTimeframeAnalyzer()
+        logger.info("✅ Multi-Timeframe Analyzer initialized (1m + 5m confirmation)")
+
+        # Initialize Sharpe Ratio Tracker (real-time performance monitoring)
+        self.sharpe_tracker = SharpeRatioTracker(risk_free_rate=0.05, max_history_days=90)
+        logger.info("✅ Sharpe Ratio Tracker initialized (risk-adjusted performance monitoring)")
+
+        # Initialize CVaR Calculator (tail risk monitoring)
+        self.cvar_calculator = CVaRCalculator(max_history=500)
+        logger.info("✅ CVaR Calculator initialized (tail risk & position sizing)")
+
+        # Load historical paper trades from database (last 90 days)
+        self._load_historical_performance_data()
+
         logger.info(f"V7 Runtime initialized | Symbols: {len(self.runtime_config.symbols)} | Conservative: {self.runtime_config.conservative_mode}")
 
     def _check_rate_limits(self, symbol: str) -> tuple[bool, str]:
@@ -256,6 +344,62 @@ class V7TradingRuntime:
         self.monthly_cost += actual_cost
         logger.debug(f"Cost updated: +${actual_cost:.6f} | Daily: ${self.daily_cost:.4f} | Monthly: ${self.monthly_cost:.2f}")
 
+    def _load_historical_performance_data(self):
+        """Load completed paper trades from database and populate Sharpe Tracker + CVaR Calculator"""
+        try:
+            session = get_session(self.config.db_url)
+
+            # Query completed paper trades from last 90 days
+            cutoff_date = datetime.now() - timedelta(days=90)
+
+            # SQL query to get completed trades
+            from libs.db.models import SignalResult
+            results = session.query(SignalResult).filter(
+                SignalResult.exit_time.isnot(None),
+                SignalResult.pnl_percent.isnot(None),
+                SignalResult.exit_time >= cutoff_date
+            ).order_by(SignalResult.exit_time).all()
+
+            loaded_count = 0
+            for result in results:
+                if result.pnl_percent is not None:
+                    return_pct = result.pnl_percent / 100.0  # Convert to decimal
+
+                    # Record to Sharpe Tracker
+                    self.sharpe_tracker.record_trade_return(
+                        timestamp=result.exit_time,
+                        return_pct=return_pct,
+                        symbol=result.symbol
+                    )
+
+                    # Record to CVaR Calculator
+                    self.cvar_calculator.record_return(
+                        return_pct=return_pct,
+                        timestamp=result.exit_time
+                    )
+
+                    loaded_count += 1
+
+            session.close()
+
+            if loaded_count > 0:
+                # Get initial metrics
+                sharpe_metrics = self.sharpe_tracker.get_sharpe_metrics()
+                cvar_metrics = self.cvar_calculator.get_cvar_metrics()
+
+                logger.info(
+                    f"📊 Loaded {loaded_count} historical paper trades | "
+                    f"30d Sharpe: {sharpe_metrics.sharpe_ratio_30d:.2f} | "
+                    f"Win Rate: {sharpe_metrics.win_rate:.1%} | "
+                    f"95% CVaR: {cvar_metrics.cvar_95_historical:.2%} ({cvar_metrics.risk_level})"
+                )
+            else:
+                logger.info("📊 No historical paper trades found (starting fresh)")
+
+        except Exception as e:
+            logger.warning(f"Failed to load historical performance data: {e}")
+            # Continue without historical data
+
     def _check_ftmo_rules(self, signal_type: SignalType, current_price: float) -> tuple[bool, str]:
         """
         Check FTMO compliance rules
@@ -293,6 +437,221 @@ class V7TradingRuntime:
         #     return False, f"Position size too large: ${position_size:.2f}"
 
         return True, "OK"
+
+    def _check_safety_guards(
+        self,
+        symbol: str,
+        result: SignalGenerationResult,
+        df: pd.DataFrame
+    ) -> tuple[bool, str, Optional[int]]:
+        """
+        Apply Safety Guard checks to signal
+
+        Args:
+            symbol: Trading symbol
+            result: Signal generation result
+            df: OHLCV DataFrame for regime detection
+
+        Returns:
+            Tuple of (allowed, reason, rejection_id)
+            - allowed: True if signal passes all safety checks
+            - reason: Rejection reason if blocked
+            - rejection_id: ID of rejection log entry (for counterfactual tracking)
+        """
+        if not self.runtime_config.enable_safety_guards:
+            return True, "OK", None
+
+        signal = result.parsed_signal.signal
+        direction = 'long' if signal == SignalType.BUY else 'short' if signal == SignalType.SELL else 'hold'
+
+        # HOLD signals skip safety checks
+        if signal == SignalType.HOLD:
+            return True, "OK", None
+
+        # Check 1: Market Regime Detector
+        regime_result = self.regime_detector.detect_regime(symbol, df)
+
+        if not regime_result.should_trade:
+            # Log rejection
+            rejection_id = self.rejection_logger.log_rejection(
+                symbol=symbol,
+                direction=direction,
+                confidence=result.parsed_signal.confidence,
+                rejection_reason=regime_result.reason,
+                rejection_category='regime',
+                rejection_details={
+                    'regime': regime_result.regime,
+                    'quality': regime_result.quality,
+                    'confidence': regime_result.confidence,
+                    'metrics': regime_result.metrics
+                },
+                market_context={
+                    'regime': regime_result.regime,
+                    'volatility': regime_result.metrics.get('atr_pct'),
+                    'trend_strength': regime_result.metrics.get('adx')
+                },
+                theory_scores={
+                    'shannon_entropy': result.theory_analysis.entropy,
+                    'hurst': result.theory_analysis.hurst,
+                    'markov_state': result.theory_analysis.markov_state
+                },
+                hypothetical_prices={
+                    'entry': result.parsed_signal.entry_price,
+                    'sl': result.parsed_signal.stop_loss,
+                    'tp': result.parsed_signal.take_profit
+                }
+            )
+
+            logger.warning(f"🛡️  REGIME BLOCK: {regime_result.reason}")
+            return False, f"Regime: {regime_result.reason}", rejection_id
+
+        # Check 2: Drawdown Circuit Breaker
+        dd_status = self.circuit_breaker.check_drawdown()
+
+        if not dd_status.is_trading_allowed:
+            # Log rejection
+            rejection_id = self.rejection_logger.log_rejection(
+                symbol=symbol,
+                direction=direction,
+                confidence=result.parsed_signal.confidence,
+                rejection_reason=dd_status.message,
+                rejection_category='drawdown',
+                rejection_details={
+                    'level': dd_status.level,
+                    'daily_drawdown_pct': dd_status.daily_drawdown_pct,
+                    'total_drawdown_pct': dd_status.total_drawdown_pct,
+                    'current_balance': dd_status.current_balance
+                },
+                market_context={
+                    'regime': regime_result.regime,
+                    'volatility': regime_result.metrics.get('atr_pct'),
+                    'trend_strength': regime_result.metrics.get('adx')
+                },
+                theory_scores={
+                    'shannon_entropy': result.theory_analysis.entropy,
+                    'hurst': result.theory_analysis.hurst,
+                    'markov_state': result.theory_analysis.markov_state
+                },
+                hypothetical_prices={
+                    'entry': result.parsed_signal.entry_price,
+                    'sl': result.parsed_signal.stop_loss,
+                    'tp': result.parsed_signal.take_profit
+                }
+            )
+
+            logger.warning(f"🛡️  DRAWDOWN BLOCK: {dd_status.message}")
+            return False, f"Drawdown: {dd_status.message}", rejection_id
+
+        # Apply size multiplier if in warning level
+        if dd_status.position_size_multiplier < 1.0:
+            logger.warning(
+                f"⚠️  DRAWDOWN WARNING: Position size reduced to {dd_status.position_size_multiplier:.0%} "
+                f"(Daily: {dd_status.daily_drawdown_pct:+.2%})"
+            )
+
+        # Check 3: Correlation Manager
+        # Determine market volatility from ATR
+        atr_pct = regime_result.metrics.get('atr_pct', 0.02)
+        if atr_pct > 0.03:
+            market_volatility = 'high'
+        elif atr_pct < 0.015:
+            market_volatility = 'low'
+        else:
+            market_volatility = 'normal'
+
+        corr_result = self.correlation_manager.check_new_position(
+            new_symbol=symbol,
+            new_direction=direction,
+            open_positions=self.open_positions,
+            market_volatility=market_volatility
+        )
+
+        if not corr_result.allowed:
+            # Log rejection
+            rejection_id = self.rejection_logger.log_rejection(
+                symbol=symbol,
+                direction=direction,
+                confidence=result.parsed_signal.confidence,
+                rejection_reason=corr_result.reason,
+                rejection_category='correlation',
+                rejection_details={
+                    'max_correlation': corr_result.max_correlation,
+                    'threshold': corr_result.threshold,
+                    'correlation_details': corr_result.correlation_details,
+                    'asset_class_exposure': corr_result.asset_class_exposure,
+                    'portfolio_beta': corr_result.portfolio_beta
+                },
+                market_context={
+                    'regime': regime_result.regime,
+                    'volatility': atr_pct,
+                    'trend_strength': regime_result.metrics.get('adx')
+                },
+                theory_scores={
+                    'shannon_entropy': result.theory_analysis.entropy,
+                    'hurst': result.theory_analysis.hurst,
+                    'markov_state': result.theory_analysis.markov_state
+                },
+                hypothetical_prices={
+                    'entry': result.parsed_signal.entry_price,
+                    'sl': result.parsed_signal.stop_loss,
+                    'tp': result.parsed_signal.take_profit
+                }
+            )
+
+            logger.warning(f"🛡️  CORRELATION BLOCK: {corr_result.reason}")
+            return False, f"Correlation: {corr_result.reason}", rejection_id
+
+        # Check 4: Multi-Timeframe Confirmation
+        mtf_result = self.mtf_analyzer.analyze(
+            df_1m=df,
+            signal_direction=direction
+        )
+
+        if not mtf_result.aligned:
+            # Log rejection
+            rejection_id = self.rejection_logger.log_rejection(
+                symbol=symbol,
+                direction=direction,
+                confidence=result.parsed_signal.confidence,
+                rejection_reason=mtf_result.reason,
+                rejection_category='timeframe_conflict',
+                rejection_details={
+                    'tf_1m_trend': mtf_result.tf_1m.trend_direction,
+                    'tf_1m_momentum': mtf_result.tf_1m.momentum_direction,
+                    'tf_5m_trend': mtf_result.tf_5m.trend_direction,
+                    'tf_5m_momentum': mtf_result.tf_5m.momentum_direction,
+                    'aligned': mtf_result.aligned
+                },
+                market_context={
+                    'regime': regime_result.regime,
+                    'volatility': atr_pct,
+                    'trend_strength': regime_result.metrics.get('adx')
+                },
+                theory_scores={
+                    'shannon_entropy': result.theory_analysis.entropy,
+                    'hurst': result.theory_analysis.hurst,
+                    'markov_state': result.theory_analysis.markov_state
+                },
+                hypothetical_prices={
+                    'entry': result.parsed_signal.entry_price,
+                    'sl': result.parsed_signal.stop_loss,
+                    'tp': result.parsed_signal.take_profit
+                }
+            )
+
+            logger.warning(f"🛡️  MULTI-TF BLOCK: {mtf_result.reason}")
+            return False, f"Multi-TF: {mtf_result.reason}", rejection_id
+
+        # All safety checks passed
+        logger.info(
+            f"✅ SAFETY GUARDS PASSED | "
+            f"Regime: {regime_result.regime} ({regime_result.quality}) | "
+            f"Drawdown: Level {dd_status.level} (size: {dd_status.position_size_multiplier:.0%}) | "
+            f"Correlation: {corr_result.max_correlation:.2f} (limit: {corr_result.threshold:.2f}) | "
+            f"Multi-TF: {mtf_result.primary_direction} (1m+5m aligned)"
+        )
+
+        return True, "OK", None
 
     def _format_signal_output(
         self,
@@ -603,15 +962,17 @@ class V7TradingRuntime:
                 except Exception as e:
                     logger.warning(f"CoinGecko fetch failed: {e}")
 
-            # Generate signal using V7 system (with CoinGecko market context and A/B test strategy)
+            # Generate signal using V7 system (with CoinGecko market context, Order Flow, and A/B test strategy)
             result = self.signal_generator.generate_signal(
                 symbol=symbol,
                 prices=prices,
                 timestamps=timestamps,
                 current_price=current_price,
                 timeframe="1m",
-                coingecko_context=market_context,  # Pass 7th theory data to DeepSeek LLM
-                strategy=strategy  # A/B test: "v7_full_math" or "v7_deepseek_only"
+                coingecko_context=market_context,  # Pass theory 11 (Market Context) to DeepSeek LLM
+                strategy=strategy,  # A/B test: "v7_full_math" or "v7_deepseek_only"
+                candles_df=df,  # Pass OHLCV DataFrame for Order Flow analysis (Phase 2)
+                order_book=None  # Order book not available via REST API (would need WebSocket)
             )
 
             # Apply momentum override if DeepSeek is too conservative
@@ -696,6 +1057,55 @@ class V7TradingRuntime:
                 # Still return result but mark as invalid
                 result.parsed_signal.is_valid = False
                 result.parsed_signal.reasoning += f" [BLOCKED: {ftmo_reason}]"
+
+            # Check Safety Guards (after FTMO but before storing)
+            safety_ok, safety_reason, rejection_id = self._check_safety_guards(symbol, result, df)
+            if not safety_ok:
+                logger.warning(f"Safety Guards block signal for {symbol}: {safety_reason}")
+                # Mark as invalid
+                result.parsed_signal.is_valid = False
+                result.parsed_signal.reasoning += f" [SAFETY BLOCK: {safety_reason}]"
+                # Store rejection_id for potential counterfactual tracking
+                if hasattr(result, 'rejection_id'):
+                    result.rejection_id = rejection_id
+                else:
+                    result.__dict__['rejection_id'] = rejection_id
+
+            # Apply Volatility Regime Adjustments (adaptive stops/targets)
+            if result.parsed_signal.signal != SignalType.HOLD and result.parsed_signal.is_valid:
+                vol_regime = self.volatility_detector.detect_regime(df)
+
+                if result.parsed_signal.stop_loss and result.parsed_signal.take_profit:
+                    original_sl = result.parsed_signal.stop_loss
+                    original_tp = result.parsed_signal.take_profit
+
+                    # Calculate distances
+                    entry = result.parsed_signal.entry_price
+                    sl_distance = abs(entry - original_sl)
+                    tp_distance = abs(entry - original_tp)
+
+                    # Apply regime multipliers
+                    adjusted_sl_distance = sl_distance * vol_regime.recommended_stop_multiplier
+                    adjusted_tp_distance = tp_distance * vol_regime.recommended_target_multiplier
+
+                    # Calculate new levels
+                    if result.parsed_signal.signal == SignalType.BUY:
+                        result.parsed_signal.stop_loss = entry - adjusted_sl_distance
+                        result.parsed_signal.take_profit = entry + adjusted_tp_distance
+                    else:  # SELL
+                        result.parsed_signal.stop_loss = entry + adjusted_sl_distance
+                        result.parsed_signal.take_profit = entry - adjusted_tp_distance
+
+                    logger.info(
+                        f"📊 VOLATILITY REGIME: {vol_regime.regime.upper()} | "
+                        f"ATR %ile: {vol_regime.atr_percentile:.0%} | "
+                        f"Stop: {vol_regime.recommended_stop_multiplier:.1f}x | "
+                        f"Target: {vol_regime.recommended_target_multiplier:.1f}x | "
+                        f"Bias: {vol_regime.trade_bias}"
+                    )
+
+                    # Update reasoning
+                    result.parsed_signal.reasoning += f" [VOLATILITY: {vol_regime.regime} regime, {vol_regime.trade_bias} bias]"
 
             return result
 
@@ -855,6 +1265,23 @@ class V7TradingRuntime:
 
                         if exited_trades:
                             logger.info(f"📊 Closed {len(exited_trades)} paper trades this iteration")
+
+                            # Record each trade to Sharpe Tracker and CVaR Calculator
+                            for trade in exited_trades:
+                                return_pct = trade['pnl_percent'] / 100.0  # Convert to decimal
+
+                                # Record to Sharpe Tracker
+                                self.sharpe_tracker.record_trade_return(
+                                    timestamp=trade['exit_time'],
+                                    return_pct=return_pct,
+                                    symbol=trade['symbol']
+                                )
+
+                                # Record to CVaR Calculator
+                                self.cvar_calculator.record_return(
+                                    return_pct=return_pct,
+                                    timestamp=trade['exit_time']
+                                )
                     except Exception as e:
                         logger.error(f"Failed to check/exit paper trades: {e}")
 
@@ -867,6 +1294,36 @@ class V7TradingRuntime:
                 logger.info(f"  Bayesian Total Trades: {stats['bayesian_total_trades']}")
                 logger.info(f"  Daily Cost:            ${self.daily_cost:.4f} / ${self.runtime_config.max_cost_per_day:.2f}")
                 logger.info(f"  Monthly Cost:          ${self.monthly_cost:.2f} / ${self.runtime_config.max_cost_per_month:.2f}")
+
+                # Print Sharpe Ratio metrics (if enough trades)
+                sharpe_metrics = self.sharpe_tracker.get_sharpe_metrics()
+                cvar_metrics = self.cvar_calculator.get_cvar_metrics()
+
+                if sharpe_metrics.total_trades >= 5:
+                    logger.info(f"\n📊 Sharpe Ratio Performance:")
+                    logger.info(f"  7-day Sharpe:          {sharpe_metrics.sharpe_ratio_7d:.2f}")
+                    logger.info(f"  14-day Sharpe:         {sharpe_metrics.sharpe_ratio_14d:.2f}")
+                    logger.info(f"  30-day Sharpe:         {sharpe_metrics.sharpe_ratio_30d:.2f}")
+                    logger.info(f"  Ann. Return:           {sharpe_metrics.annualized_return:+.1%}")
+                    logger.info(f"  Ann. Volatility:       {sharpe_metrics.annualized_volatility:.1%}")
+                    logger.info(f"  Max Drawdown:          {sharpe_metrics.max_drawdown:.1%}")
+                    logger.info(f"  Performance Trend:     {sharpe_metrics.performance_trend.upper()}")
+                    logger.info(f"  Summary: {sharpe_metrics.summary}")
+                elif sharpe_metrics.total_trades > 0:
+                    logger.info(f"\n📊 Sharpe Ratio: {sharpe_metrics.total_trades} trades (need 5+ for metrics)")
+
+                # Print CVaR metrics (if enough trades)
+                if cvar_metrics.risk_level != 'unknown':
+                    logger.info(f"\n⚠️  CVaR (Tail Risk) Analysis:")
+                    logger.info(f"  95% CVaR:              {cvar_metrics.cvar_95_historical:.2%}")
+                    logger.info(f"  99% CVaR:              {cvar_metrics.cvar_99_historical:.2%}")
+                    logger.info(f"  Worst Loss:            {cvar_metrics.worst_loss:.2%}")
+                    logger.info(f"  Tail Ratio:            {cvar_metrics.tail_ratio:.2f}x")
+                    logger.info(f"  Risk Level:            {cvar_metrics.risk_level.upper()}")
+                    logger.info(f"  Max Position (95%):    {cvar_metrics.max_position_size_95:.0%}")
+                    if cvar_metrics.warnings:
+                        for warning in cvar_metrics.warnings:
+                            logger.info(f"  {warning}")
 
                 # Sleep until next iteration
                 if iterations == -1 or iteration < iterations:

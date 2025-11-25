@@ -174,7 +174,7 @@ class OrderFlowAnalyzer:
                     'vp_poc': poc,
                     'vp_vah': vah,
                     'vp_val': val,
-                    'vp_value_area_volume': profile['value_area_volume'],
+                    'vp_value_area_volume': profile['value_area_volume_pct'] / 100,  # Convert to decimal (0.70)
                     'vp_distance_from_poc': distance_from_poc,
                     'vp_distance_from_vah': distance_from_vah,
                     'vp_distance_from_val': distance_from_val,
