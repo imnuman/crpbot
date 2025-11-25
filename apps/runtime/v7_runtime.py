@@ -64,6 +64,7 @@ from libs.risk.cvar_calculator import CVaRCalculator
 from libs.risk.sortino_ratio_tracker import SortinoRatioTracker
 from libs.analysis.multi_timeframe_analyzer import MultiTimeframeAnalyzer
 from libs.analysis.information_coefficient import InformationCoefficientAnalyzer
+from libs.portfolio.optimizer import PortfolioOptimizer
 
 
 @dataclass
@@ -265,6 +266,14 @@ class V7TradingRuntime:
         # Initialize Information Coefficient Analyzer (signal quality)
         self.ic_analyzer = InformationCoefficientAnalyzer(max_history=500)
         logger.info("✅ Information Coefficient Analyzer initialized (theory ranking)")
+
+        # Initialize Portfolio Optimizer (Markowitz mean-variance optimization)
+        self.portfolio_optimizer = PortfolioOptimizer(
+            symbols=self.runtime_config.symbols,
+            lookback_days=365,
+            risk_free_rate=0.05
+        )
+        logger.info("✅ Portfolio Optimizer initialized (Markowitz MPT, 10 assets)")
 
         # Load historical paper trades from database (last 90 days)
         self._load_historical_performance_data()
@@ -1366,6 +1375,52 @@ class V7TradingRuntime:
                         logger.info(f"  Sortino / Sharpe:      {sortino_metrics.sortino_sharpe_ratio:.2f}x")
                         if sortino_metrics.sortino_sharpe_ratio > 1.0:
                             logger.info(f"  ✅ Favorable asymmetry (wins > losses)")
+
+                # Run Portfolio Optimization (every 10 iterations or when we have enough data)
+                if iteration % 10 == 0:
+                    try:
+                        logger.info("\n💼 Running Portfolio Optimization (Markowitz MPT)...")
+
+                        # Load historical prices from database
+                        prices_df = self.portfolio_optimizer.load_historical_prices(data_source='database')
+
+                        if not prices_df.empty and len(prices_df) >= 30:
+                            # Optimize for max Sharpe ratio
+                            optimal_portfolio = self.portfolio_optimizer.optimize_max_sharpe(prices_df)
+
+                            logger.info(f"\n💼 Optimal Portfolio Allocation (Markowitz):")
+                            logger.info(f"  Expected Annual Return:    {optimal_portfolio.expected_annual_return:.1%}")
+                            logger.info(f"  Annual Volatility:         {optimal_portfolio.annual_volatility:.1%}")
+                            logger.info(f"  Sharpe Ratio:              {optimal_portfolio.sharpe_ratio:.2f}")
+                            logger.info(f"  Max Drawdown (est):        {optimal_portfolio.max_drawdown_estimate:.1%}")
+                            logger.info(f"  Diversification Ratio:     {optimal_portfolio.diversification_ratio:.2f}")
+                            logger.info(f"  Active Assets:             {optimal_portfolio.n_assets}")
+                            logger.info(f"  Concentration (HHI):       {optimal_portfolio.concentration_hhi:.3f}")
+
+                            logger.info(f"\n  Optimal Weights (Top 5):")
+                            sorted_weights = sorted(
+                                optimal_portfolio.weights.items(),
+                                key=lambda x: x[1],
+                                reverse=True
+                            )
+                            for symbol, weight in sorted_weights[:5]:
+                                if weight > 0.01:  # Only show > 1%
+                                    logger.info(f"    {symbol}: {weight:>6.1%}")
+
+                            # Show interpretation
+                            if optimal_portfolio.sharpe_ratio >= 2.0:
+                                logger.info(f"  ✅ EXCELLENT portfolio (Sharpe >= 2.0)")
+                            elif optimal_portfolio.sharpe_ratio >= 1.5:
+                                logger.info(f"  ✅ VERY GOOD portfolio (Sharpe >= 1.5)")
+                            elif optimal_portfolio.sharpe_ratio >= 1.0:
+                                logger.info(f"  ✅ GOOD portfolio (Sharpe >= 1.0)")
+                            else:
+                                logger.info(f"  ⚠️  MODERATE portfolio (Sharpe < 1.0)")
+                        else:
+                            logger.info(f"  ⚠️  Insufficient price data ({len(prices_df)} days, need 30+)")
+
+                    except Exception as e:
+                        logger.error(f"Portfolio optimization failed: {e}")
 
                 # Sleep until next iteration
                 if iterations == -1 or iteration < iterations:
