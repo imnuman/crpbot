@@ -233,6 +233,7 @@ class PaperTrader:
                             'direction': direction,
                             'entry_price': entry_price,
                             'exit_price': current_price,
+                            'exit_time': exit_time,  # Add missing exit_time
                             'pnl_percent': pnl_pct,
                             'exit_reason': exit_reason.value
                         })
