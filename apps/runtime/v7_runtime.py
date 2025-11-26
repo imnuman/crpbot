@@ -1297,8 +1297,8 @@ class V7TradingRuntime:
                 output = self._format_signal_output(symbol, result, current_price)
                 print(output)
 
-                # Save to database with strategy tag
-                self._save_signal_to_db(symbol, result, current_price, strategy=strategy)
+                # Save to database with strategy tag (use human-readable label for dashboard)
+                self._save_signal_to_db(symbol, result, current_price, strategy=strategy_label)
 
                 # Send to Telegram
                 if self.telegram.enabled:
