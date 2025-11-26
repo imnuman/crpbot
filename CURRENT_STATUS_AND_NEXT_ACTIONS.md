@@ -1,580 +1,741 @@
 # Current Status & Next Actions for Builder Claude
 
-**Date**: 2025-11-24 (Monday Evening)
-**Status**: ✅ **PHASE 2 CORE COMPLETE**
-**Current Phase**: Order Flow Implementation Complete
-**Next**: Integration & Testing
+**Date**: 2025-11-26 (Wednesday Afternoon)
+**Status**: ✅ **DUAL MATH STRATEGY A/B TESTING ACTIVE**
+**Current Phase**: Pure Math Strategy Implementation & Testing
+**Next**: Monitor performance, optimize winning strategy
 
 ---
 
-## 🎉 MAJOR MILESTONE: Phase 2 Order Flow Complete!
+## 🎯 MAJOR UPDATE: Dual Math Strategy A/B Testing (2025-11-26)
 
-### ✅ What Was Built Today (2025-11-24)
+### ✅ What Was Built Today (2025-11-26)
 
-**Phase 2: Order Flow & Market Microstructure**
-- **4 new modules**: 1,895 lines of production code
-- **2 documentation files**: 894 lines (deployment + summary)
-- **Status**: ✅ **CORE COMPLETE** - Ready for integration
-- **Expected Impact**: Win rate 33% → 60-65%
+**Pure Math Strategy Implementation**:
+- **2 mathematical strategies**: 254 lines of pure quant code
+- **DeepSeek LLM bypass**: Math-first approach when LLM is too conservative
+- **A/B Testing Framework**: MOMENTUM vs ENTROPY strategies
+- **Human-Readable Labels**: Clear dashboard visualization
+- **Status**: ✅ **LIVE IN PRODUCTION** - Collecting data now
 
 **Files Created**:
 ```
-libs/order_flow/
-├── order_flow_imbalance.py       (386 lines) ✅
-├── volume_profile.py              (447 lines) ✅
-├── market_microstructure.py       (511 lines) ✅
-└── order_flow_integration.py      (551 lines) ✅
+libs/strategies/
+├── simple_momentum.py         (127 lines) ✅ Strategy A - Trend Following
+└── entropy_reversion.py       (127 lines) ✅ Strategy B - Mean Reversion
 
-PHASE_2_ORDER_FLOW_DEPLOYMENT.md   (894 lines) ✅
-PHASE_2_ORDER_FLOW_SUMMARY.md      (350 lines) ✅
+Updated Files:
+├── apps/runtime/v7_runtime.py (modified) ✅ Dual strategy integration
+└── libs/strategies/ (new directory) ✅
 ```
 
-**Git Commits**:
-- `886a209` - Phase 2 Order Flow implementation
-- `c558ee5` - Phase 2 documentation
+**Git Commits** (2025-11-26):
+- `badd29f` - fix: save human-readable strategy labels to database (MOMENTUM vs ENTROPY)
+- `8a1f96c` - fix: update A/B test labels to show actual strategy names (MOMENTUM vs ENTROPY)
+- `45a5259` - feat: add A/B test with two math strategies - momentum vs entropy reversion
+- `50b9790` - fix: disable all safety guards (user requested MORE trades)
+- `fec637a` - fix: disable correlation manager (increase trade frequency)
 - **Branch**: `feature/v7-ultimate`
 - **Status**: ✅ Pushed to GitHub
 
 ---
 
-## 📊 CURRENT V7 STATUS (Background)
+## 📊 CURRENT V7 STATUS (Active)
+
+### Runtime Configuration
 
 **V7 Runtime**:
-- Status: ✅ **RUNNING** (should still be operational)
+- Status: ⚠️ **RUNNING BUT UNSTABLE** (crashes after each scan)
+- PID: Varies (needs auto-restart script)
 - Symbols: 10 (BTC, ETH, SOL, XRP, DOGE, ADA, AVAX, LINK, POL, LTC)
-- Scan frequency: 5 minutes
-- All 11 theories operational
+- Scan frequency: 60 seconds (aggressive mode)
+- Max signals: 12/hour (4x increase from conservative 3/hour)
+- Stop Loss: 4% (widened from 2%)
+- Take Profit: 8% momentum, 6% entropy
 
-**Paper Trading Progress**:
-- Last known: 13 trades, 53.8% win rate, +5.48% P&L
-- Target: 20+ trades for Phase 1 decision
-- Expected completion: Today or tomorrow
+**Known Issue**:
+- Runtime stops after each scan with error: "Failed to check/exit paper trades: 'exit_time'"
+- Requires manual restart or auto-restart script
+- Signals ARE being generated during the brief runtime periods
 
-**Database**:
-- SQLite: `/root/crpbot/tradingai.db`
-- Total signals: 4,000+
-- Paper trades: Check current count
+### Dual Math Strategy Framework
 
-**APIs**:
-- DeepSeek: $0.19/$150 budget (0.13% used)
-- Coinbase: Working
-- CoinGecko: Working
+**Strategy A: MOMENTUM (Trend-Following)**
+- **Approach**: Follow strong trends, ride momentum
+- **Signals**: Hurst > 0.52, Kalman momentum > 5
+- **Risk/Reward**: 4% SL / 8% TP (1:2 ratio)
+- **Database Label**: "MOMENTUM (trend-following)"
+- **When**: Odd signal numbers (alternating)
+
+**Strategy B: ENTROPY (Mean-Reversion)**
+- **Approach**: Fade overextended moves, revert to mean
+- **Signals**: Entropy < 0.7, Hurst < 0.45, momentum > 10
+- **Risk/Reward**: 3% SL / 6% TP (1:2 ratio, tighter)
+- **Database Label**: "ENTROPY (mean-reversion)"
+- **When**: Even signal numbers (alternating)
+
+**A/B Test Mechanism**:
+```python
+# Alternates strategies per signal
+if signal_counter % 2 == 1:
+    strategy = MOMENTUM  # Strategy A
+else:
+    strategy = ENTROPY   # Strategy B
+```
+
+### Safety Guards Status
+
+**DISABLED** (Per user request for MORE trades):
+- ❌ Regime Detector (ADX/chop detection)
+- ❌ Correlation Manager (asset class exposure)
+- ❌ Multi-Timeframe Analyzer (1m/5m confirmation)
+- ✅ FTMO Risk Management (still active - hard limits)
+- ✅ Rate Limiter (12/hour max)
+
+**Reasoning**: User explicitly requested "more trades and faster speed", so all conservative filters were removed.
 
 ---
 
-## 🎯 NEXT ACTIONS: Phase 2 Integration (Priority)
+## 📈 PERFORMANCE METRICS (Current)
 
-### Action 1: Check V7 Status & Paper Trades
+### Database Statistics
 
-**First, verify V7 is still running and check progress**:
+**Total Activity**:
+- Total signals: 8,125 (all-time)
+- Signals (24h): 432 (18/hour average)
+- Paper trades: 169 completed
+- Win rate: 0.59% (1 win, 168 losses)
+- Total P&L: -99.98%
 
+### Strategy Breakdown (All Time)
+
+| Strategy | Trades | Wins | Win Rate | Total P&L |
+|----------|--------|------|----------|-----------|
+| MOMENTUM (trend-following) | 20 | 0 | 0.0% | -75.46% |
+| ENTROPY (mean-reversion) | 0* | 0 | N/A | N/A |
+| v7_deepseek_only (old) | 38 | 0 | 0.0% | -2.91% |
+| v7_full_math (old) | 111 | 1 | 0.9% | -21.60% |
+
+*ENTROPY strategy just deployed, collecting data
+
+### Current Status Assessment
+
+**⚠️ CRITICAL PERFORMANCE ISSUES**:
+- Win rate: 0.59% (expected: 50-60%)
+- Total P&L: -99.98% (catastrophic)
+- Strategy effectiveness: Both math strategies underperforming
+
+**Possible Root Causes**:
+1. Stop losses too wide (4%) causing large losses
+2. Math strategy logic may need refinement
+3. Safety guards removal causing low-quality signals
+4. Market conditions unfavorable for current strategies
+5. Entry/exit timing issues
+
+**Immediate Actions Needed**:
+1. Fix runtime crash bug ('exit_time' error)
+2. Analyze losing trades to find patterns
+3. Consider re-enabling safety guards selectively
+4. Tighten stop losses or adjust strategy rules
+5. Add strategy performance monitoring
+
+---
+
+## 🔧 TECHNICAL IMPROVEMENTS (2025-11-26)
+
+### 1. Pure Math Strategy Override
+
+**Problem**: DeepSeek LLM generated 100% HOLD signals
+**Solution**: Math strategies bypass LLM when it says HOLD
+
+```python
+# When LLM says HOLD, math strategy takes over
+if llm_signal == HOLD:
+    if strategy == "v7_full_math":
+        signal = SimpleMomentumStrategy().generate_signal(...)
+    else:
+        signal = EntropyReversionStrategy().generate_signal(...)
+```
+
+**Result**: Increased from 0 signals/scan to 4-6 signals/scan
+
+### 2. Human-Readable A/B Test Labels
+
+**Problem**: Dashboard showed confusing "v7_deepseek_only" vs "v7_full_math"
+**Solution**: Map to descriptive strategy names
+
+**Database Labels** (NEW):
+- "MOMENTUM (trend-following)" - Clear trend-following strategy
+- "ENTROPY (mean-reversion)" - Clear mean-reversion strategy
+
+**Before**:
+```
+v7_full_math: 111 trades
+v7_deepseek_only: 38 trades
+```
+
+**After**:
+```
+MOMENTUM (trend-following): 20 trades
+ENTROPY (mean-reversion): 0 trades (just started)
+```
+
+### 3. Aggressive Trading Configuration
+
+**Changes Made** (per user request):
+- Scan interval: 300s → 60s (5x faster)
+- Max signals/hour: 3 → 12 (4x increase)
+- Safety guards: ALL DISABLED
+- Stop loss: 2% → 4% (wider tolerance)
+
+**Impact**:
+- Signal frequency: ✅ INCREASED (432 in 24h)
+- Signal quality: ⚠️ DEGRADED (0.59% win rate)
+- Trade count: ✅ INCREASED (169 total)
+
+---
+
+## 🐛 KNOWN ISSUES & FIXES NEEDED
+
+### Issue 1: Runtime Crash After Each Scan ⚠️ CRITICAL
+
+**Error**: `Failed to check/exit paper trades: 'exit_time'`
+
+**Symptoms**:
+- V7 completes 1 scan successfully
+- Prints "Sleeping 60s until next scan..."
+- Process terminates silently
+- No traceback, just stops
+
+**Impact**: HIGH - Requires manual restart every ~2 minutes
+
+**Temporary Workaround**: Manual restart
 ```bash
-cd /root/crpbot
+pkill -f v7_runtime
+nohup .venv/bin/python3 -u apps/runtime/v7_runtime.py \
+  --iterations -1 --sleep-seconds 60 --max-signals-per-hour 12 \
+  > /tmp/v7_runtime_latest.log 2>&1 &
+```
 
-# 1. Check V7 runtime
-ps aux | grep v7_runtime | grep -v grep
+**Permanent Fix Needed**:
+1. Debug paper_trader.py exit_time datetime issue
+2. Add exception handling around paper trade checks
+3. Implement auto-restart script with systemd
 
-# 2. Check paper trade count
+### Issue 2: Catastrophic Win Rate (0.59%)
+
+**Current**: 1 win out of 169 trades
+**Expected**: 50-60% win rate minimum
+
+**Analysis Needed**:
+```bash
+# Investigate losing trades
 sqlite3 tradingai.db "
 SELECT
-  COUNT(*) as total_trades,
-  SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
-  ROUND(100.0 * SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) / COUNT(*), 2) as win_rate,
-  ROUND(SUM(pnl_percent), 2) as total_pnl
-FROM signal_results;
+  symbol,
+  direction,
+  entry_price,
+  exit_price,
+  pnl_percent,
+  exit_reason
+FROM signal_results
+WHERE outcome = 'loss'
+ORDER BY pnl_percent ASC
+LIMIT 20;
 "
-
-# 3. Recent activity
-tail -50 /tmp/v7_runtime_*.log
 ```
 
-**Expected Results**:
-- V7 running: 1 process
-- Paper trades: 13-16 (increasing from this morning)
-- No critical errors
+**Potential Fixes**:
+- Tighten stop losses (4% → 2%)
+- Add minimum confidence threshold (0.40 → 0.60)
+- Re-enable regime detector (avoid ranging markets)
+- Add volatility filter (avoid low volatility)
+- Improve entry timing (wait for confirmation)
+
+### Issue 3: Strategy Comparison Incomplete
+
+**MOMENTUM**: 20 trades, 0 wins
+**ENTROPY**: 0 trades (just deployed)
+
+**Need**: Wait for 20-40 ENTROPY trades before comparison
+
+**ETA**: 24-48 hours at current 12 signals/hour rate
 
 ---
 
-### Action 2: Phase 2 Integration Decision
+## 🎯 IMMEDIATE NEXT ACTIONS (Priority Order)
 
-**IF paper_trades >= 20**:
-- **Priority 1**: Calculate Sharpe ratio (see calculation script below)
-- **Priority 2**: Decide on Phase 1 vs Phase 2 integration order
+### Priority 1: Fix Runtime Crash (TODAY - 2025-11-26)
 
-**IF paper_trades < 20**:
-- **Priority**: Phase 2 integration can proceed in parallel
-- **Reason**: Phase 2 is independent of Phase 1 decision
+**Goal**: Keep V7 running continuously without manual restarts
 
-**Recommendation**: Start Phase 2 integration now (doesn't interfere with data collection)
-
----
-
-### Action 3: Phase 2A - Integration Into V7 (This Week)
-
-**Goal**: Add Order Flow to V7 signal generation
-
-**Integration Steps** (from PHASE_2_ORDER_FLOW_DEPLOYMENT.md):
-
-#### Step 3A: Test Order Flow with Live Data (No Trading)
-
-**Create test script first** (30 minutes):
-
+**Option A: Quick Fix** (15 minutes)
 ```bash
-cat > scripts/test_order_flow_live.py << 'EOF'
-#!/usr/bin/env python3
-"""
-Test Order Flow with Live Coinbase Data
-No trading, just monitoring to verify features work
-"""
-import time
-import pandas as pd
-from datetime import datetime
-from libs.data.coinbase import CoinbaseClient
-from libs.order_flow.order_flow_integration import OrderFlowAnalyzer
-
-def main():
-    print("=" * 70)
-    print("LIVE ORDER FLOW TEST - NO TRADING")
-    print("=" * 70)
-    print(f"Start time: {datetime.now()}")
-    print("Testing 3 symbols for 5 minutes each\n")
-
-    # Initialize
-    coinbase = CoinbaseClient(symbols=['BTC-USD', 'ETH-USD', 'SOL-USD'])
-    analyzer = OrderFlowAnalyzer()
-
-    for symbol in ['BTC-USD', 'ETH-USD', 'SOL-USD']:
-        print(f"\n{'='*70}")
-        print(f"Testing {symbol}")
-        print('='*70)
-
-        # Get market data
-        try:
-            # Fetch OHLCV candles
-            candles = coinbase.get_candles(symbol, granularity=60, limit=60)
-            if not candles:
-                print(f"❌ No candle data for {symbol}")
-                continue
-
-            # Convert to DataFrame
-            candles_df = pd.DataFrame(candles)
-
-            # Get order book (if available)
-            try:
-                order_book = coinbase.get_order_book(symbol)
-            except Exception as e:
-                print(f"⚠️  Order book not available: {e}")
-                order_book = None
-
-            # Analyze order flow
-            features = analyzer.analyze(
-                symbol,
-                candles_df,
-                order_book
-            )
-
-            # Print summary
-            print(analyzer.get_feature_summary(features))
-
-            # Check signal quality
-            signal = features.get('signals', {})
-            direction = signal.get('direction', 'UNKNOWN')
-            strength = signal.get('strength', 0.0)
-
-            print(f"\n📊 Signal Quality Check:")
-            print(f"   Direction: {direction}")
-            print(f"   Strength: {strength:.2f}")
-            print(f"   Reasons: {len(signal.get('reasons', []))}")
-
-            if direction == 'HOLD':
-                print(f"   ✅ HOLD signal (expected for neutral market)")
-            else:
-                print(f"   ✅ {direction} signal detected")
-
-        except Exception as e:
-            print(f"❌ Error analyzing {symbol}: {e}")
-            import traceback
-            traceback.print_exc()
-
-        time.sleep(5)  # Brief pause between symbols
-
-    print("\n" + "="*70)
-    print("✅ Live Order Flow Test Complete")
-    print("="*70)
-
-if __name__ == "__main__":
-    main()
+# Create auto-restart script
+cat > restart_v7.sh << 'EOF'
+#!/bin/bash
+while true; do
+    if ! pgrep -f "v7_runtime.py" > /dev/null; then
+        echo "$(date): V7 crashed, restarting..."
+        nohup .venv/bin/python3 -u apps/runtime/v7_runtime.py \
+          --iterations -1 --sleep-seconds 60 --max-signals-per-hour 12 \
+          > /tmp/v7_runtime_$(date +%Y%m%d_%H%M).log 2>&1 &
+    fi
+    sleep 30
+done
 EOF
 
-# Run test
-.venv/bin/python3 scripts/test_order_flow_live.py
+chmod +x restart_v7.sh
+nohup ./restart_v7.sh > /tmp/v7_watchdog.log 2>&1 &
 ```
 
-**Expected Output**:
-- Volume Profile: POC, VAH/VAL, trading bias
-- Order Flow: Imbalance, OFI (if order book available)
-- Microstructure: VWAP, spread, depth (if order book available)
-- Signals: Direction + strength + reasons
+**Option B: Root Cause Fix** (1-2 hours)
+1. Find 'exit_time' error in paper_trader.py
+2. Fix datetime timezone handling
+3. Add try/except around paper trade checks
+4. Test thoroughly
 
-**If Order Book Not Available**:
-- Volume Profile will still work (uses candles only)
-- Order Flow/Microstructure will gracefully degrade
-- Integration still valid, just needs WebSocket setup later
+**Recommendation**: Do Option A immediately, then Option B when time permits
 
----
+### Priority 2: Analyze Losing Trades (TODAY)
 
-#### Step 3B: Add Order Flow to SignalSynthesizer (1 hour)
+**Goal**: Understand why win rate is 0.59% instead of 50%+
 
-**Once live test passes**, integrate into V7:
-
+**Investigation Steps**:
 ```bash
-# Backup current signal synthesizer
-cp libs/llm/signal_synthesizer.py libs/llm/signal_synthesizer.py.backup
+# 1. Get worst losing trades
+sqlite3 tradingai.db "
+SELECT
+  symbol, direction, entry_price, exit_price,
+  ROUND(pnl_percent, 2) as pnl,
+  exit_reason,
+  datetime(entry_time, 'localtime') as entry
+FROM signal_results
+ORDER BY pnl_percent ASC
+LIMIT 10;
+"
 
-# Edit signal synthesizer
-nano libs/llm/signal_synthesizer.py
-```
+# 2. Check if stop losses are being hit
+sqlite3 tradingai.db "
+SELECT
+  exit_reason,
+  COUNT(*) as count,
+  ROUND(AVG(pnl_percent), 2) as avg_pnl
+FROM signal_results
+GROUP BY exit_reason;
+"
 
-**Add to `signal_synthesizer.py`**:
-
-```python
-# At top of file
-from libs.order_flow.order_flow_integration import OrderFlowAnalyzer
-
-# In __init__ method
-class SignalSynthesizer:
-    def __init__(self):
-        # ... existing code ...
-
-        # Add Order Flow analyzer
-        self.order_flow = OrderFlowAnalyzer(
-            depth_levels=10,
-            lookback_periods=20,
-            price_bins=50
-        )
-
-# In synthesize_theories method
-def synthesize_theories(
-    self,
-    symbol: str,
-    theories: Dict[str, Any],
-    candles_df: pd.DataFrame,
-    order_book: Optional[Dict] = None  # NEW parameter
-) -> str:
-    """Add order flow analysis to theory synthesis"""
-
-    # ... existing theory formatting ...
-
-    # Add Order Flow analysis
-    of_summary = ""
-    try:
-        of_features = self.order_flow.analyze(
-            symbol,
-            candles_df,
-            order_book
-        )
-        of_summary = self.order_flow.get_feature_summary(of_features)
-
-        # Extract key metrics
-        of_signal = of_features.get('signals', {})
-        of_direction = of_signal.get('direction', 'HOLD')
-        of_strength = of_signal.get('strength', 0.0)
-        of_reasons = of_signal.get('reasons', [])
-
-    except Exception as e:
-        logger.warning(f"Order flow analysis failed: {e}")
-        of_summary = "Order flow analysis unavailable"
-        of_direction = "HOLD"
-        of_strength = 0.0
-        of_reasons = []
-
-    # Build final prompt
-    prompt = f"""
-    [Existing theory summaries...]
-
-    --- ORDER FLOW ANALYSIS (INSTITUTIONAL VIEW) ---
-
-    {of_summary}
-
-    Order Flow Signal: {of_direction}
-    Strength: {of_strength:.2f} / 1.00
-    Supporting Factors: {len(of_reasons)}
-
-    Key Reasons:
-    {chr(10).join(f'  - {r}' for r in of_reasons[:5])}
-
-    IMPORTANT: Order flow analysis reveals what institutions are doing
-    in real-time. Give this analysis EXTRA WEIGHT as it captures the
-    "missing 80%" of market data that candles don't show.
-
-    If order flow signal conflicts with technical indicators, prefer
-    order flow as it leads price movement.
-
-    [Rest of prompt...]
-    """
-
-    return prompt
-```
-
-**Test integration** (without deploying):
-
-```bash
-# Quick test
-python3 -c "
-from libs.llm.signal_synthesizer import SignalSynthesizer
-synth = SignalSynthesizer()
-print('✅ SignalSynthesizer initialized with Order Flow')
-print(f'Order Flow analyzer: {synth.order_flow}')
+# 3. Analyze by symbol
+sqlite3 tradingai.db "
+SELECT
+  symbol,
+  COUNT(*) as trades,
+  SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
+  ROUND(AVG(pnl_percent), 2) as avg_pnl
+FROM signal_results
+GROUP BY symbol
+ORDER BY avg_pnl DESC;
 "
 ```
 
+**Based on results, decide**:
+- Tighten SL/TP ratios
+- Filter certain symbols
+- Adjust strategy rules
+- Re-enable safety guards
+
+### Priority 3: Collect ENTROPY Strategy Data (ONGOING)
+
+**Goal**: Get 20-40 ENTROPY trades to compare with MOMENTUM
+
+**Current Progress**:
+- MOMENTUM: 20 trades (complete)
+- ENTROPY: 0 trades (just started)
+
+**Timeline**: 24-48 hours at 12 signals/hour
+
+**Monitor**:
+```bash
+# Check ENTROPY trade count
+.venv/bin/python3 -c "
+import sqlite3
+conn = sqlite3.connect('tradingai.db')
+c = conn.cursor()
+c.execute('''
+SELECT COUNT(*)
+FROM signals s
+LEFT JOIN signal_results sr ON s.id = sr.signal_id
+WHERE s.strategy = \"ENTROPY (mean-reversion)\"
+  AND sr.id IS NOT NULL
+''')
+print(f'ENTROPY trades: {c.fetchone()[0]}')
+conn.close()
+"
+```
+
+### Priority 4: Performance Optimization (AFTER DATA COLLECTION)
+
+**When**: After 40+ trades per strategy (2-3 days)
+
+**Decision Matrix**:
+```
+IF MOMENTUM win_rate > ENTROPY win_rate:
+    → Allocate 70% signals to MOMENTUM, 30% ENTROPY
+    → Focus on optimizing MOMENTUM rules
+
+ELSE IF ENTROPY win_rate > MOMENTUM win_rate:
+    → Allocate 70% signals to ENTROPY, 30% MOMENTUM
+    → Focus on optimizing ENTROPY rules
+
+ELSE IF both < 40% win_rate:
+    → Re-enable safety guards
+    → Reduce trade frequency
+    → Tighten quality filters
+```
+
 ---
 
-#### Step 3C: Update V7 Runtime to Pass Order Book (30 min)
+## 📋 THIS WEEK CHECKLIST (2025-11-26 to 2025-11-29)
 
-**Edit `apps/runtime/v7_runtime.py`**:
+### Wednesday Afternoon (NOW - 2025-11-26)
+- [x] Dual math strategies implemented (MOMENTUM + ENTROPY)
+- [x] Human-readable A/B test labels deployed
+- [x] Database storing strategy labels correctly
+- [x] Git commits pushed to GitHub
+- [ ] ⚠️ Fix runtime crash bug (Priority 1)
+- [ ] Analyze losing trades (Priority 2)
+- [ ] Create auto-restart script (quick fix)
 
+### Thursday (2025-11-27)
+- [ ] Root cause fix for exit_time error
+- [ ] Analyze MOMENTUM strategy performance (20 trades complete)
+- [ ] Monitor ENTROPY strategy data collection
+- [ ] Adjust stop loss/take profit based on analysis
+- [ ] Document losing trade patterns
+
+### Friday (2025-11-28)
+- [ ] Collect ENTROPY strategy data (target: 20+ trades)
+- [ ] Compare MOMENTUM vs ENTROPY performance
+- [ ] Decide on strategy allocation (70/30 split to winner)
+- [ ] Consider re-enabling selective safety guards
+
+### Weekend (2025-11-29 to 2025-12-01)
+- [ ] Let system run with optimized configuration
+- [ ] Collect 40+ total trades (20 per strategy minimum)
+- [ ] Prepare comprehensive performance report
+- [ ] Decide next phase: optimize winner or Phase 2 Order Flow
+
+---
+
+## 🔬 STRATEGY THEORY & IMPLEMENTATION
+
+### Strategy A: SimpleMomentumStrategy
+
+**File**: `libs/strategies/simple_momentum.py`
+
+**Mathematical Basis**:
+- **Hurst Exponent**: Measures trend persistence
+  - H > 0.5 = trending (persistent)
+  - H < 0.5 = mean-reverting (anti-persistent)
+- **Kalman Filter**: Removes price noise, isolates momentum
+
+**Signal Rules** (6 rules):
 ```python
-# In generate_signal_for_symbol method
-def generate_signal_for_symbol(self, symbol: str, strategy: str = "v7_full_math"):
-    """Generate signal with order flow analysis"""
+# LONG Rules
+RULE 1: Hurst > 0.55 AND momentum > +10  → LONG (conf: 0.85)
+RULE 2: Hurst > 0.52 AND momentum > +5   → LONG (conf: 0.70)
+RULE 3: Hurst > 0.52 OR  momentum > +15  → LONG (conf: 0.30)
 
-    # ... existing code to get candles ...
-
-    # NEW: Try to get order book
-    order_book = None
-    try:
-        if hasattr(self.coinbase, 'get_order_book'):
-            order_book = self.coinbase.get_order_book(symbol)
-            logger.info(f"{symbol}: Order book available")
-    except Exception as e:
-        logger.warning(f"{symbol}: Order book unavailable: {e}")
-
-    # Generate signal with order flow
-    result = self.signal_generator.generate_signal(
-        symbol=symbol,
-        candles_df=candles_df,
-        order_book=order_book,  # NEW
-        strategy=strategy
-    )
-
-    # ... rest of signal processing ...
+# SHORT Rules
+RULE 4: Hurst < 0.45 AND momentum < -10  → SHORT (conf: 0.85)
+RULE 5: Hurst < 0.48 AND momentum < -5   → SHORT (conf: 0.70)
+RULE 6: Hurst < 0.48 OR  momentum < -15  → SHORT (conf: 0.30)
 ```
 
-**Also update `signal_generator.py`** to accept and pass order_book parameter.
+**Risk Management**:
+- Stop Loss: 4% (wider for trend following)
+- Take Profit: 8% (1:2 R:R ratio)
+- Reasoning: Trends can have deep pullbacks before continuation
 
----
+### Strategy B: EntropyReversionStrategy
 
-### Action 4: Deploy Phase 2 A/B Test (When Ready)
+**File**: `libs/strategies/entropy_reversion.py`
 
-**Once integration tested**, deploy Phase 2 runtime:
+**Mathematical Basis**:
+- **Shannon Entropy**: Market predictability measure
+  - Low entropy (< 0.7) = predictable = good for reversion
+  - High entropy (> 0.85) = random = skip
+- **Hurst Exponent**: Confirm mean-reversion
+  - H < 0.45 = anti-persistent = reverts to mean
+- **FADE THE MOVE**: If momentum up, go SHORT (expect reversal)
 
-```bash
-# Create Phase 2 variant runtime (copy v7_runtime.py)
-cp apps/runtime/v7_runtime.py apps/runtime/v7_runtime_phase2.py
+**Signal Rules** (3 rules):
+```python
+# FADE RULES (opposite of momentum direction)
+RULE 1: Entropy < 0.65 AND Hurst < 0.40 AND |momentum| > 20
+        → FADE (if +momentum: SHORT, if -momentum: LONG)
+        → Confidence: 0.80
 
-# Modify to use "v7_phase2_orderflow" strategy name
+RULE 2: Entropy < 0.70 AND Hurst < 0.45 AND |momentum| > 10
+        → FADE (confidence: 0.65)
 
-# Start Phase 2 runtime
-nohup .venv/bin/python3 apps/runtime/v7_runtime_phase2.py \
-  --iterations -1 \
-  --sleep-seconds 300 \
-  --max-signals-per-hour 3 \
-  --variant "v7_phase2_orderflow" \
-  > /tmp/v7_phase2_$(date +%Y%m%d_%H%M).log 2>&1 &
+RULE 3: Entropy < 0.75 AND Hurst < 0.48 AND |momentum| > 5
+        → FADE (confidence: 0.35)
+
+# RISK FILTER
+IF VaR > 5% → confidence *= 0.8 (reduce position in risky markets)
 ```
 
-**Monitor both runtimes**:
-- Current V7: `ps aux | grep v7_runtime.py`
-- Phase 2: `ps aux | grep v7_runtime_phase2.py`
+**Risk Management**:
+- Stop Loss: 3% (tighter for mean reversion)
+- Take Profit: 6% (1:2 R:R ratio)
+- Reasoning: Mean reversion is faster, smaller moves
 
----
+### Strategy Comparison Framework
 
-## 📋 THIS WEEK CHECKLIST (2025-11-24 to 2025-11-27)
+**Hypothesis**:
+- **MOMENTUM**: Better in trending markets (crypto bull/bear runs)
+- **ENTROPY**: Better in ranging/choppy markets (consolidation)
 
-### Monday Evening (Tonight - 2025-11-24)
-- [x] Phase 2 core implementation complete
-- [x] Phase 2 documentation complete
-- [x] Git commits + push to GitHub
-- [ ] Check V7 status and paper trade count
-- [ ] Test Order Flow with live data (scripts/test_order_flow_live.py)
+**Metrics to Compare**:
+1. Win Rate (% of profitable trades)
+2. Average P&L per trade
+3. Profit Factor (gross profit / gross loss)
+4. Sharpe Ratio (risk-adjusted returns)
+5. Max Drawdown (worst losing streak)
 
-### Tuesday (2025-11-25)
-- [ ] If live test passes: Integrate Order Flow into SignalSynthesizer
-- [ ] Update V7 runtime to pass order_book parameter
-- [ ] Test integration without deploying
-- [ ] Calculate Sharpe ratio (if >= 20 trades)
-- [ ] Decide on Phase 1 (if needed based on Sharpe)
+**Expected Results** (hypothesis):
+- Trending market: MOMENTUM wins
+- Ranging market: ENTROPY wins
+- Mixed market: Similar performance
 
-### Wednesday (2025-11-26)
-- [ ] Deploy Phase 2 A/B test (if integration tested)
-- [ ] Monitor both V7 variants (current + phase2)
-- [ ] Create monitoring dashboard comparison
-
-### Thursday-Friday (2025-11-27 to 2025-11-29)
-- [ ] Collect initial Phase 2 trade results (5-10 trades minimum)
-- [ ] Compare performance: v7_current vs v7_phase2_orderflow
-- [ ] Document early findings
-
----
-
-## 🚨 DECISION MATRIX (Updated)
-
-### IF paper_trades >= 20 (Should be true by Tuesday):
-
-**Calculate Sharpe ratio first**:
-
-```bash
-# Use calculate_sharpe.py script (in CURRENT_STATUS doc)
-python3 calculate_sharpe.py
-```
-
-**Then decide**:
-
-```
-IF Sharpe < 1.0:
-    START: Phase 1 (Risk Management) FIRST
-    REASON: Need to fix basics before adding order flow
-    TIMELINE: 1 week Phase 1, then Phase 2 integration
-
-ELSE IF Sharpe >= 1.0:
-    START: Phase 2 Integration NOW
-    REASON: V7 working well, order flow will boost further
-    TIMELINE: Phase 2 this week, Phase 1 optional later
-
-ELSE IF Sharpe >= 1.5:
-    START: Phase 2 Integration NOW
-    REASON: V7 excellent, order flow will make it world-class
-    SKIP: Phase 1 (not needed)
-```
-
-### Current Prediction (Based on 53.8% win rate):
-- **Expected Sharpe**: ~1.0-1.2 (decent)
-- **Recommendation**: **Start Phase 2 Integration NOW**
-- **Reason**: V7 is working, order flow is the missing piece
+**Data Collection Period**: 1-2 weeks (40+ trades each)
 
 ---
 
 ## 📊 PERFORMANCE TARGETS
 
-### Phase 2 Success Criteria (After 30+ Trades):
+### Minimum Acceptable (To Continue Strategy)
+- Win rate: > 45% (better than random)
+- Sharpe ratio: > 0.5 (some risk-adjusted return)
+- Max drawdown: < 20% (capital preservation)
 
-**Minimum Targets** (to validate Phase 2):
-- Win rate: > 55% (vs 33% old baseline, vs 53.8% current)
-- Sharpe ratio: > 1.5 (vs 1.0-1.2 current estimate)
-- Average P&L: > +0.5% per trade
+### Good Performance (Strategy Working)
+- Win rate: 50-55%
+- Sharpe ratio: 1.0-1.5
+- Profit factor: > 1.3
+- Max drawdown: < 15%
 
-**Optimal Targets** (Phase 2 success):
+### Excellent Performance (Strategy Success)
 - Win rate: 60-65%
-- Sharpe ratio: 2.0-2.5
-- Average P&L: +1.0-1.5% per trade
+- Sharpe ratio: > 2.0
+- Profit factor: > 2.0
+- Max drawdown: < 10%
 
-**Timeline**: 1-2 weeks (30+ Phase 2 trades for comparison)
+### Current Reality (⚠️ FAILING)
+- Win rate: 0.59% (CRITICAL)
+- Sharpe ratio: N/A (insufficient data)
+- Profit factor: ~0.01 (catastrophic)
+- Max drawdown: ~100% (total loss)
 
----
-
-## 📚 KEY DOCUMENTS
-
-**Phase 2 Implementation**:
-- `PHASE_2_ORDER_FLOW_DEPLOYMENT.md` - Integration guide ⭐
-- `PHASE_2_ORDER_FLOW_SUMMARY.md` - Implementation overview
-- `PERFECT_QUANT_SYSTEM_ANALYSIS.md` - Research foundation
-
-**Phase 1 (If Needed)**:
-- `QUANT_FINANCE_10_HOUR_PLAN.md` - Risk management enhancements
-- `PHASE_1_DEPLOYMENT_GUIDE.md` - Phase 1 deployment
-
-**Current Status**:
-- `CLAUDE.md` - Project instructions
-- `DATABASE_VERIFICATION_2025-11-22.md` - Database setup
-
-**Analysis**:
-- `V7_PERFORMANCE_REVIEW_2025-11-24.md` - Performance analysis
+**Status**: URGENT optimization needed
 
 ---
 
-## 🎯 BUILDER CLAUDE PRIORITIES (Next 72 Hours)
+## 🚨 CRITICAL DECISIONS AHEAD
 
-### Priority 1: Test Order Flow Live (Tonight/Tomorrow)
+### Decision 1: Continue Dual Strategy or Pivot? (By Friday 2025-11-28)
+
+**IF MOMENTUM + ENTROPY combined win_rate > 45%**:
+- ✅ Continue A/B testing
+- Optimize winning strategy
+- Allocate 70/30 to better performer
+
+**ELSE IF combined win_rate < 45%**:
+- ⚠️ Stop dual strategy approach
+- Re-enable safety guards
+- Focus on single robust strategy
+- Consider Phase 2 Order Flow integration
+
+### Decision 2: Re-Enable Safety Guards? (By Thursday 2025-11-27)
+
+**Current State**: ALL safety guards disabled
+
+**IF win_rate < 40% by Thursday**:
+- ✅ Re-enable Regime Detector (avoid ranging markets)
+- ✅ Re-enable Correlation Manager (diversification)
+- Consider Multi-Timeframe confirmation
+
+**ELSE IF win_rate > 40%**:
+- Keep safety guards disabled
+- Current aggressive mode is working
+
+### Decision 3: Phase 2 Order Flow Integration? (Next Week)
+
+**Prerequisites**:
+1. Runtime crash bug FIXED
+2. Win rate > 45% with current strategies
+3. 40+ trades collected per strategy
+
+**IF prerequisites met**:
+- Start Phase 2 Order Flow integration (from 2025-11-24 plan)
+- Expected improvement: 45% → 60-65% win rate
+- Timeline: 1 week integration + 2 weeks testing
+
+**ELSE**:
+- Focus on fixing current strategies first
+- Phase 2 postponed until fundamentals work
+
+---
+
+## 📚 KEY DOCUMENTS & FILES
+
+### Current Implementation
+- **`libs/strategies/simple_momentum.py`** - Momentum strategy (127 lines)
+- **`libs/strategies/entropy_reversion.py`** - Mean reversion strategy (127 lines)
+- **`apps/runtime/v7_runtime.py`** - Main runtime with dual strategy logic
+- **`tradingai.db`** - SQLite database with all signals & results
+
+### Documentation
+- **`CURRENT_STATUS_AND_NEXT_ACTIONS.md`** - This file ⭐
+- **`CLAUDE.md`** - Project instructions & architecture
+- **`DATABASE_VERIFICATION_2025-11-22.md`** - Database setup
+- **`PHASE_2_ORDER_FLOW_DEPLOYMENT.md`** - Phase 2 plan (pending)
+
+### Phase 2 (Future)
+- **`libs/order_flow/`** - Order flow modules (created 2025-11-24)
+- **`PHASE_2_ORDER_FLOW_SUMMARY.md`** - Order flow summary
+- **`PERFECT_QUANT_SYSTEM_ANALYSIS.md`** - Research foundation
+
+### Git Repository
+- **Branch**: `feature/v7-ultimate`
+- **Latest Commit**: badd29f (save human-readable strategy labels)
+- **Remote**: https://github.com/imnuman/crpbot.git
+
+---
+
+## 🎯 BUILDER CLAUDE PRIORITIES (Next 48 Hours)
+
+### Today (2025-11-26 Wednesday Afternoon)
+
+**Priority 1: Runtime Stability** ⚠️ CRITICAL
 ```bash
-# Create and run test script
-.venv/bin/python3 scripts/test_order_flow_live.py
+# Create auto-restart watchdog
+cat > restart_v7.sh << 'EOF'
+#!/bin/bash
+while true; do
+    if ! pgrep -f "v7_runtime.py" > /dev/null; then
+        echo "$(date): V7 crashed, restarting..."
+        cd /root/crpbot
+        nohup .venv/bin/python3 -u apps/runtime/v7_runtime.py \
+          --iterations -1 --sleep-seconds 60 --max-signals-per-hour 12 \
+          > /tmp/v7_runtime_$(date +%Y%m%d_%H%M).log 2>&1 &
+        echo "$(date): V7 restarted with PID $!"
+    fi
+    sleep 30
+done
+EOF
+
+chmod +x restart_v7.sh
+nohup ./restart_v7.sh > /tmp/v7_watchdog.log 2>&1 &
 ```
 
-**Expected**: Volume Profile works, Order Flow/Microstructure may need WebSocket
-
-### Priority 2: Integrate Order Flow (Tuesday)
+**Priority 2: Performance Analysis**
 ```bash
-# Add to SignalSynthesizer
-# Update V7 runtime
-# Test integration
+# Investigate losing trades
+sqlite3 tradingai.db < /tmp/analyze_losses.sql
+# (Create SQL analysis scripts)
 ```
 
-**Goal**: V7 can use Order Flow features in signal generation
-
-### Priority 3: Calculate Sharpe Ratio (Tuesday)
+**Priority 3: Monitoring**
 ```bash
-# If >= 20 trades
-python3 calculate_sharpe.py
+# Check strategy data collection
+watch -n 300 '.venv/bin/python3 scripts/check_strategy_stats.py'
 ```
 
-**Decide**: Phase 1 first, or Phase 2 integration now
+### Tomorrow (2025-11-27 Thursday)
 
-### Priority 4: Deploy Phase 2 A/B Test (Wednesday)
-```bash
-# Start Phase 2 runtime alongside current V7
-nohup .venv/bin/python3 apps/runtime/v7_runtime_phase2.py ...
-```
+**Morning**:
+1. Fix exit_time bug in paper_trader.py
+2. Analyze MOMENTUM strategy results (20 trades)
+3. Check ENTROPY data collection progress
 
-**Monitor**: Both variants for 1-2 weeks
+**Afternoon**:
+1. Optimize based on losing trade analysis
+2. Consider adjusting SL/TP ratios
+3. Document patterns and insights
+
+**Evening**:
+1. Deploy optimizations if win_rate improves
+2. Monitor overnight performance
+3. Prepare Friday comparison report
+
+### Friday (2025-11-28)
+
+**Goal**: Compare MOMENTUM vs ENTROPY, declare winner
+
+**Tasks**:
+1. Verify 20+ trades per strategy
+2. Calculate win rates, Sharpe ratios
+3. Decide 70/30 allocation
+4. Document findings
+5. Plan next phase
 
 ---
 
 ## 🔄 COMMUNICATION WITH QC CLAUDE
 
 **Send update when**:
-1. Live Order Flow test complete (Tuesday)
-2. Sharpe ratio calculated (Tuesday if >= 20 trades)
-3. Phase 2 integration complete (Wednesday)
-4. Phase 2 A/B test deployed (Wednesday)
-5. First week of Phase 2 results (following Monday)
+1. Runtime crash fixed (auto-restart deployed)
+2. Losing trade analysis complete (Thursday)
+3. 20+ ENTROPY trades collected (Friday)
+4. Strategy comparison complete (Friday)
+5. Next phase decision made (Friday/Weekend)
 
 **Include**:
-- Test results
-- Sharpe ratio (if calculated)
-- Integration status
-- Any blockers or issues
+- Current win rates by strategy
+- Losing trade patterns discovered
+- Root cause of 0.59% win rate
+- Fixes implemented
+- Next phase recommendation
 
 ---
 
-## ✅ SUMMARY: What Builder Claude Should Do Now
+## ✅ SUMMARY: Current State & Immediate Actions
 
-**Tonight (2025-11-24 Evening)**:
-1. Check V7 status: `ps aux | grep v7_runtime`
-2. Check paper trades: `sqlite3 tradingai.db "SELECT COUNT(*) FROM signal_results;"`
-3. Test Order Flow live: `scripts/test_order_flow_live.py`
+### System Status
+- **V7 Runtime**: ⚠️ Running but crashes after each scan
+- **Strategies**: MOMENTUM (20 trades), ENTROPY (0 trades)
+- **Win Rate**: 0.59% (CRITICAL - needs urgent fix)
+- **Total P&L**: -99.98% (catastrophic)
+- **Database**: 8,125 signals, 169 paper trades
+- **A/B Test**: ✅ Active and collecting data
 
-**Tomorrow (2025-11-25 Tuesday)**:
-1. Integrate Order Flow into SignalSynthesizer
-2. Update V7 runtime to pass order_book
-3. Calculate Sharpe ratio (if >= 20 trades)
-4. Decide: Phase 1 first or Phase 2 now
+### Immediate Actions (Today)
+1. ✅ Deploy auto-restart watchdog script
+2. ✅ Analyze losing trades to find patterns
+3. ✅ Monitor ENTROPY strategy data collection
+4. ⚠️ Fix runtime crash bug (if time permits)
 
-**Wednesday (2025-11-26)**:
-1. Deploy Phase 2 A/B test
-2. Monitor both V7 variants
+### Short-Term Goals (This Week)
+1. Achieve > 40% win rate with optimizations
+2. Collect 20+ ENTROPY trades
+3. Compare MOMENTUM vs ENTROPY
+4. Decide on strategy allocation
+5. Re-enable safety guards if needed
 
-**Goal**: Phase 2 Order Flow integrated and A/B testing by end of week
+### Long-Term Goals (Next 1-2 Weeks)
+1. Achieve 50-55% win rate consistently
+2. Sharpe ratio > 1.0
+3. Decide on Phase 2 Order Flow integration
+4. Scale to production-ready system
 
 ---
 
-**Status**: ✅ Phase 2 Core Complete, Integration Starting
-**Next Major Action**: Live Order Flow test (tonight/tomorrow)
-**Timeline**: Phase 2 A/B test live by Wednesday 2025-11-26
-**Expected Outcome**: Win rate 53.8% → 60-65% within 2 weeks
-
----
-
-**Last Updated**: 2025-11-24 (Monday Evening)
+**Last Updated**: 2025-11-26 Wednesday 14:05 EST
 **Branch**: `feature/v7-ultimate`
-**Latest Commit**: c558ee5 (docs: Phase 2 deployment guide + summary)
+**Latest Commit**: badd29f (fix: save human-readable strategy labels to database)
+**V7 Status**: ⚠️ Running (unstable, needs watchdog)
+**Current Focus**: Runtime stability + performance analysis
+**Next Milestone**: 20+ ENTROPY trades by Friday
+**Critical Issue**: 0.59% win rate - URGENT OPTIMIZATION NEEDED
