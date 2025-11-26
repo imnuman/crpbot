@@ -269,29 +269,36 @@ Timestamp: {context.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
         if additional_context:
             user_prompt += f"\n**Additional Context:**\n{additional_context}\n"
 
-        # Add conservative mode disclaimer with momentum priority
+        # Add AGGRESSIVE trading mode - we NEED more trades
         if self.conservative_mode:
             user_prompt += """
 **Risk Management: FTMO-COMPLIANT**
 Apply proper risk management and position sizing.
 
-**CRITICAL SIGNAL GENERATION RULES**:
-1. **In Choppy/Ranging Markets** (high entropy >0.85, consolidation regime):
-   - PRIORITIZE momentum signals (Kalman momentum, Hurst exponent)
-   - Strong momentum (>±15) with trending Hurst (>0.55) = ACTIONABLE SIGNAL
-   - Don't let negative Sharpe ratios paralyze you - they're backward-looking
+**AGGRESSIVE SIGNAL GENERATION RULES** - WE NEED MORE TRADES:
+1. **MANDATORY: Generate BUY/SELL whenever possible**:
+   - ANY momentum signal (Kalman >±5) = TAKE THE TRADE
+   - Hurst >0.52 = BUY, Hurst <0.48 = SELL
+   - Even weak signals are TRADEABLE with 4% stop loss protection
 
-2. **Price Action Override**:
-   - If Kalman momentum >+20 and Hurst >0.55: Consider BUY (35-55% confidence)
-   - If Kalman momentum <-20 and Hurst <0.45: Consider SELL (35-55% confidence)
-   - Clear directional movement >0.5% = tradeable opportunity
+2. **HOLD is RARE** - Use only if:
+   - Kalman momentum = exactly 0 AND
+   - Hurst = exactly 0.50 AND
+   - All theories completely neutral
+   - Otherwise: FORCE a BUY or SELL decision
 
-3. **Confidence Calibration**:
-   - High entropy + strong momentum = 35-45% confidence (ACCEPTABLE in ranging markets)
-   - Trending market + aligned theories = 60-75% confidence
-   - Conflicting signals = 20-35% confidence or HOLD
+3. **Confidence Calibration** - LOWER THRESHOLDS:
+   - Weak momentum (±5-15) = 30-40% confidence → STILL TRADE
+   - Moderate momentum (±15-30) = 40-60% confidence → TRADE
+   - Strong momentum (>±30) = 60-80% confidence → STRONG TRADE
+   - ANY signal >25% confidence = TRADEABLE
 
-Recommend BUY/SELL when momentum is clear, even if other metrics are mixed. HOLD only when truly no edge exists."""
+4. **Speed and Volume**:
+   - Generate AT LEAST 30-50% BUY/SELL signals (not HOLD)
+   - Faster execution = more opportunities to win
+   - Small losses with 4% SL are acceptable - volume wins
+
+CRITICAL: If you're unsure, default to BUY/SELL based on slightest momentum. HOLD only when absolutely zero directional bias exists."""
 
         # Request format with price targets (SIMPLIFIED - system prompt now has format requirement)
         user_prompt += """
