@@ -1257,9 +1257,10 @@ class V7TradingRuntime:
             # Increment counter and determine strategy for THIS signal
             self._ab_test_counter += 1
 
-            # Alternate strategies: odd = full math, even = deepseek only
+            # Alternate strategies: odd = MOMENTUM, even = ENTROPY
             strategy = "v7_full_math" if self._ab_test_counter % 2 == 1 else "v7_deepseek_only"
-            logger.info(f"🧪 A/B TEST: Using strategy '{strategy}' for {symbol} (signal #{self._ab_test_counter})")
+            strategy_label = "MOMENTUM (trend-following)" if strategy == "v7_full_math" else "ENTROPY (mean-reversion)"
+            logger.info(f"🧪 A/B TEST: Using strategy '{strategy_label}' for {symbol} (signal #{self._ab_test_counter})")
             try:
                 # FIX #2: Check rate limits PER SYMBOL
                 rate_ok, rate_reason = self._check_rate_limits(symbol)
