@@ -37,6 +37,7 @@ from loguru import logger
 
 from libs.llm import SignalGenerator, SignalType, SignalGenerationResult
 from libs.strategies.simple_momentum import SimpleMomentumStrategy
+from libs.strategies.entropy_reversion import EntropyReversionStrategy
 from apps.runtime.data_fetcher import get_data_fetcher, MarketDataFetcher
 from apps.runtime.ftmo_rules import (
     check_daily_loss_limit,
@@ -1050,29 +1051,46 @@ class V7TradingRuntime:
                 order_book=None  # Order book not available via REST API (would need WebSocket)
             )
 
-            # Apply SIMPLE MOMENTUM STRATEGY if DeepSeek is too conservative (which it always is!)
+            # Apply MATH STRATEGY if DeepSeek is too conservative (which it always is!)
+            # A/B TEST: Strategy A (momentum) vs Strategy B (entropy reversion)
             # This BYPASSES the LLM and uses pure mathematical rules
             if result.parsed_signal.signal == SignalType.HOLD:
                 momentum = result.theory_analysis.price_momentum
                 hurst = result.theory_analysis.hurst
                 entropy = result.theory_analysis.entropy
                 regime = result.theory_analysis.current_regime
+                var_95 = result.theory_analysis.risk_metrics.get('var_95', 0.0)
 
-                # Use SimpleMomentumStrategy to generate ACTUAL trades
-                math_strategy = SimpleMomentumStrategy()
-                math_signal = math_strategy.generate_signal(
-                    current_price=current_price,
-                    hurst=hurst,
-                    kalman_momentum=momentum,
-                    entropy=entropy,
-                    regime=regime
-                )
+                # A/B TEST: Choose strategy based on variant
+                if strategy == "v7_full_math":
+                    # STRATEGY A: Aggressive Momentum (trend-following)
+                    math_strategy = SimpleMomentumStrategy()
+                    math_signal = math_strategy.generate_signal(
+                        current_price=current_price,
+                        hurst=hurst,
+                        kalman_momentum=momentum,
+                        entropy=entropy,
+                        regime=regime
+                    )
+                    strategy_name = "MOMENTUM"
+                else:
+                    # STRATEGY B: Entropy Reversion (mean-reversion)
+                    math_strategy = EntropyReversionStrategy()
+                    math_signal = math_strategy.generate_signal(
+                        current_price=current_price,
+                        hurst=hurst,
+                        kalman_momentum=momentum,
+                        entropy=entropy,
+                        var_95=var_95,
+                        regime=regime
+                    )
+                    strategy_name = "ENTROPY"
 
                 # If math strategy says BUY/SELL, override the LLM's HOLD
                 if math_signal.direction in ["long", "short"]:
                     signal_type = SignalType.BUY if math_signal.direction == "long" else SignalType.SELL
                     logger.warning(
-                        f"🔄 MATH STRATEGY OVERRIDE: {math_signal.reasoning}. "
+                        f"🔄 {strategy_name} STRATEGY OVERRIDE: {math_signal.reasoning}. "
                         f"Overriding LLM HOLD → {signal_type.value.upper()} at {math_signal.confidence:.0%} confidence"
                     )
                     from libs.llm import ParsedSignal
