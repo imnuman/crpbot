@@ -521,9 +521,10 @@ class V7TradingRuntime:
             return True, "OK", None
 
         # Check 1: Market Regime Detector
-        regime_result = self.regime_detector.detect_regime(symbol, df)
+        # TEMPORARILY DISABLED - User wants MORE trades, not fewer
+        # regime_result = self.regime_detector.detect_regime(symbol, df)
 
-        if not regime_result.should_trade:
+        if False and not regime_result.should_trade:
             # Log rejection
             rejection_id = self.rejection_logger.log_rejection(
                 symbol=symbol,
