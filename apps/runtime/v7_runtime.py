@@ -620,14 +620,16 @@ class V7TradingRuntime:
         else:
             market_volatility = 'normal'
 
-        corr_result = self.correlation_manager.check_new_position(
-            new_symbol=symbol,
-            new_direction=direction,
-            open_positions=self.open_positions,
-            market_volatility=market_volatility
-        )
+        # TEMPORARILY DISABLED - User wants MORE trades, not fewer
+        # corr_result = self.correlation_manager.check_new_position(
+        #     new_symbol=symbol,
+        #     new_direction=direction,
+        #     open_positions=self.open_positions,
+        #     market_volatility=market_volatility
+        # )
 
-        if not corr_result.allowed:
+        # Skip correlation check
+        if False:
             # Log rejection
             rejection_id = self.rejection_logger.log_rejection(
                 symbol=symbol,
