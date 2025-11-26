@@ -545,7 +545,7 @@ class V7TradingRuntime:
                 theory_scores={
                     'shannon_entropy': result.theory_analysis.entropy,
                     'hurst': result.theory_analysis.hurst,
-                    'markov_state': result.theory_analysis.markov_state
+                    'markov_state': result.theory_analysis.current_regime
                 },
                 hypothetical_prices={
                     'entry': result.parsed_signal.entry_price,
@@ -582,7 +582,7 @@ class V7TradingRuntime:
                 theory_scores={
                     'shannon_entropy': result.theory_analysis.entropy,
                     'hurst': result.theory_analysis.hurst,
-                    'markov_state': result.theory_analysis.markov_state
+                    'markov_state': result.theory_analysis.current_regime
                 },
                 hypothetical_prices={
                     'entry': result.parsed_signal.entry_price,
@@ -641,7 +641,7 @@ class V7TradingRuntime:
                 theory_scores={
                     'shannon_entropy': result.theory_analysis.entropy,
                     'hurst': result.theory_analysis.hurst,
-                    'markov_state': result.theory_analysis.markov_state
+                    'markov_state': result.theory_analysis.current_regime
                 },
                 hypothetical_prices={
                     'entry': result.parsed_signal.entry_price,
@@ -682,7 +682,7 @@ class V7TradingRuntime:
                 theory_scores={
                     'shannon_entropy': result.theory_analysis.entropy,
                     'hurst': result.theory_analysis.hurst,
-                    'markov_state': result.theory_analysis.markov_state
+                    'markov_state': result.theory_analysis.current_regime
                 },
                 hypothetical_prices={
                     'entry': result.parsed_signal.entry_price,
