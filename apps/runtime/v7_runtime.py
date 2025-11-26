@@ -621,12 +621,17 @@ class V7TradingRuntime:
             market_volatility = 'normal'
 
         # TEMPORARILY DISABLED - User wants MORE trades, not fewer
-        # corr_result = self.correlation_manager.check_new_position(
-        #     new_symbol=symbol,
-        #     new_direction=direction,
-        #     open_positions=self.open_positions,
-        #     market_volatility=market_volatility
-        # )
+        # Create fake corr_result to avoid errors downstream
+        from types import SimpleNamespace
+        corr_result = SimpleNamespace(
+            allowed=True,
+            reason='OK',
+            max_correlation=0.0,
+            threshold=0.7,
+            correlation_details={},
+            asset_class_exposure={},
+            portfolio_beta=1.0
+        )
 
         # Skip correlation check
         if False:
@@ -665,12 +670,19 @@ class V7TradingRuntime:
             return False, f"Correlation: {corr_result.reason}", rejection_id
 
         # Check 4: Multi-Timeframe Confirmation
-        mtf_result = self.mtf_analyzer.analyze(
-            df_1m=df,
-            signal_direction=direction
+        # TEMPORARILY DISABLED - User wants MORE trades, not fewer
+        # Create fake mtf_result to avoid errors downstream
+        from types import SimpleNamespace
+        mtf_result = SimpleNamespace(
+            aligned=True,
+            reason='OK',
+            primary_direction=direction,
+            tf_1m=SimpleNamespace(trend_direction=direction, momentum_direction=direction),
+            tf_5m=SimpleNamespace(trend_direction=direction, momentum_direction=direction)
         )
 
-        if not mtf_result.aligned:
+        # Skip multi-timeframe check
+        if False:
             # Log rejection
             rejection_id = self.rejection_logger.log_rejection(
                 symbol=symbol,
