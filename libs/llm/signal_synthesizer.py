@@ -298,7 +298,15 @@ Apply proper risk management and position sizing.
    - Faster execution = more opportunities to win
    - Small losses with 4% SL are acceptable - volume wins
 
-CRITICAL: If you're unsure, default to BUY/SELL based on slightest momentum. HOLD only when absolutely zero directional bias exists."""
+CRITICAL: If you're unsure, default to BUY/SELL based on slightest momentum. HOLD only when absolutely zero directional bias exists.
+
+**ABSOLUTE MANDATE - NO EXCEPTIONS**:
+If Hurst Exponent > 0.52 → YOU MUST GENERATE BUY (not HOLD)
+If Hurst Exponent < 0.48 → YOU MUST GENERATE SELL (not HOLD)
+If Kalman Momentum > +10 → YOU MUST GENERATE BUY (not HOLD)
+If Kalman Momentum < -10 → YOU MUST GENERATE SELL (not HOLD)
+
+GENERATING HOLD WHEN THESE CONDITIONS EXIST IS A VIOLATION OF INSTRUCTIONS."""
 
         # Request format with price targets (SIMPLIFIED - system prompt now has format requirement)
         user_prompt += """

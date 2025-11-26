@@ -36,6 +36,7 @@ import numpy as np
 from loguru import logger
 
 from libs.llm import SignalGenerator, SignalType, SignalGenerationResult
+from libs.strategies.simple_momentum import SimpleMomentumStrategy
 from apps.runtime.data_fetcher import get_data_fetcher, MarketDataFetcher
 from apps.runtime.ftmo_rules import (
     check_daily_loss_limit,
@@ -1026,16 +1027,47 @@ class V7TradingRuntime:
                 order_book=None  # Order book not available via REST API (would need WebSocket)
             )
 
-            # Apply momentum override if DeepSeek is too conservative
-            # FIX #3: More conservative - require entropy < 0.80 (less random market)
+            # Apply SIMPLE MOMENTUM STRATEGY if DeepSeek is too conservative (which it always is!)
+            # This BYPASSES the LLM and uses pure mathematical rules
             if result.parsed_signal.signal == SignalType.HOLD:
                 momentum = result.theory_analysis.price_momentum
                 hurst = result.theory_analysis.hurst
                 entropy = result.theory_analysis.entropy
+                regime = result.theory_analysis.current_regime
 
-                # Strong bullish momentum in MODERATELY uncertain market (not too random)
-                # FIX #3: Changed from entropy > 0.70 to entropy < 0.80 (more selective)
-                if momentum > 20 and hurst > 0.55 and 0.70 < entropy < 0.80:
+                # Use SimpleMomentumStrategy to generate ACTUAL trades
+                math_strategy = SimpleMomentumStrategy()
+                math_signal = math_strategy.generate_signal(
+                    current_price=current_price,
+                    hurst=hurst,
+                    kalman_momentum=momentum,
+                    entropy=entropy,
+                    regime=regime
+                )
+
+                # If math strategy says BUY/SELL, override the LLM's HOLD
+                if math_signal.direction in ["long", "short"]:
+                    signal_type = SignalType.BUY if math_signal.direction == "long" else SignalType.SELL
+                    logger.warning(
+                        f"🔄 MATH STRATEGY OVERRIDE: {math_signal.reasoning}. "
+                        f"Overriding LLM HOLD → {signal_type.value.upper()} at {math_signal.confidence:.0%} confidence"
+                    )
+                    from libs.llm import ParsedSignal
+                    from datetime import datetime, timezone
+                    result.parsed_signal = ParsedSignal(
+                        signal=signal_type,
+                        confidence=math_signal.confidence,
+                        reasoning=f"MATH OVERRIDE: {math_signal.reasoning}",
+                        raw_response=f"[MATH STRATEGY] {math_signal.reasoning}",
+                        is_valid=True,
+                        timestamp=datetime.now(timezone.utc),
+                        parse_warnings=[f"Math strategy override: {math_signal.direction}"],
+                        entry_price=math_signal.entry_price,
+                        stop_loss=math_signal.stop_loss,
+                        take_profit=math_signal.take_profit
+                    )
+                # OLD restrictive logic (disabled):
+                elif False and momentum > 20 and hurst > 0.55 and 0.70 < entropy < 0.80:
                     logger.warning(
                         f"🔄 MOMENTUM OVERRIDE: Bullish momentum ({momentum:+.2f}) "
                         f"with trending Hurst ({hurst:.3f}) in moderate entropy market ({entropy:.3f}). "
