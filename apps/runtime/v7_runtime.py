@@ -522,8 +522,15 @@ class V7TradingRuntime:
 
         # Check 1: Market Regime Detector
         # TEMPORARILY DISABLED - User wants MORE trades, not fewer
-        # Always pass regime check
-        regime_result = None  # Disabled
+        # Create a fake regime_result to avoid errors downstream
+        from types import SimpleNamespace
+        regime_result = SimpleNamespace(
+            should_trade=True,
+            metrics={'atr_pct': 0.02, 'adx': 25},  # Default values
+            regime='neutral',
+            quality='unknown',
+            confidence=0.5
+        )
 
         if False:
             # Log rejection
