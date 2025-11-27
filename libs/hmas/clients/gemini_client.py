@@ -9,10 +9,10 @@ from datetime import datetime, timezone
 
 
 class GeminiClient:
-    """Client for Google Gemini 2.0 Flash API"""
+    """Client for Google Gemini 1.5 Flash API"""
 
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-    MODEL = "gemini-2.0-flash-exp"
+    MODEL = "gemini-1.5-flash"
 
     def __init__(self, api_key: str):
         self.api_key = api_key

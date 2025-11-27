@@ -94,12 +94,14 @@ class HMASV2Runtime:
         print(f"\nGathering market data for {symbol}...")
 
         # Get OHLCV data (200+ candles)
-        # Note: get_data returns pandas DataFrame with OHLCV
-        df = self.data_client.get_data(
+        # Note: fetch_klines returns pandas DataFrame with OHLCV
+        # Coinbase limit: 350 candles max. For 1m interval, 5 hours = 300 candles
+        df = self.data_client.fetch_klines(
             symbol=symbol,
-            start=datetime.now(timezone.utc) - timedelta(hours=24),  # Last 24 hours
-            end=datetime.now(timezone.utc),
-            interval='1m'
+            interval='1m',
+            start_time=datetime.now(timezone.utc) - timedelta(hours=5),  # Last 5 hours = ~300 candles
+            end_time=datetime.now(timezone.utc),
+            limit=300  # Max 300 candles per request
         )
 
         # Convert DataFrame to candles format
