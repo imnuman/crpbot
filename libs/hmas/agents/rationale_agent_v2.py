@@ -260,9 +260,7 @@ Found **{total} similar setups** in past 90 days:
 - **EV = {(historical_wr * rr_ratio) - ((1-historical_wr) * 1):.2f}R**
 
 ### Confidence Intervals (95% CI)
-With {total} samples, win rate {historical_wr:.0%}:
-- Lower Bound: {max(0, historical_wr - 1.96 * ((historical_wr * (1-historical_wr) / total) ** 0.5)):.0%}
-- Upper Bound: {min(1, historical_wr + 1.96 * ((historical_wr * (1-historical_wr) / total) ** 0.5)):.0%}
+{self._format_confidence_intervals(historical_wr, total)}
 
 ## Market Context
 {self._format_market_context(market_context)}
@@ -350,3 +348,19 @@ Format in clear markdown with proper structure."""
         ]
 
         return "\n".join(output)
+
+    def _format_confidence_intervals(self, win_rate: float, sample_size: int) -> str:
+        """Format confidence intervals, handling edge cases"""
+        if sample_size == 0:
+            return "With 0 samples: No historical data available for confidence intervals"
+
+        if sample_size < 5:
+            return f"With {sample_size} samples, win rate {win_rate:.0%}:\n- Sample size too small for reliable confidence intervals (need 5+ samples)"
+
+        # Calculate 95% confidence interval using normal approximation
+        std_error = (win_rate * (1 - win_rate) / sample_size) ** 0.5
+        margin = 1.96 * std_error
+        lower = max(0, win_rate - margin)
+        upper = min(1, win_rate + margin)
+
+        return f"With {sample_size} samples, win rate {win_rate:.0%}:\n- Lower Bound: {lower:.0%}\n- Upper Bound: {upper:.0%}"
