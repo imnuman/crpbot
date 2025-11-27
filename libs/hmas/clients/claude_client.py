@@ -10,7 +10,7 @@ class ClaudeClient:
     """Client for Anthropic Claude API"""
 
     BASE_URL = "https://api.anthropic.com/v1"
-    MODEL = "claude-3-5-sonnet-20241022"
+    MODEL = "claude-3-haiku-20240307"  # Using Haiku (fast & cheap for rationale generation)
     API_VERSION = "2023-06-01"
 
     def __init__(self, api_key: str):
