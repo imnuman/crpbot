@@ -89,7 +89,7 @@ class DeepSeekClient:
         self,
         api_key: Optional[str] = None,
         model: str = DEFAULT_MODEL,
-        timeout: int = 30,
+        timeout: int = 90,
         max_retries: int = 3
     ):
         """

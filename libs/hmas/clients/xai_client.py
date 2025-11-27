@@ -48,7 +48,7 @@ class XAIClient:
             "Authorization": f"Bearer {self.api_key}"
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 url,
                 json=payload,

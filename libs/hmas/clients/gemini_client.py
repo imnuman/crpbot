@@ -56,7 +56,7 @@ class GeminiClient:
             }
 
         # Make API request
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 url,
                 params={"key": self.api_key},
@@ -126,7 +126,7 @@ class GeminiClient:
                 "parts": [{"text": system_instruction}]
             }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 url,
                 params={"key": self.api_key},

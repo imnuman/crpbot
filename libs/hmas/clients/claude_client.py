@@ -54,7 +54,7 @@ class ClaudeClient:
             "anthropic-version": self.API_VERSION
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
                 url,
                 json=payload,
