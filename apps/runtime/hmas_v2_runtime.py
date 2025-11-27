@@ -16,7 +16,7 @@ Target: 80%+ win rate, FTMO compliant
 import asyncio
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 import argparse
 
@@ -24,9 +24,7 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from libs.hmas.hmas_orchestrator_v2 import HMASV2Orchestrator
-from libs.data.coinbase_client import CoinbaseClient
-from libs.db.signal_store import SignalStore
-from libs.config.settings import Settings
+from libs.data.coinbase import CoinbaseDataProvider
 
 
 class HMASV2Runtime:
@@ -59,9 +57,6 @@ class HMASV2Runtime:
         self.max_signals_per_day = max_signals_per_day
         self.dry_run = dry_run
 
-        # Load settings
-        self.settings = Settings()
-
         # Initialize orchestrator
         print("Initializing HMAS V2 Orchestrator...")
         self.orchestrator = HMASV2Orchestrator(
@@ -73,16 +68,13 @@ class HMASV2Runtime:
 
         # Initialize data client
         print("Initializing Coinbase client...")
-        self.data_client = CoinbaseClient(
+        self.data_client = CoinbaseDataProvider(
             api_key_name=os.getenv('COINBASE_API_KEY_NAME'),
             private_key=os.getenv('COINBASE_API_PRIVATE_KEY')
         )
 
-        # Initialize signal store (if not dry run)
-        if not dry_run:
-            self.signal_store = SignalStore()
-        else:
-            self.signal_store = None
+        # Signal store - TODO: implement when ready
+        self.signal_store = None
 
         # Tracking
         self.signals_generated_today = 0
@@ -102,11 +94,26 @@ class HMASV2Runtime:
         print(f"\nGathering market data for {symbol}...")
 
         # Get OHLCV data (200+ candles)
-        candles = await self.data_client.get_candles(
-            product_id=symbol,
-            granularity='ONE_MINUTE',
-            limit=500  # Get extra for technical analysis
+        # Note: get_data returns pandas DataFrame with OHLCV
+        df = self.data_client.get_data(
+            symbol=symbol,
+            start=datetime.now(timezone.utc) - timedelta(hours=24),  # Last 24 hours
+            end=datetime.now(timezone.utc),
+            interval='1m'
         )
+
+        # Convert DataFrame to candles format
+        candles = []
+        if df is not None and not df.empty:
+            for _, row in df.iterrows():
+                candles.append({
+                    'timestamp': row.name.isoformat() if hasattr(row.name, 'isoformat') else str(row.name),
+                    'open': float(row['open']),
+                    'high': float(row['high']),
+                    'low': float(row['low']),
+                    'close': float(row['close']),
+                    'volume': float(row['volume'])
+                })
 
         if not candles:
             raise ValueError(f"No market data available for {symbol}")
