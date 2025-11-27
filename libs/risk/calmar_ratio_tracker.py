@@ -36,7 +36,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ class CalmarRatioTracker:
             return_pct: Return as decimal (0.025 = 2.5%)
             timestamp: Return timestamp (default: now)
         """
-        ts = timestamp or datetime.now()
+        ts = timestamp or datetime.now(timezone.utc)
 
         self.returns_history.append({
             'timestamp': ts,
@@ -236,7 +236,7 @@ class CalmarRatioTracker:
             return 0.0
 
         # Get returns within window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         window_returns = [
             r['return_pct'] for r in self.returns_history
             if r['timestamp'] >= cutoff

@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ class SharpeRatioTracker:
             SharpeMetrics with all calculations
         """
         if current_time is None:
-            current_time = datetime.now()
+            current_time = datetime.now(timezone.utc)
 
         try:
             if len(self.trade_returns) < 5:
@@ -258,7 +258,7 @@ class SharpeRatioTracker:
             return 0.0
 
         # Get returns within window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         window_returns = [
             t['return_pct'] for t in self.trade_returns
             if t['timestamp'] >= cutoff

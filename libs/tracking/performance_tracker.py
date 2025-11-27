@@ -74,6 +74,13 @@ class PerformanceTracker:
                 from dateutil import parser
                 entry_timestamp = parser.parse(entry_timestamp)
 
+            # Ensure both timestamps are timezone-aware
+            from datetime import timezone
+            if entry_timestamp.tzinfo is None:
+                entry_timestamp = entry_timestamp.replace(tzinfo=timezone.utc)
+            if exit_timestamp.tzinfo is None:
+                exit_timestamp = exit_timestamp.replace(tzinfo=timezone.utc)
+
             # Get signal direction from database to calculate P&L correctly
             signal_result = session.execute(text('''
                 SELECT direction FROM signals WHERE id = :signal_id

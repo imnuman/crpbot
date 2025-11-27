@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class SortinoRatioTracker:
     ) -> None:
         """Record a trade return"""
         self.returns_history.append({
-            'timestamp': timestamp or datetime.now(),
+            'timestamp': timestamp or datetime.now(timezone.utc),
             'return_pct': return_pct
         })
 
@@ -196,7 +196,7 @@ class SortinoRatioTracker:
             return 0.0
 
         # Get returns within window
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         window_returns = [
             r['return_pct'] for r in self.returns_history
             if r['timestamp'] >= cutoff
