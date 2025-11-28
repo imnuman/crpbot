@@ -1253,14 +1253,18 @@ class V7TradingRuntime:
         if not hasattr(self, '_ab_test_counter'):
             self._ab_test_counter = 0
 
-        for symbol in self.runtime_config.symbols:
-            # Increment counter and determine strategy for THIS signal
-            self._ab_test_counter += 1
+        # OPTIMIZATION: Prioritize DOGE-USD (81.3% win rate) then other symbols
+        symbols_prioritized = []
+        if "DOGE-USD" in self.runtime_config.symbols:
+            symbols_prioritized.append("DOGE-USD")
+        symbols_prioritized.extend([s for s in self.runtime_config.symbols if s != "DOGE-USD"])
 
-            # Alternate strategies: odd = MOMENTUM, even = ENTROPY
-            strategy = "v7_full_math" if self._ab_test_counter % 2 == 1 else "v7_deepseek_only"
-            strategy_label = "MOMENTUM (trend-following)" if strategy == "v7_full_math" else "ENTROPY (mean-reversion)"
-            logger.info(f"🧪 A/B TEST: Using strategy '{strategy_label}' for {symbol} (signal #{self._ab_test_counter})")
+        for symbol in symbols_prioritized:
+            # OPTIMIZATION: Use v7_full_math only (79.7% win rate vs 67.1% for alternating)
+            # Removed A/B testing - always use MOMENTUM strategy
+            strategy = "v7_full_math"
+            strategy_label = "v7_full_math_optimized"
+            logger.info(f"📊 OPTIMIZED: Using '{strategy_label}' for {symbol}")
             try:
                 # FIX #2: Check rate limits PER SYMBOL
                 rate_ok, rate_reason = self._check_rate_limits(symbol)

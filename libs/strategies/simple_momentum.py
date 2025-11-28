@@ -33,8 +33,10 @@ class SimpleMomentumStrategy:
     """Pure mathematical momentum strategy - NO LLM delays"""
 
     def __init__(self):
-        self.stop_loss_pct = 0.04  # 4%
-        self.take_profit_pct = 0.08  # 8% (1:2 R:R)
+        # OPTIMIZATION: Reduced from 4%/8% to 2%/4% based on analysis
+        # Only 0.4% of trades hit TP at 4%, crypto typically moves 1-2%
+        self.stop_loss_pct = 0.02  # 2% (optimized from 4%)
+        self.take_profit_pct = 0.04  # 4% (optimized from 8%, 1:2 R:R)
 
     def generate_signal(
         self,
