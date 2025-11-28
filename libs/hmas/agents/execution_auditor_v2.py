@@ -220,9 +220,14 @@ Never include explanatory text - ONLY the JSON object."""
         tp = hypothesis.get('tp', 0)
         action = hypothesis.get('action', 'HOLD')
 
-        # Calculate trade metrics
-        sl_pips = abs(entry - sl) * 10000
-        tp_pips = abs(entry - tp) * 10000
+        # Calculate trade metrics (validate to prevent zero values)
+        if entry <= 0 or sl <= 0 or tp <= 0:
+            # REJECTED signals may have zero values - use placeholders
+            sl_pips = 0.0
+            tp_pips = 0.0
+        else:
+            sl_pips = abs(entry - sl) * 10000
+            tp_pips = abs(entry - tp) * 10000
         position_size = data.get('position_size_usd', 10000)
 
         prompt = f"""# INSTITUTIONAL EXECUTION AUDIT - {hypothesis.get('symbol', 'UNKNOWN')}

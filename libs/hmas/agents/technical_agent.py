@@ -165,6 +165,12 @@ Never include explanatory text - ONLY the JSON object."""
 
         symbol = data.get('symbol', 'UNKNOWN')
         current_price = data.get('current_price', 0)
+
+        # Validate current_price to prevent zero values
+        if current_price <= 0:
+            price_history = data.get('price_history', [])
+            current_price = price_history[-1] if price_history else 1.0  # Use last close as fallback
+
         price_history = data.get('price_history', [])
         swing_highs = data.get('swing_highs', [])
         swing_lows = data.get('swing_lows', [])

@@ -182,10 +182,16 @@ Be thorough, professional, and fact-based."""
         market_structure = alpha.get('market_structure', {})
         order_flow = alpha.get('order_flow', {})
 
-        # Calculate metrics
-        risk_pips = abs(entry - sl) * 10000 if entry and sl else 0
-        reward_pips = abs(entry - tp) * 10000 if entry and tp else 0
-        rr_ratio = reward_pips / risk_pips if risk_pips > 0 else 0
+        # Calculate metrics (validate to prevent zero/misleading values)
+        if entry > 0 and sl > 0 and tp > 0:
+            risk_pips = abs(entry - sl) * 10000
+            reward_pips = abs(entry - tp) * 10000
+            rr_ratio = reward_pips / risk_pips if risk_pips > 0 else 0
+        else:
+            # REJECTED signals may have zero values - use placeholders
+            risk_pips = 0
+            reward_pips = 0
+            rr_ratio = 0
 
         # Historical win rate
         wins = sum(1 for p in pattern_matches if p.get('outcome') == 'win')

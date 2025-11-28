@@ -424,7 +424,7 @@ Never include explanatory text - ONLY the JSON object."""
 - **Audit Result**: {audit.get('overall_audit', {}).get('audit_result', 'N/A')}
 - **Overall Grade**: {audit.get('overall_audit', {}).get('overall_grade', 'N/A')}
 - **Recommendation**: {audit.get('overall_audit', {}).get('recommendation', 'N/A')}
-- **Cost/TP Ratio**: {audit.get('cost_analysis', {}).get('cost_to_tp_ratio', 0):.1%}
+- **Cost/TP Ratio**: {(audit.get('cost_analysis', {}).get('cost_to_tp_ratio', 0) or 0):.1%}
 - **Liquidity Grade**: {audit.get('liquidity_analysis', {}).get('liquidity_grade', 'N/A')}
 - **Best Broker**: {audit.get('best_broker', 'N/A')}
 - **Summary**: {audit.get('summary', 'N/A')}
