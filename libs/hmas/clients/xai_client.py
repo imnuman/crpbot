@@ -10,7 +10,7 @@ class XAIClient:
     """Client for X.AI Grok API"""
 
     BASE_URL = "https://api.x.ai/v1"
-    MODEL = "grok-3"
+    MODEL = "grok-2-latest"
 
     def __init__(self, api_key: str):
         self.api_key = api_key
