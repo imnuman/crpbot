@@ -32,6 +32,26 @@ class MotherAIV2(BaseAgent):
         super().__init__(name="Mother AI V2 (Gemini Enhanced)", api_key=api_key)
         self.client = GeminiClient(api_key=api_key)
 
+    def _clean_json_response(self, response: str) -> str:
+        """
+        Clean JSON response by removing markdown code blocks if present
+
+        Gemini sometimes returns: ```json\n{...}\n```
+        We need just: {...}
+        """
+        response = response.strip()
+
+        # Remove markdown code block wrapper
+        if response.startswith('```json'):
+            response = response[7:]  # Remove ```json
+        elif response.startswith('```'):
+            response = response[3:]  # Remove ```
+
+        if response.endswith('```'):
+            response = response[:-3]  # Remove trailing ```
+
+        return response.strip()
+
     async def analyze(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Perform multi-round deliberation and make final decision
@@ -142,10 +162,12 @@ Never include explanatory text - ONLY the JSON object."""
                 messages=[{"role": "user", "content": prompt}],
                 system_instruction=system_prompt,
                 temperature=0.2,
-                max_tokens=2000
+                max_tokens=8192  # Increased from 2000 for more detailed analysis
             )
 
-            return json.loads(response)
+            # Clean markdown wrapper if present
+            clean_response = self._clean_json_response(response)
+            return json.loads(clean_response)
 
         except Exception as e:
             return {
@@ -231,10 +253,12 @@ Never include explanatory text - ONLY the JSON object."""
                 messages=[{"role": "user", "content": prompt}],
                 system_instruction=system_prompt,
                 temperature=0.3,
-                max_tokens=2000
+                max_tokens=8192  # Increased from 2000 for more detailed analysis
             )
 
-            return json.loads(response)
+            # Clean markdown wrapper if present
+            clean_response = self._clean_json_response(response)
+            return json.loads(clean_response)
 
         except Exception as e:
             return {
@@ -334,10 +358,12 @@ Never include explanatory text - ONLY the JSON object."""
                 messages=[{"role": "user", "content": prompt}],
                 system_instruction=system_prompt,
                 temperature=0.1,  # Very low for final decision
-                max_tokens=2000
+                max_tokens=8192  # Increased from 2000 for more detailed analysis
             )
 
-            result = json.loads(response)
+            # Clean markdown wrapper if present
+            clean_response = self._clean_json_response(response)
+            result = json.loads(clean_response)
 
             # Add 3-round audit trail
             result['multi_round_audit'] = {
@@ -348,7 +374,20 @@ Never include explanatory text - ONLY the JSON object."""
 
             return result
 
+        except json.JSONDecodeError as e:
+            print(f"[MOTHER AI ERROR] JSON parse failed: {str(e)}")
+            print(f"[MOTHER AI ERROR] Raw response: {response[:1000]}")
+            return {
+                'decision': 'REJECTED',
+                'action': 'HOLD',
+                'rejection_reason': f'Round 3 JSON parse failed: {str(e)}',
+                'error': str(e),
+                'final_summary': f'REJECTED due to error: {str(e)}'
+            }
         except Exception as e:
+            print(f"[MOTHER AI ERROR] Round 3 failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {
                 'decision': 'REJECTED',
                 'action': 'HOLD',

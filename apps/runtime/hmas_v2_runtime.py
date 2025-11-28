@@ -19,6 +19,10 @@ import sys
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 import argparse
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
