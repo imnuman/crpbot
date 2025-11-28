@@ -130,7 +130,17 @@ Never include explanatory text - ONLY the JSON object."""
                 max_tokens=8000  # Large budget for comprehensive analysis
             )
 
-            result = json.loads(response)
+            # Strip markdown code fences if present
+            response_clean = response.strip()
+            if response_clean.startswith('```json'):
+                response_clean = response_clean[7:]  # Remove ```json
+            if response_clean.startswith('```'):
+                response_clean = response_clean[3:]  # Remove ```
+            if response_clean.endswith('```'):
+                response_clean = response_clean[:-3]  # Remove trailing ```
+            response_clean = response_clean.strip()
+
+            result = json.loads(response_clean)
             return result
 
         except Exception as e:
@@ -142,140 +152,134 @@ Never include explanatory text - ONLY the JSON object."""
             }
 
     def _build_enhanced_prompt(self, data: Dict[str, Any]) -> str:
-        """Build comprehensive multi-timeframe analysis prompt"""
+        """Build comprehensive analysis prompt using available 1-minute data"""
 
         symbol = data.get('symbol', 'UNKNOWN')
-        timeframes = data.get('timeframes', ['M15', 'M30', 'H1', 'H4', 'D1'])
         current_price = data.get('current_price', 0)
 
-        # Multi-timeframe indicators
+        # Extract M1 indicators (basic candle-derived data)
         indicators = data.get('indicators', {})
-        ma200 = indicators.get('ma200', {})
-        rsi = indicators.get('rsi', {})
-        bbands = indicators.get('bbands', {})
-        atr = indicators.get('atr', {})
-        volume = indicators.get('volume', {})
+        ma200_m1 = indicators.get('ma200', {}).get('M1', current_price)
+        rsi_m1 = indicators.get('rsi', {}).get('M1', 50)
+        bbands_m1 = indicators.get('bbands', {}).get('M1', {})
+        bb_upper = bbands_m1.get('upper', current_price * 1.02)
+        bb_lower = bbands_m1.get('lower', current_price * 0.98)
+        atr_m1 = indicators.get('atr', {}).get('M1', current_price * 0.01)
 
-        # Historical patterns
-        historical_patterns = data.get('historical_patterns', [])
+        # Price history for context
+        price_history = data.get('price_history', [])
+        recent_high = max(price_history[-50:]) if len(price_history) >= 50 else current_price
+        recent_low = min(price_history[-50:]) if len(price_history) >= 50 else current_price
 
         # Support/Resistance
-        sr_levels = data.get('support_resistance', {})
+        swing_highs = data.get('swing_highs', [])
+        swing_lows = data.get('swing_lows', [])
+        nearest_resistance = min([h for h in swing_highs if h > current_price], default=current_price * 1.05)
+        nearest_support = max([l for l in swing_lows if l < current_price], default=current_price * 0.95)
 
-        prompt = f"""# INSTITUTIONAL MULTI-TIMEFRAME ANALYSIS - {symbol}
+        # Calculate trend
+        trend = self._determine_trend(current_price, ma200_m1)
+
+        # Calculate BB position
+        bb_position = self._check_bb_extreme(current_price, bbands_m1)
+
+        # Calculate price momentum (last 20 candles)
+        if len(price_history) >= 20:
+            price_change = ((current_price - price_history[-20]) / price_history[-20]) * 100
+        else:
+            price_change = 0.0
+
+        prompt = f"""# INSTITUTIONAL TECHNICAL ANALYSIS - {symbol}
 
 ## Current Market State
 - Symbol: {symbol}
 - Current Price: {current_price:.5f}
 - Timestamp: {data.get('timestamp', 'N/A')}
+- Recent High (50 bars): {recent_high:.5f}
+- Recent Low (50 bars): {recent_low:.5f}
+- Price Momentum (20 bars): {price_change:+.2f}%
 
-## Multi-Timeframe Trend Analysis
+## Technical Indicators (1-minute timeframe)
 
-### Daily (D1)
-- 200-MA: {ma200.get('D1', 0):.5f}
-- RSI: {rsi.get('D1', 50):.1f}
-- ATR: {atr.get('D1', 0):.5f}
-- Trend: {self._determine_trend(current_price, ma200.get('D1', 0))}
+### Trend Analysis
+- 200-MA: {ma200_m1:.5f}
+- Price vs MA200: {trend}
+- Distance from MA200: {((current_price - ma200_m1) / ma200_m1 * 100):+.2f}%
 
-### 4-Hour (H4)
-- 200-MA: {ma200.get('H4', 0):.5f}
-- RSI: {rsi.get('H4', 50):.1f}
-- ATR: {atr.get('H4', 0):.5f}
-- Trend: {self._determine_trend(current_price, ma200.get('H4', 0))}
+### Momentum & Mean Reversion
+- RSI (14): {rsi_m1:.1f}
+- RSI Signal: {"OVERBOUGHT (>70)" if rsi_m1 > 70 else "OVERSOLD (<30)" if rsi_m1 < 30 else "NEUTRAL"}
+- Bollinger Band Upper: {bb_upper:.5f}
+- Bollinger Band Lower: {bb_lower:.5f}
+- BB Position: {bb_position}
+- Price Distance from BB Upper: {((current_price - bb_upper) / bb_upper * 100):+.2f}%
+- Price Distance from BB Lower: {((current_price - bb_lower) / bb_lower * 100):+.2f}%
 
-### 1-Hour (H1)
-- 200-MA: {ma200.get('H1', 0):.5f}
-- RSI: {rsi.get('H1', 50):.1f}
-- ATR: {atr.get('H1', 0):.5f}
-- Trend: {self._determine_trend(current_price, ma200.get('H1', 0))}
-
-### 30-Minute (M30)
-- 200-MA: {ma200.get('M30', 0):.5f}
-- RSI: {rsi.get('M30', 50):.1f}
-- ATR: {atr.get('M30', 0):.5f}
-- Trend: {self._determine_trend(current_price, ma200.get('M30', 0))}
-
-### 15-Minute (M15) - Entry Timeframe
-- 200-MA: {ma200.get('M15', 0):.5f}
-- RSI: {rsi.get('M15', 50):.1f}
-- Bollinger Bands Upper: {bbands.get('M15', {}).get('upper', 0):.5f}
-- Bollinger Bands Lower: {bbands.get('M15', {}).get('lower', 0):.5f}
-- ATR: {atr.get('M15', 0):.5f}
-- Trend: {self._determine_trend(current_price, ma200.get('M15', 0))}
+### Volatility
+- ATR (14): {atr_m1:.5f}
+- ATR as % of Price: {(atr_m1 / current_price * 100):.2f}%
 
 ## Support & Resistance Levels
-- Key Resistance Levels: {sr_levels.get('resistance', [])}
-- Key Support Levels: {sr_levels.get('support', [])}
-- Nearest Resistance: {sr_levels.get('nearest_resistance', 0):.5f}
-- Nearest Support: {sr_levels.get('nearest_support', 0):.5f}
+- Nearest Resistance: {nearest_resistance:.5f} ({((nearest_resistance - current_price) / current_price * 100):+.2f}% away)
+- Nearest Support: {nearest_support:.5f} ({((current_price - nearest_support) / current_price * 100):+.2f}% away)
+- All Swing Highs: {swing_highs[:5] if len(swing_highs) >= 5 else swing_highs}
+- All Swing Lows: {swing_lows[:5] if len(swing_lows) >= 5 else swing_lows}
 
-## Historical Pattern Matching
-Found {len(historical_patterns)} similar setups in database:
+## Your Task - Generate Trade Signal
 
-{self._format_historical_patterns(historical_patterns[:10])}
+Analyze the current market conditions and determine if there is a high-probability trade setup.
 
-## Mean Reversion Setup Analysis
+### Trading Rules:
+1. **Mean Reversion Setup (Primary Strategy)**
+   - SELL when: RSI > 70 AND price near/above BB upper AND in uptrend
+   - BUY when: RSI < 30 AND price near/below BB lower AND in downtrend
+   - Target: Mean reversion to MA200 or opposite BB
 
-### Current Setup Checklist
-1. Multi-Timeframe Alignment?
-   - D1 Trend: {self._determine_trend(current_price, ma200.get('D1', 0))}
-   - H4 Trend: {self._determine_trend(current_price, ma200.get('H4', 0))}
-   - H1 Trend: {self._determine_trend(current_price, ma200.get('H1', 0))}
-   - M30 Trend: {self._determine_trend(current_price, ma200.get('M30', 0))}
+2. **Trend Following Setup (Secondary Strategy)**
+   - BUY when: Price > MA200 AND RSI 40-60 AND bouncing off support
+   - SELL when: Price < MA200 AND RSI 40-60 AND rejecting resistance
 
-2. Bollinger Band Extreme?
-   - Current Price: {current_price:.5f}
-   - Upper Band: {bbands.get('M15', {}).get('upper', 0):.5f}
-   - Lower Band: {bbands.get('M15', {}).get('lower', 0):.5f}
-   - At Extreme: {self._check_bb_extreme(current_price, bbands.get('M15', {}))}
+3. **Risk Management**
+   - Stop Loss: 1.5× ATR from entry OR recent swing high/low
+   - Take Profit: 2.5-3× Stop Loss distance (minimum 2.5:1 R:R)
+   - Entry: Current price (market order) OR pending order at key level
 
-3. RSI Extreme?
-   - M15 RSI: {rsi.get('M15', 50):.1f}
-   - Overbought (>70): {rsi.get('M15', 50) > 70}
-   - Oversold (<30): {rsi.get('M15', 50) < 30}
+4. **Confidence Scoring**
+   - RSI extreme (>70 or <30): +30% confidence
+   - BB extreme (price touching band): +25% confidence
+   - Trend alignment: +20% confidence
+   - Near support/resistance: +15% confidence
+   - Good R:R ratio (>2.5): +10% confidence
+   - TOTAL: 0-100% (output as 0.0-1.0)
 
-4. Volume Confirmation?
-   - Recent Volume Trend: {volume.get('trend', 'N/A')}
+### Output Format (JSON only):
+{{
+  "action": "BUY" or "SELL" or "HOLD",
+  "confidence": 0.75,
+  "entry": {current_price:.5f},
+  "sl": 0.00000,
+  "tp": 0.00000,
+  "setup_type": "mean_reversion_rsi_bb" or "trend_following_ma200" or "none",
 
-## Your Task - Institutional-Grade Analysis
+  "market_structure": {{
+    "trend": "{trend}",
+    "rsi_signal": "overbought/oversold/neutral",
+    "bb_position": "{bb_position}",
+    "key_support": {nearest_support:.5f},
+    "key_resistance": {nearest_resistance:.5f}
+  }},
 
-Perform top-down analysis:
+  "evidence": "Clear explanation: Why this trade? What confirms the setup? What is the edge?"
+}}
 
-1. **Identify Primary Trend** (D1 → H4 → H1)
-   - What is the dominant trend across higher timeframes?
-   - Are all timeframes aligned?
+**IMPORTANT**:
+- Only suggest BUY/SELL if confidence >= 70%
+- Always set precise entry/SL/TP levels (not 0.0)
+- Ensure R:R ratio >= 2.5:1
+- Use ATR for stop loss distance if no clear swing level
+- Output ONLY valid JSON, no other text
 
-2. **Find Market Structure**
-   - Where are recent higher highs / lower lows?
-   - Has structure broken (BoS)?
-   - Where is the invalidation level?
-
-3. **Assess Mean Reversion Setup**
-   - Is price at a Bollinger Band extreme?
-   - Is RSI confirming (>70 or <30)?
-   - Is this against the trend (counter-trend reversion)?
-
-4. **Match Historical Patterns**
-   - How many similar setups found?
-   - What was the win rate?
-   - What was average P&L and hold time?
-
-5. **Calculate Order Flow**
-   - Is there institutional buying or selling pressure?
-   - Volume increasing on which moves?
-
-6. **Determine Confidence**
-   - Multi-timeframe alignment: High confidence
-   - Historical pattern matches: Add confidence
-   - Order flow confirmation: Add confidence
-   - Final confidence: 0.0 to 1.0
-
-7. **Set Precise Levels**
-   - Entry: Current price or pending order
-   - Stop Loss: Recent swing high/low or 1× ATR
-   - Take Profit: Next support/resistance or 2.5× SL distance
-
-Output ONLY the JSON object with your comprehensive analysis."""
+Analyze NOW and output your JSON trade decision:"""
 
         return prompt
 

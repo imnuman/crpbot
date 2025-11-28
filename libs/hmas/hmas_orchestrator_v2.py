@@ -135,7 +135,14 @@ class HMASV2Orchestrator:
 
         print(f"✓ Alpha Generator: {alpha_hypothesis.get('action', 'N/A')} "
               f"(confidence: {alpha_hypothesis.get('confidence', 0):.0%})")
-        print(f"✓ Technical Agent: {technical_analysis.get('elliott_wave', {}).get('primary_count', 'N/A')[:50]}...")
+
+        # Technical Agent - handle both success and error cases
+        if 'error' in technical_analysis:
+            tech_display = technical_analysis.get('evidence', 'Error in analysis...')
+        else:
+            tech_display = technical_analysis.get('elliott_wave', {}).get('primary_count', 'N/A')
+        print(f"✓ Technical Agent: {str(tech_display)[:50]}...")
+
         print(f"✓ Sentiment Agent: {sentiment_analysis.get('overall_assessment', {}).get('sentiment_bias', 'N/A')}")
         print(f"✓ Macro Agent: {macro_analysis.get('overall_macro_assessment', {}).get('macro_bias', 'N/A')}")
         print()

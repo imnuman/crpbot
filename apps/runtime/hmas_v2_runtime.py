@@ -77,8 +77,10 @@ class HMASV2Runtime:
             private_key=os.getenv('COINBASE_API_PRIVATE_KEY')
         )
 
-        # Signal store - TODO: implement when ready
-        self.signal_store = None
+        # Signal store - database session for storing signals
+        from libs.db.database import get_database
+        db = get_database()
+        self.signal_store = db.get_session_direct()  # SQLAlchemy session
 
         # Tracking
         self.signals_generated_today = 0
@@ -136,6 +138,9 @@ class HMASV2Runtime:
         swing_highs = sorted(highs[-50:], reverse=True)[:10]
         swing_lows = sorted(lows[-50:])[:10]
 
+        # Calculate basic indicators
+        indicators = self._calculate_basic_indicators(closes, highs, lows, current_price)
+
         # Build comprehensive market data
         market_data = {
             'symbol': symbol,
@@ -144,6 +149,14 @@ class HMASV2Runtime:
             'price_history': closes,
             'swing_highs': swing_highs,
             'swing_lows': swing_lows,
+
+            # Basic indicators (calculated from candles)
+            'indicators': {
+                'ma200': {'M1': indicators['ma200']},  # Use 1m data for now
+                'rsi': {'M1': indicators['rsi']},
+                'bbands': {'M1': {'upper': indicators['bb_upper'], 'lower': indicators['bb_lower']}},
+                'atr': {'M1': indicators['atr']}
+            },
 
             # Order book (would fetch from exchange in production)
             'order_book': {
@@ -269,6 +282,66 @@ class HMASV2Runtime:
         else:
             return 'after_hours'
 
+    def _calculate_basic_indicators(self, closes: list, highs: list, lows: list, current_price: float) -> dict:
+        """Calculate basic indicators from candle data"""
+        if len(closes) < 200:
+            # Not enough data for full analysis
+            return {
+                'ma200': current_price,  # Use current price as fallback
+                'rsi': 50.0,  # Neutral RSI
+                'bb_upper': current_price * 1.02,
+                'bb_lower': current_price * 0.98,
+                'atr': abs(max(highs[-20:]) - min(lows[-20:])) / 20 if len(highs) >= 20 else current_price * 0.01
+            }
+
+        # Calculate 200-period Moving Average
+        ma200 = sum(closes[-200:]) / 200
+
+        # Calculate RSI (14-period)
+        period = min(14, len(closes) - 1)
+        gains = []
+        losses = []
+        for i in range(len(closes) - period, len(closes)):
+            change = closes[i] - closes[i-1]
+            gains.append(max(0, change))
+            losses.append(max(0, -change))
+
+        avg_gain = sum(gains) / period if gains else 0
+        avg_loss = sum(losses) / period if losses else 0
+
+        if avg_loss == 0:
+            rsi = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+
+        # Calculate Bollinger Bands (20-period, 2 std dev)
+        bb_period = min(20, len(closes))
+        bb_data = closes[-bb_period:]
+        bb_ma = sum(bb_data) / len(bb_data)
+        variance = sum((x - bb_ma) ** 2 for x in bb_data) / len(bb_data)
+        std_dev = variance ** 0.5
+        bb_upper = bb_ma + (2 * std_dev)
+        bb_lower = bb_ma - (2 * std_dev)
+
+        # Calculate ATR (14-period)
+        atr_period = min(14, len(highs) - 1)
+        true_ranges = []
+        for i in range(len(highs) - atr_period, len(highs)):
+            high_low = highs[i] - lows[i]
+            high_close = abs(highs[i] - closes[i-1])
+            low_close = abs(lows[i] - closes[i-1])
+            true_ranges.append(max(high_low, high_close, low_close))
+        atr = sum(true_ranges) / len(true_ranges) if true_ranges else current_price * 0.01
+
+        return {
+            'ma200': ma200,
+            'rsi': rsi,
+            'bb_upper': bb_upper,
+            'bb_lower': bb_lower,
+            'atr': atr
+        }
+
     async def generate_signal(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
         Generate single signal for symbol using HMAS V2
@@ -309,28 +382,46 @@ class HMASV2Runtime:
     async def _store_signal(self, signal: Dict[str, Any]):
         """Store signal in database"""
         try:
-            # Extract key fields
-            signal_data = {
-                'symbol': signal['symbol'],
-                'timestamp': signal['timestamp'],
-                'decision': signal['decision'],
-                'action': signal['action'],
-                'confidence': signal.get('agent_analyses', {}).get('mother_ai', {}).get('decision_rationale', {}).get('confidence', 0),
-                'entry': signal.get('trade_parameters', {}).get('entry', 0),
-                'stop_loss': signal.get('trade_parameters', {}).get('stop_loss', 0),
-                'take_profit': signal.get('trade_parameters', {}).get('take_profit', 0),
-                'lot_size': signal.get('trade_parameters', {}).get('lot_size', 0),
-                'hmas_version': 'V2',
-                'total_cost': 1.00,
-                'raw_signal': signal  # Store complete signal as JSON
-            }
+            from libs.db.models import Signal
+            from datetime import datetime, timezone
 
-            # TODO: Implement signal storage
-            # self.signal_store.save_signal(signal_data)
-            print(f"✓ Signal stored in database")
+            # Extract trade parameters
+            trade_params = signal.get('trade_parameters', {})
+
+            # Map HMAS V2 decision to V7-compatible direction
+            direction_map = {
+                'APPROVED': signal.get('action', 'hold').lower(),  # 'long' or 'short'
+                'REJECTED': 'hold'
+            }
+            direction = direction_map.get(signal['decision'], 'hold')
+
+            # Create Signal model instance
+            # Note: HMAS V2 uses 'stop_loss'/'take_profit' in trade_params, but DB uses 'sl_price'/'tp_price'
+            new_signal = Signal(
+                symbol=signal['symbol'],
+                timestamp=datetime.fromisoformat(signal['timestamp']),
+                direction=direction,
+                confidence=signal.get('agent_analyses', {}).get('mother_ai', {}).get('decision_rationale', {}).get('confidence', 0) / 100.0,  # Convert to 0-1
+                entry_price=trade_params.get('entry', 0),
+                sl_price=trade_params.get('stop_loss', 0),  # Map HMAS stop_loss → DB sl_price
+                tp_price=trade_params.get('take_profit', 0),  # Map HMAS take_profit → DB tp_price
+                tier='high',  # HMAS V2 signals are high tier
+                ensemble_prediction=0.5,  # Required field
+                strategy='hmas_v2'  # HMAS V2 strategy identifier (7-agent system)
+            )
+
+            # Save to database
+            self.signal_store.add(new_signal)
+            self.signal_store.commit()
+
+            print(f"✓ Signal stored in database (ID: {new_signal.id})")
 
         except Exception as e:
-            print(f"Error storing signal: {e}")
+            print(f"⚠️  Error storing signal: {e}")
+            import traceback
+            traceback.print_exc()
+            if self.signal_store:
+                self.signal_store.rollback()
 
     async def run_single_iteration(self):
         """Run single iteration - generate signals for all symbols"""
