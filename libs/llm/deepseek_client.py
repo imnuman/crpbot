@@ -89,7 +89,7 @@ class DeepSeekClient:
         self,
         api_key: Optional[str] = None,
         model: str = DEFAULT_MODEL,
-        timeout: int = 90,
+        timeout: int = 180,  # Increased from 90s for HMAS V2 agents
         max_retries: int = 3
     ):
         """
