@@ -284,6 +284,10 @@ class HMASV2Runtime:
 
     def _calculate_basic_indicators(self, closes: list, highs: list, lows: list, current_price: float) -> dict:
         """Calculate basic indicators from candle data"""
+        # Validate current_price to prevent division by zero
+        if current_price <= 0:
+            current_price = closes[-1] if closes else 1.0  # Use last close as fallback
+
         if len(closes) < 200:
             # Not enough data for full analysis
             return {
@@ -385,8 +389,8 @@ class HMASV2Runtime:
             from libs.db.models import Signal
             from datetime import datetime, timezone
 
-            # Extract trade parameters
-            trade_params = signal.get('trade_parameters', {})
+            # Extract trade parameters (can be None for REJECTED signals)
+            trade_params = signal.get('trade_parameters') or {}
 
             # Map HMAS V2 decision to V7-compatible direction
             direction_map = {
@@ -402,9 +406,9 @@ class HMASV2Runtime:
                 timestamp=datetime.fromisoformat(signal['timestamp']),
                 direction=direction,
                 confidence=signal.get('agent_analyses', {}).get('mother_ai', {}).get('decision_rationale', {}).get('confidence', 0) / 100.0,  # Convert to 0-1
-                entry_price=trade_params.get('entry', 0),
-                sl_price=trade_params.get('stop_loss', 0),  # Map HMAS stop_loss → DB sl_price
-                tp_price=trade_params.get('take_profit', 0),  # Map HMAS take_profit → DB tp_price
+                entry_price=trade_params.get('entry', 0) if trade_params else 0,
+                sl_price=trade_params.get('stop_loss', 0) if trade_params else 0,  # Map HMAS stop_loss → DB sl_price
+                tp_price=trade_params.get('take_profit', 0) if trade_params else 0,  # Map HMAS take_profit → DB tp_price
                 tier='high',  # HMAS V2 signals are high tier
                 ensemble_prediction=0.5,  # Required field
                 strategy='hmas_v2'  # HMAS V2 strategy identifier (7-agent system)

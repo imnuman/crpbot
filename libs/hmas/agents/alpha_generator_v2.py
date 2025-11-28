@@ -157,6 +157,11 @@ Never include explanatory text - ONLY the JSON object."""
         symbol = data.get('symbol', 'UNKNOWN')
         current_price = data.get('current_price', 0)
 
+        # Validate current_price to prevent division by zero
+        if current_price <= 0:
+            price_history = data.get('price_history', [])
+            current_price = price_history[-1] if price_history else 1.0  # Use last close as fallback
+
         # Extract M1 indicators (basic candle-derived data)
         indicators = data.get('indicators', {})
         ma200_m1 = indicators.get('ma200', {}).get('M1', current_price)
