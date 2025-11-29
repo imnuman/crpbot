@@ -39,6 +39,7 @@ from libs.hydra.consensus import get_consensus_engine
 from libs.hydra.tournament_manager import get_tournament_manager
 from libs.hydra.breeding_engine import get_breeding_engine
 from libs.hydra.lesson_memory import get_lesson_memory
+from libs.hydra.paper_trader import get_paper_trader
 from libs.hydra.database import init_hydra_db, HydraSession
 
 # Gladiators
@@ -130,6 +131,9 @@ class HydraRuntime:
         # Upgrade A: Explainability
         self.explainer = get_explainability_logger()
 
+        # Paper Trading System
+        self.paper_trader = get_paper_trader()
+
         # Data provider
         self.data_client = get_coinbase_client()
 
@@ -174,12 +178,20 @@ class HydraRuntime:
                 logger.info(f"Iteration {self.iteration} - {datetime.now(timezone.utc)}")
                 logger.info(f"{'='*80}\n")
 
+                # Check open paper trades first
+                if self.paper_trading:
+                    self._check_paper_trades()
+
                 # Process each asset
                 for asset in self.assets:
                     self._process_asset(asset)
 
                 # Run tournament cycles (if needed)
                 self._run_tournament_cycles()
+
+                # Print paper trading stats
+                if self.paper_trading and self.iteration % 10 == 0:  # Every 10 iterations
+                    self._print_paper_trading_stats()
 
                 # Sleep until next iteration
                 if iterations == -1 or self.iteration < iterations:
@@ -466,17 +478,24 @@ class HydraRuntime:
 
     def _execute_paper_trade(self, asset: str, signal: Dict, market_data: List[Dict]):
         """Execute paper trade (simulation only)."""
-        logger.success(
-            f"PAPER TRADE: {signal['action']} {asset} @ {signal['entry_price']} "
-            f"(consensus: {signal['consensus_level']}, "
-            f"position size: {signal['position_size_modifier']:.0%})"
+        # Extract regime from previous detection
+        regime_result = self.regime_detector.detect_regime(market_data)
+        regime = regime_result["regime"]
+
+        # Create paper trade
+        trade = self.paper_trader.create_paper_trade(
+            asset=asset,
+            regime=regime,
+            strategy_id=signal.get("strategy", {}).get("strategy_id", "UNKNOWN"),
+            gladiator=signal.get("strategy", {}).get("gladiator", "UNKNOWN"),
+            signal=signal
         )
 
-        # TODO: Implement paper trade tracking
-        # - Store entry
-        # - Monitor for SL/TP hit
-        # - Update tournament performance
-        # - Learn from failures
+        logger.success(
+            f"PAPER TRADE CREATED: {signal['action']} {asset} @ {signal['entry_price']:.2f} "
+            f"(consensus: {signal['consensus_level']}, "
+            f"size modifier: {signal['position_size_modifier']:.0%})"
+        )
 
     def _execute_live_trade(self, asset: str, signal: Dict, market_data: List[Dict]):
         """Execute live trade."""
@@ -622,6 +641,92 @@ class HydraRuntime:
             "session": "Unknown",  # TODO: Detect trading session
             "day_of_week": datetime.now(timezone.utc).strftime("%A")
         }
+
+    # ==================== PAPER TRADING HELPERS ====================
+
+    def _check_paper_trades(self):
+        """Check all open paper trades for SL/TP hits."""
+        if not self.paper_trader.open_trades:
+            return
+
+        # Fetch market data for all assets with open trades
+        assets_with_trades = set(trade.asset for trade in self.paper_trader.open_trades.values())
+
+        market_data = {}
+        for asset in assets_with_trades:
+            try:
+                data = self.data_client.get_candles(
+                    symbol=asset,
+                    granularity="ONE_MINUTE",
+                    limit=1
+                )
+                market_data[asset] = data
+            except Exception as e:
+                logger.error(f"Failed to fetch data for {asset}: {e}")
+
+        # Check for exits
+        self.paper_trader.check_open_trades(market_data)
+
+        # For closed trades, update tournament and learn from losses
+        for trade in list(self.paper_trader.closed_trades[-10:]):  # Last 10 closed
+            if trade.status == "CLOSED" and not hasattr(trade, "_processed"):
+                self._process_closed_paper_trade(trade)
+                trade._processed = True  # Mark as processed
+
+    def _process_closed_paper_trade(self, trade):
+        """Process a closed paper trade - update tournament and learn from losses."""
+        # Update tournament performance
+        trade_result = {
+            "outcome": trade.outcome,
+            "pnl_percent": trade.pnl_percent,
+            "rr_actual": trade.rr_actual,
+            "entry_timestamp": trade.entry_timestamp,
+            "exit_timestamp": trade.exit_timestamp
+        }
+
+        self.tournament.update_strategy_performance(
+            strategy_id=trade.strategy_id,
+            asset=trade.asset,
+            regime=trade.regime,
+            trade_result=trade_result
+        )
+
+        # Learn from losses
+        if trade.outcome == "loss":
+            market_context = {
+                "day_of_week": trade.entry_timestamp.strftime("%A"),
+                "session": "Unknown",  # TODO: Detect session
+                "dxy_change": 0.0,
+                "btc_change": 0.0,
+                "news_events": []
+            }
+
+            self.lessons.learn_from_failure(
+                trade_id=trade.trade_id,
+                asset=trade.asset,
+                regime=trade.regime,
+                strategy={"strategy_id": trade.strategy_id},
+                signal={"direction": trade.direction, "entry_price": trade.entry_price},
+                trade_result=trade_result,
+                market_context=market_context
+            )
+
+    def _print_paper_trading_stats(self):
+        """Print paper trading statistics."""
+        stats = self.paper_trader.get_overall_stats()
+
+        logger.info("\n" + "="*80)
+        logger.info("PAPER TRADING STATISTICS")
+        logger.info("="*80)
+        logger.info(f"Total Trades: {stats['total_trades']}")
+        logger.info(f"Wins: {stats['wins']} | Losses: {stats['losses']}")
+        logger.info(f"Win Rate: {stats['win_rate']:.1%}")
+        logger.info(f"Total P&L: {stats['total_pnl_percent']:+.2%} (${stats['total_pnl_usd']:+.2f})")
+        logger.info(f"Avg Win: {stats['avg_win']:+.2%} | Avg Loss: {stats['avg_loss']:+.2%}")
+        logger.info(f"Avg R:R: {stats['avg_rr']:.2f}")
+        logger.info(f"Sharpe Ratio: {stats['sharpe_ratio']:.2f}")
+        logger.info(f"Open Trades: {stats['open_trades']}")
+        logger.info("="*80 + "\n")
 
 
 def main():
