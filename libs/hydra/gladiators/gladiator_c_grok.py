@@ -1,5 +1,5 @@
 """
-HYDRA 3.0 - Gladiator C (Groq)
+HYDRA 3.0 - Gladiator C (Grok/X.AI)
 
 Role: Fast Backtester
 
@@ -10,7 +10,7 @@ Specialization:
 - Fast failure mode detection
 - "Have we seen this before?" analysis
 
-Groq is chosen for ultra-fast inference (~500 tokens/sec).
+Grok (X.AI) is chosen for powerful reasoning and pattern recognition.
 Perfect for quick historical pattern matching.
 """
 
@@ -22,26 +22,26 @@ import os
 from .base_gladiator import BaseGladiator
 
 
-class GladiatorC_Groq(BaseGladiator):
+class GladiatorC_Grok(BaseGladiator):
     """
-    Gladiator C: Fast Backtester using Groq (Llama 3).
+    Gladiator C: Fast Backtester using Grok (X.AI).
 
-    Cost: ~$0.0001 per backtest (extremely cheap + fast)
-    Speed: ~500 tokens/sec (vs ~20-50 for others)
+    Cost: ~$5 per 1M tokens (competitive pricing)
+    Speed: Fast inference with powerful reasoning
     """
 
-    GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-    MODEL = "llama-3.3-70b-versatile"  # Latest Llama 3
+    GROK_API_URL = "https://api.x.ai/v1/chat/completions"
+    MODEL = "grok-3"  # X.AI's Grok model (grok-beta deprecated 2025-09-15)
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
             name="C",
             role="Fast Backtester",
-            api_key=api_key or os.getenv("GROQ_API_KEY")
+            api_key=api_key or os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY") or os.getenv("GROQ_API_KEY")  # Support multiple env var names
         )
 
         if not self.api_key:
-            logger.warning("Groq API key not provided - gladiator will be in mock mode")
+            logger.warning("Grok API key not provided - gladiator will be in mock mode")
 
     def generate_strategy(
         self,
@@ -228,27 +228,46 @@ Be BRUTALLY HONEST. Real backtest data > optimistic claims."""
         market_data: Dict
     ) -> str:
         """Build prompt for pattern matching vote."""
-        return f"""Have we seen this setup before?
+        # Regime-based guidance
+        regime_guidance = {
+            "TRENDING_UP": "TRENDING_UP regime → Historical uptrends favor BUY",
+            "TRENDING_DOWN": "TRENDING_DOWN regime → Historical downtrends favor SELL",
+            "RANGING": "RANGING regime → Mean reversion patterns favor HOLD or range trading",
+            "CHOPPY": "CHOPPY regime → High whipsaw risk, favor HOLD",
+            "BREAKOUT": "BREAKOUT regime → Direction follows breakout",
+            "VOLATILE": "VOLATILE regime → Historical volatility spikes favor HOLD"
+        }
+
+        guidance = regime_guidance.get(regime, "Neutral regime")
+
+        return f"""Based on historical patterns, what direction should we trade?
 
 ASSET: {asset}
 REGIME: {regime}
-DIRECTION: {signal.get('direction', 'UNKNOWN')}
+
+REGIME GUIDANCE:
+{guidance}
 
 STRATEGY: {strategy.get('strategy_name', 'Unknown')}
-CURRENT SETUP: Entry at {signal.get('entry_price', 'N/A')}
+
+Current Market:
+- Price: {market_data.get('close', 'N/A')}
+- Volume: {market_data.get('volume', 'N/A')}
 
 Think through your training data:
-1. Similar setups in the past?
-2. What happened next?
-3. Success rate of this pattern?
+1. Have we seen similar market conditions in the past?
+2. In LONG scenarios, what happened? In SHORT scenarios?
+3. What direction had higher success rate historically IN THIS REGIME?
 
-Vote: BUY, SELL, or HOLD
+Vote on direction: BUY (long), SELL (short), or HOLD
+
+CRITICAL: TRENDING_DOWN regime should strongly favor SELL votes based on historical downtrend patterns.
 
 Output JSON:
 {{
   "vote": "BUY|SELL|HOLD",
   "confidence": 0.7,
-  "reasoning": "Historical pattern analysis",
+  "reasoning": "Historical pattern analysis (mention regime alignment)",
   "concerns": ["Deviations from past successful setups"]
 }}"""
 
@@ -279,10 +298,10 @@ Output JSON:
         max_tokens: int = 1500
     ) -> str:
         """
-        Call Groq API.
+        Call Grok (X.AI) API.
         """
         if not self.api_key:
-            logger.warning("Groq API key not set - using mock response")
+            logger.warning("Grok API key not set - using mock response")
             return self._mock_response()
 
         headers = {
@@ -302,7 +321,7 @@ Output JSON:
 
         try:
             response = requests.post(
-                self.GROQ_API_URL,
+                self.GROK_API_URL,
                 headers=headers,
                 json=payload,
                 timeout=30
@@ -313,7 +332,8 @@ Output JSON:
             return data["choices"][0]["message"]["content"]
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Groq API error: {e}")
+            logger.error(f"Grok API error: {e}")
+            logger.error(f"Response: {response.text if 'response' in locals() else 'No response'}")
             return self._mock_response()
 
     def _mock_response(self) -> str:

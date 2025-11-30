@@ -34,7 +34,7 @@ class GladiatorD_Gemini(BaseGladiator):
         super().__init__(
             name="D",
             role="Synthesizer",
-            api_key=api_key or os.getenv("GEMINI_API_KEY")
+            api_key=api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")  # Support both env var names
         )
 
         if not self.api_key:
@@ -212,22 +212,22 @@ REGIME: {regime}
 GLADIATOR A (Structural Edge):
 {strategy_a.get('strategy_name', 'N/A') if strategy_a else 'N/A'}
 Edge: {strategy_a.get('structural_edge', 'N/A') if strategy_a else 'N/A'}
-Confidence: {strategy_a.get('confidence', 0):.1%} if strategy_a else 0}
+Confidence: {(strategy_a.get('confidence', 0) if strategy_a else 0):.1%}
 
 ---
 GLADIATOR B (Logic Validator):
 Approved: {strategy_b.get('approved', False) if strategy_b else False}
 Improvements: {', '.join(strategy_b.get('improvements_made', [])) if strategy_b else 'None'}
 Concerns: {', '.join(strategy_b.get('remaining_concerns', [])) if strategy_b else 'None'}
-Confidence: {strategy_b.get('confidence', 0):.1%} if strategy_b else 0}
+Confidence: {(strategy_b.get('confidence', 0) if strategy_b else 0):.1%}
 
 ---
 GLADIATOR C (Backtester):
 Backtest Passed: {strategy_c.get('backtest_passed', False) if strategy_c else False}
-Estimated WR: {strategy_c.get('estimated_wr', 0):.1%} if strategy_c else 0}
+Estimated WR: {(strategy_c.get('estimated_wr', 0) if strategy_c else 0):.1%}
 Est. Trades/Month: {strategy_c.get('estimated_trades_per_month', 0) if strategy_c else 0}
 Adjustments: {', '.join(strategy_c.get('adjustments_recommended', [])) if strategy_c else 'None'}
-Confidence: {strategy_c.get('confidence', 0):.1%} if strategy_c else 0}
+Confidence: {(strategy_c.get('confidence', 0) if strategy_c else 0):.1%}
 
 ---
 
@@ -250,28 +250,54 @@ Be the tie-breaker. Make the final call."""
         market_data: Dict
     ) -> str:
         """Build prompt for final vote."""
-        return f"""Final decision on this trade:
+        # Regime-based guidance
+        regime_guidance = {
+            "TRENDING_UP": "TRENDING_UP regime → Synthesize toward BUY if gladiators support uptrend",
+            "TRENDING_DOWN": "TRENDING_DOWN regime → Synthesize toward SELL if gladiators support downtrend",
+            "RANGING": "RANGING regime → Synthesize toward HOLD or mean reversion",
+            "CHOPPY": "CHOPPY regime → Strong synthesis toward HOLD (risk management)",
+            "BREAKOUT": "BREAKOUT regime → Synthesize based on breakout direction",
+            "VOLATILE": "VOLATILE regime → Synthesize toward reduced risk or HOLD"
+        }
+
+        guidance = regime_guidance.get(regime, "Neutral regime")
+
+        return f"""Final decision on trading direction:
 
 ASSET: {asset}
 REGIME: {regime}
-DIRECTION: {signal.get('direction', 'UNKNOWN')}
-ENTRY: {signal.get('entry_price', 'N/A')}
+
+REGIME GUIDANCE:
+{guidance}
 
 STRATEGY: {strategy.get('strategy_name', 'Unknown')}
 
-Consider:
-1. Overall setup quality
-2. Risk/reward
-3. Market conditions
-4. Timing
+Current Market:
+- Price: {market_data.get('close', 'N/A')}
+- Spread: {market_data.get('spread', 'N/A')}
+- Volume: {market_data.get('volume', 'N/A')}
 
-This is the final vote. Be decisive.
+Consider all factors:
+1. Market regime and trend direction (PRIMARY FACTOR)
+2. Strategy structural edge
+3. Risk/reward profile
+4. Current market conditions
+5. Timing and liquidity
+
+VOTE ON DIRECTION:
+- BUY if edge + regime favor LONG position
+- SELL if edge + regime favor SHORT position
+- HOLD if no clear edge or excessive risk
+
+CRITICAL: This is the FINAL vote. In TRENDING_DOWN regimes, SELL should be strongly considered unless there's exceptional counter-trend edge.
+
+This is the final vote. Be decisive and regime-aligned.
 
 Output JSON:
 {{
   "vote": "BUY|SELL|HOLD",
   "confidence": 0.75,
-  "reasoning": "Final synthesis of all factors",
+  "reasoning": "Final synthesis of all factors (mention regime alignment)",
   "concerns": ["Final concerns"]
 }}"""
 

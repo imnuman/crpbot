@@ -210,12 +210,12 @@ TYPE: {asset_type}
 REGIME: {regime} (confidence: {regime_confidence:.1%})
 
 ASSET PROFILE:
-- Spread (normal): {asset_profile.get('spread_normal', 'N/A')}
-- Manipulation risk: {asset_profile.get('manipulation_risk', 'N/A')}
-- Best sessions: {', '.join(asset_profile.get('best_sessions', []))}
-- Overnight allowed: {asset_profile.get('overnight_allowed', False)}
-- Max hold: {asset_profile.get('max_hold_hours', 'N/A')} hours
-- Special rules: {', '.join(asset_profile.get('special_rules', []))[:200]}
+- Spread (normal): {asset_profile.spread_normal}
+- Manipulation risk: {asset_profile.manipulation_risk}
+- Best sessions: {', '.join(asset_profile.best_sessions)}
+- Overnight allowed: {asset_profile.overnight_allowed}
+- Max hold: {asset_profile.max_hold_hours if asset_profile.max_hold_hours else 'Unlimited'} hours
+- Special rules: {', '.join(asset_profile.special_rules)[:200]}
 
 MARKET DATA:
 - Current price: {market_data.get('close', 'N/A')}
@@ -224,11 +224,14 @@ MARKET DATA:
 """
 
         if asset_type == "meme_perp":
+            funding_threshold = asset_profile.funding_threshold if asset_profile.funding_threshold else 'N/A'
+            whale_threshold = asset_profile.whale_threshold if asset_profile.whale_threshold else 'N/A'
+            whale_str = f"${whale_threshold:,}" if whale_threshold != 'N/A' else 'N/A'
             prompt += f"""
 CRYPTO-SPECIFIC:
 - Funding rate: {market_data.get('funding_rate', 'N/A')}
-- Funding threshold: {asset_profile.get('funding_threshold', 'N/A')}
-- Whale threshold: ${asset_profile.get('whale_threshold', 'N/A'):,}
+- Funding threshold: {funding_threshold}
+- Whale threshold: {whale_str}
 """
 
         if existing_strategies:
@@ -248,14 +251,25 @@ CRYPTO-SPECIFIC:
         market_data: Dict
     ) -> str:
         """Build prompt for voting on a trade."""
-        return f"""Vote on this trade signal:
+        # Regime-based guidance
+        regime_guidance = {
+            "TRENDING_UP": "TRENDING_UP regime → Favor BUY (longs) if edge supports upside momentum",
+            "TRENDING_DOWN": "TRENDING_DOWN regime → Favor SELL (shorts) if edge supports downside momentum",
+            "RANGING": "RANGING regime → Favor mean reversion or HOLD until breakout confirmed",
+            "CHOPPY": "CHOPPY regime → Strong bias toward HOLD unless edge is exceptional",
+            "BREAKOUT": "BREAKOUT regime → Favor BUY if breaking up, SELL if breaking down",
+            "VOLATILE": "VOLATILE regime → Reduce position size or HOLD unless edge is very strong"
+        }
+
+        guidance = regime_guidance.get(regime, "Neutral regime → Evaluate edge without directional bias")
+
+        return f"""Based on this market analysis, should we trade this asset?
 
 ASSET: {asset}
 REGIME: {regime}
-DIRECTION: {signal.get('direction', 'UNKNOWN')}
-ENTRY: {signal.get('entry_price', 'N/A')}
-SL: {signal.get('sl_price', 'N/A')}
-TP: {signal.get('tp_price', 'N/A')}
+
+REGIME GUIDANCE:
+{guidance}
 
 STRATEGY: {strategy.get('strategy_name', 'Unknown')}
 STRUCTURAL EDGE: {strategy.get('structural_edge', 'Unknown')}
@@ -265,13 +279,18 @@ CURRENT MARKET:
 - Spread: {market_data.get('spread', 'N/A')}
 - Volume: {market_data.get('volume', 'N/A')}
 
-Vote: BUY, SELL, or HOLD
+VOTE ON DIRECTION:
+- BUY (go LONG) if structural edge + regime favor upside
+- SELL (go SHORT) if structural edge + regime favor downside
+- HOLD if no clear edge or high risk
+
+CRITICAL: Match your vote to the regime! TRENDING_DOWN should produce SELL votes, not BUY.
 
 Output JSON:
 {{
   "vote": "BUY|SELL|HOLD",
   "confidence": 0.75,
-  "reasoning": "Why you voted this way",
+  "reasoning": "Why you voted this way (mention regime alignment)",
   "concerns": ["Any red flags you see"]
 }}"""
 

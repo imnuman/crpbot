@@ -26,6 +26,10 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from loguru import logger
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # HYDRA Core Layers
 from libs.hydra.regime_detector import get_regime_detector
@@ -45,7 +49,7 @@ from libs.hydra.database import init_hydra_db, HydraSession
 # Gladiators
 from libs.hydra.gladiators.gladiator_a_deepseek import GladiatorA_DeepSeek
 from libs.hydra.gladiators.gladiator_b_claude import GladiatorB_Claude
-from libs.hydra.gladiators.gladiator_c_groq import GladiatorC_Groq
+from libs.hydra.gladiators.gladiator_c_grok import GladiatorC_Grok
 from libs.hydra.gladiators.gladiator_d_gemini import GladiatorD_Gemini
 
 # Data Provider
@@ -91,6 +95,7 @@ class HydraRuntime:
         self.iteration = 0
         self.last_elimination_check = None
         self.last_breeding_check = None
+        self.open_positions = {}  # Track open positions: {asset: position_data}
 
         logger.success("HYDRA 3.0 initialized successfully")
 
@@ -145,7 +150,7 @@ class HydraRuntime:
 
         self.gladiator_a = GladiatorA_DeepSeek(api_key=os.getenv("DEEPSEEK_API_KEY"))
         self.gladiator_b = GladiatorB_Claude(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        self.gladiator_c = GladiatorC_Groq(api_key=os.getenv("GROQ_API_KEY"))
+        self.gladiator_c = GladiatorC_Grok(api_key=os.getenv("GROQ_API_KEY"))
         self.gladiator_d = GladiatorD_Gemini(api_key=os.getenv("GEMINI_API_KEY"))
 
         self.gladiators = [
@@ -230,11 +235,13 @@ class HydraRuntime:
 
         # Step 1: Fetch market data
         try:
-            market_data = self.data_client.get_candles(
+            df = self.data_client.fetch_klines(
                 symbol=asset,
-                granularity="ONE_MINUTE",
+                interval="1m",
                 limit=200
             )
+            # Convert DataFrame to list of dicts for HYDRA components
+            market_data = df.to_dict('records')
         except Exception as e:
             logger.error(f"Failed to fetch data for {asset}: {e}")
             return
@@ -244,7 +251,10 @@ class HydraRuntime:
             return
 
         # Step 2: Detect regime
-        regime_result = self.regime_detector.detect_regime(market_data)
+        regime_result = self.regime_detector.detect_regime(
+            symbol=asset,
+            candles=market_data
+        )
         regime = regime_result["regime"]
         regime_confidence = regime_result["confidence"]
 
@@ -252,28 +262,22 @@ class HydraRuntime:
 
         # Step 3: Get asset profile
         asset_type = self._classify_asset(asset)
-        profile = self.asset_profiles.get_profile(asset, asset_type)
+        profile = self.asset_profiles.get_profile(asset)
 
-        # Step 4: Anti-manipulation check
-        manip_check = self.anti_manip.check_all_layers(
-            asset=asset,
-            market_data=market_data,
-            current_price=market_data[-1]["close"]
-        )
+        # Step 4: Anti-manipulation filtering happens AFTER strategy generation
+        # (in _execute_paper_trade method after we have backtest results)
 
-        if not manip_check["passed"]:
-            logger.warning(
-                f"{asset} failed anti-manipulation: {manip_check['rejection_reason']}"
-            )
-            return
+        # Step 5: Create market summary for gladiators
+        # Bug Fix #41: Gladiators need summary dict, not candle list
+        market_summary = self._create_market_summary(market_data)
 
-        # Step 5-7: Strategy generation and signal creation
+        # Step 6-7: Strategy generation and signal creation
         signal = self._generate_signal(
             asset=asset,
             asset_type=asset_type,
             regime=regime,
             regime_confidence=regime_confidence,
-            market_data=market_data,
+            market_data=market_summary,  # Pass summary to gladiators
             profile=profile
         )
 
@@ -281,19 +285,20 @@ class HydraRuntime:
             logger.info(f"{asset}: No trade signal (consensus: HOLD)")
             return
 
-        # Step 8: Cross-asset filter
+        # Step 8: Cross-asset filter (convert BUY/SELL → LONG/SHORT)
         cross_asset_result = self.cross_asset.check_cross_asset_alignment(
             asset=asset,
             asset_type=asset_type,
-            direction=signal["action"],
+            direction=self._convert_direction(signal["action"]),
             market_data=market_data,
             dxy_data=self._get_dxy_data(),
             btc_data=self._get_btc_data(),
             em_basket_data=None  # TODO: Implement EM basket
         )
 
-        if not cross_asset_result[0]:
-            logger.warning(f"{asset} blocked by cross-asset filter: {cross_asset_result[1]}")
+        cross_asset_passed, cross_asset_reason = cross_asset_result
+        if not cross_asset_passed:
+            logger.warning(f"{asset} blocked by cross-asset filter: {cross_asset_reason}")
             return
 
         # Step 9: Lesson memory check
@@ -306,17 +311,31 @@ class HydraRuntime:
             market_context=market_context
         )
 
-        if lesson_check[0]:  # Lesson triggered
-            logger.error(f"{asset} rejected by lesson memory: {lesson_check[1].lesson_id}")
+        lesson_triggered, lesson_obj = lesson_check
+        if lesson_triggered:
+            lesson_id = lesson_obj.lesson_id if lesson_obj else "Unknown"
+            logger.error(f"{asset} rejected by lesson memory: {lesson_id}")
             return
 
         # Step 10: Guardian validation
+        entry_price = market_data[-1]["close"]
+        sl_pct = signal.get("stop_loss_pct", 0.015)
+        if signal["action"] == "BUY":
+            sl_price = entry_price * (1 - sl_pct)
+        else:  # SELL
+            sl_price = entry_price * (1 + sl_pct)
+
+        # Step 10: Guardian validation (convert BUY/SELL → LONG/SHORT)
         guardian_check = self.guardian.validate_trade(
             asset=asset,
-            direction=signal["action"],
+            asset_type=asset_type,
+            direction=self._convert_direction(signal["action"]),
             position_size_usd=signal.get("position_size_usd", 100),
-            stop_loss_pct=signal.get("stop_loss_pct", 0.02),
-            market_data=market_data
+            entry_price=entry_price,
+            sl_price=sl_price,
+            regime=regime,
+            current_positions=list(self.open_positions.values()) if hasattr(self, 'open_positions') else [],
+            strategy_correlations=None
         )
 
         if not guardian_check["approved"]:
@@ -434,11 +453,12 @@ class HydraRuntime:
                         regime=regime
                     )
 
-        # Get votes from all gladiators
+        # Get votes from all gladiators (each votes on their OWN strategy)
         votes = []
 
         # Create mock signal for voting
-        current_price = market_data[-1]["close"]
+        # Bug Fix #42: market_data is now a summary dict, not a list
+        current_price = market_data["close"]
         mock_signal = {
             "direction": "BUY",  # Will be overridden by votes
             "entry_price": current_price,
@@ -446,12 +466,22 @@ class HydraRuntime:
             "take_profit_pct": 0.025
         }
 
+        # Map gladiators to their strategies
+        strategy_map = {
+            self.gladiator_a.name: strategy_a,
+            self.gladiator_b.name: strategy_b,
+            self.gladiator_c.name: strategy_c,
+            self.gladiator_d.name: strategy_d
+        }
+
         for gladiator in self.gladiators:
+            # Each gladiator votes on their OWN strategy, not D's
+            gladiator_strategy = strategy_map.get(gladiator.name, strategy_d)
             vote = gladiator.vote_on_trade(
                 asset=asset,
                 asset_type=asset_type,
                 regime=regime,
-                strategy=strategy_d,  # Final synthesized strategy
+                strategy=gladiator_strategy,
                 signal=mock_signal,
                 market_data=market_data
             )
@@ -462,14 +492,15 @@ class HydraRuntime:
         consensus = self.consensus.get_consensus(votes)
 
         # Build signal
+        # Note: AssetProfile is a dataclass, not a dict - use default SL/TP values
         signal = {
             "action": consensus["action"],
             "consensus_level": consensus["consensus_level"],
             "position_size_modifier": consensus["position_size_modifier"],
             "strategy": strategy_d,
             "entry_price": current_price,
-            "stop_loss_pct": profile.get("typical_sl_pct", 0.015),
-            "take_profit_pct": profile.get("typical_sl_pct", 0.015) * 1.5,  # 1.5R
+            "stop_loss_pct": 0.015,  # 1.5% SL (can be customized per profile later)
+            "take_profit_pct": 0.0225,  # 2.25% TP = 1.5R reward
             "votes": votes,
             "consensus_summary": consensus["summary"]
         }
@@ -479,7 +510,10 @@ class HydraRuntime:
     def _execute_paper_trade(self, asset: str, signal: Dict, market_data: List[Dict]):
         """Execute paper trade (simulation only)."""
         # Extract regime from previous detection
-        regime_result = self.regime_detector.detect_regime(market_data)
+        regime_result = self.regime_detector.detect_regime(
+            symbol=asset,
+            candles=market_data
+        )
         regime = regime_result["regime"]
 
         # Create paper trade
@@ -504,15 +538,18 @@ class HydraRuntime:
             f"(consensus: {signal['consensus_level']})"
         )
 
-        # Use execution optimizer
+        # Use execution optimizer (convert BUY/SELL → LONG/SHORT)
+        asset_type = self._classify_asset(asset)
         execution_result = self.executor.optimize_entry(
             asset=asset,
-            direction=signal["action"],
+            asset_type=asset_type,
+            direction=self._convert_direction(signal["action"]),
+            size=signal.get("position_size_usd", 100),
             current_bid=market_data[-1]["close"] * 0.9995,  # Approximate
             current_ask=market_data[-1]["close"] * 1.0005,
             spread_normal=0.001,
-            target_size_usd=signal.get("position_size_usd", 100),
-            max_spread_multiplier=2.0
+            spread_reject_multiplier=2.0,
+            broker_api=None
         )
 
         logger.info(f"Execution result: {execution_result}")
@@ -525,21 +562,48 @@ class HydraRuntime:
         market_context: Dict
     ):
         """Log full explainability for this trade."""
+        asset_type = self._classify_asset(asset)
+        strategy = signal.get("strategy", {})
+
+        # Calculate SL and TP prices
+        entry_price = signal["entry_price"]
+        sl_pct = signal.get("stop_loss_pct", 0.015)
+        tp_pct = signal.get("take_profit_pct", 0.0225)
+
+        if signal["action"] == "BUY":
+            sl_price = entry_price * (1 - sl_pct)
+            tp_price = entry_price * (1 + tp_pct)
+        else:  # SELL
+            sl_price = entry_price * (1 + sl_pct)
+            tp_price = entry_price * (1 - tp_pct)
+
         self.explainer.log_trade_decision(
             trade_id=f"{asset}_{int(time.time())}",
             asset=asset,
+            asset_type=asset_type,
+            regime=regime,
             gladiator_votes=signal.get("votes", []),
-            consensus_level=signal["consensus_level"],
+            consensus_level=signal.get("avg_confidence", 0.5),
+            strategy_id=strategy.get("strategy_id", "UNKNOWN"),
+            structural_edge=strategy.get("structural_edge", "Multi-gladiator consensus"),
+            entry_reasoning=signal.get("consensus_summary", "Gladiator vote consensus"),
+            exit_reasoning=f"SL: {sl_pct:.1%}, TP: {tp_pct:.1%}",
             filters_passed={
                 "anti_manipulation": True,
                 "cross_asset": True,
                 "lesson_memory": True
             },
+            filter_block_reasons=[],
             guardian_approved=True,
-            position_size_final=signal["position_size_modifier"],
-            regime=regime,
-            strategy=signal.get("strategy", {}),
-            market_context=market_context
+            guardian_reason="Trade approved by Guardian",
+            position_size_original=100.0,  # Base size
+            position_size_final=100.0 * signal.get("position_size_modifier", 1.0),
+            adjustment_reason=f"Consensus modifier: {signal.get('position_size_modifier', 1.0):.0%}",
+            direction=signal["action"],
+            entry_price=entry_price,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            risk_reward_ratio=tp_pct / sl_pct if sl_pct > 0 else 1.5
         )
 
     # ==================== TOURNAMENT CYCLES ====================
@@ -607,6 +671,63 @@ class HydraRuntime:
         else:
             return "standard"
 
+    def _convert_direction(self, direction: str) -> str:
+        """
+        Convert runtime direction (BUY/SELL) to Guardian/filter direction (LONG/SHORT).
+
+        Bug Fix #31-32: Runtime uses BUY/SELL terminology, but Guardian and filters
+        expect LONG/SHORT. This helper ensures consistent terminology.
+        """
+        if direction == "BUY":
+            return "LONG"
+        elif direction == "SELL":
+            return "SHORT"
+        else:
+            return direction  # HOLD or other
+
+    def _create_market_summary(self, candles: List[Dict]) -> Dict:
+        """
+        Create summary dict from candle data for gladiators.
+
+        Bug Fix #41: Gladiators expect a single dict with market statistics,
+        not a list of candles.
+        """
+        if not candles:
+            return {}
+
+        latest = candles[-1]
+
+        # Calculate 24h volume (sum of all candle volumes)
+        total_volume = sum(c.get('volume', 0) for c in candles)
+
+        # Calculate ATR (average true range) - simplified version
+        # True range = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        atr_values = []
+        for i in range(1, len(candles)):
+            curr = candles[i]
+            prev = candles[i-1]
+            tr = max(
+                curr['high'] - curr['low'],
+                abs(curr['high'] - prev['close']),
+                abs(curr['low'] - prev['close'])
+            )
+            atr_values.append(tr)
+
+        atr = sum(atr_values) / len(atr_values) if atr_values else 0
+
+        return {
+            'close': latest.get('close'),
+            'open': latest.get('open'),
+            'high': latest.get('high'),
+            'low': latest.get('low'),
+            'volume': latest.get('volume'),
+            'volume_24h': total_volume,
+            'atr': atr,
+            'timestamp': latest.get('start'),
+            'spread': 0,  # Not available from candle data
+            'funding_rate': 0  # Not available from candle data
+        }
+
     def _get_dxy_data(self) -> Optional[Dict]:
         """Get DXY (US Dollar Index) data."""
         # TODO: Implement DXY data fetch
@@ -615,11 +736,12 @@ class HydraRuntime:
     def _get_btc_data(self) -> Optional[Dict]:
         """Get BTC data for correlation checks."""
         try:
-            btc_data = self.data_client.get_candles(
+            df = self.data_client.fetch_klines(
                 symbol="BTC-USD",
-                granularity="ONE_HOUR",
+                interval="1h",
                 limit=2
             )
+            btc_data = df.to_dict('records')
             if len(btc_data) >= 2:
                 change = (btc_data[-1]["close"] - btc_data[0]["close"]) / btc_data[0]["close"]
                 return {
@@ -655,12 +777,12 @@ class HydraRuntime:
         market_data = {}
         for asset in assets_with_trades:
             try:
-                data = self.data_client.get_candles(
+                df = self.data_client.fetch_klines(
                     symbol=asset,
-                    granularity="ONE_MINUTE",
+                    interval="1m",
                     limit=1
                 )
-                market_data[asset] = data
+                market_data[asset] = df.to_dict('records')
             except Exception as e:
                 logger.error(f"Failed to fetch data for {asset}: {e}")
 

@@ -10,8 +10,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-from .chat_page import chat_interface
-
 
 class HydraState(rx.State):
     """Main state for HYDRA dashboard with real-time updates"""
@@ -155,20 +153,6 @@ def index() -> rx.Component:
     """Main dashboard page"""
     return rx.container(
         rx.vstack(
-            # Navigation
-            rx.hstack(
-                rx.link(
-                    rx.button("Dashboard", variant="soft", color_scheme="blue"),
-                    href="/",
-                ),
-                rx.link(
-                    rx.button("Chat", variant="soft", color_scheme="purple"),
-                    href="/chat",
-                ),
-                spacing="2",
-                margin_bottom="4",
-            ),
-
             # Header
             rx.heading("HYDRA 3.0 Dashboard", size="8"),
             rx.hstack(
@@ -234,5 +218,4 @@ def index() -> rx.Component:
 
 # App configuration
 app = rx.App()
-app.add_page(index, route="/", title="HYDRA Dashboard")
-app.add_page(chat_interface, route="/chat", title="Chat with Gladiators")
+app.add_page(index)

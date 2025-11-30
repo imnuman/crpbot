@@ -15,8 +15,8 @@ Claude is chosen for its strong reasoning and critique capabilities.
 
 from typing import Dict, List, Optional
 from loguru import logger
-import requests
 import os
+from anthropic import Anthropic
 
 from .base_gladiator import BaseGladiator
 
@@ -29,7 +29,7 @@ class GladiatorB_Claude(BaseGladiator):
     """
 
     CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
-    MODEL = "claude-3-5-sonnet-20241022"  # Latest Claude Sonnet
+    MODEL = "claude-3-haiku-20240307"  # Claude 3 Haiku (fast & stable)
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
@@ -117,6 +117,7 @@ class GladiatorB_Claude(BaseGladiator):
 
         user_prompt = self._build_vote_prompt(
             asset=asset,
+            regime=regime,
             strategy=strategy,
             signal=signal,
             market_data=market_data
@@ -217,10 +218,10 @@ KNOWN WEAKNESSES:
 {', '.join(strategy.get('weaknesses', []))}
 
 ASSET CONSTRAINTS:
-- Spread: {asset_profile.get('spread_normal', 'N/A')}
-- Max hold: {asset_profile.get('max_hold_hours', 'N/A')} hours
-- Overnight: {asset_profile.get('overnight_allowed', False)}
-- Manipulation risk: {asset_profile.get('manipulation_risk', 'N/A')}
+- Spread: {asset_profile.spread_normal}
+- Max hold: {asset_profile.max_hold_hours if asset_profile.max_hold_hours else 'Unlimited'} hours
+- Overnight: {asset_profile.overnight_allowed}
+- Manipulation risk: {asset_profile.manipulation_risk}
 
 Your task:
 1. Find ALL logical flaws
@@ -233,34 +234,55 @@ Be thorough. A bad strategy live = lost capital."""
     def _build_vote_prompt(
         self,
         asset: str,
+        regime: str,
         strategy: Dict,
         signal: Dict,
         market_data: Dict
     ) -> str:
         """Build prompt for trade voting."""
-        return f"""Critique this trade signal for logical consistency:
+        # Regime-based guidance
+        regime_guidance = {
+            "TRENDING_UP": "TRENDING_UP regime → Logically favor BUY if strategy supports uptrend",
+            "TRENDING_DOWN": "TRENDING_DOWN regime → Logically favor SELL if strategy supports downtrend",
+            "RANGING": "RANGING regime → Favor mean reversion or HOLD",
+            "CHOPPY": "CHOPPY regime → Strong bias toward HOLD (high risk)",
+            "BREAKOUT": "BREAKOUT regime → Direction depends on breakout direction",
+            "VOLATILE": "VOLATILE regime → Reduce exposure or HOLD"
+        }
+
+        guidance = regime_guidance.get(regime, "Neutral regime")
+
+        return f"""Critique this trading strategy for logical consistency:
 
 ASSET: {asset}
-DIRECTION: {signal.get('direction', 'UNKNOWN')}
-ENTRY: {signal.get('entry_price', 'N/A')}
-SL: {signal.get('sl_price', 'N/A')}
-TP: {signal.get('tp_price', 'N/A')}
+REGIME: {regime}
+
+REGIME GUIDANCE:
+{guidance}
 
 STRATEGY: {strategy.get('strategy_name', 'Unknown')}
 
-Questions:
-1. Does this entry make sense given current market conditions?
-2. Is the R:R appropriate?
-3. Is the timing right?
-4. Any red flags?
+Current Market Data:
+- Price: {market_data.get('close', 'N/A')}
+- Spread: {market_data.get('spread', 'N/A')}
+- Volume: {market_data.get('volume', 'N/A')}
 
-Vote: BUY, SELL, or HOLD
+Questions:
+1. Should we go LONG (buy), SHORT (sell), or HOLD?
+2. Does the strategy logic make sense given market REGIME?
+3. Is the risk/reward appropriate for this regime?
+4. Is timing favorable?
+5. Any red flags?
+
+Vote on direction based on your logical analysis + regime alignment.
+
+CRITICAL: If TRENDING_DOWN, SELL is the logical direction unless strategy has exceptional counter-trend edge.
 
 Output JSON:
 {{
   "vote": "BUY|SELL|HOLD",
   "confidence": 0.7,
-  "reasoning": "Logical analysis",
+  "reasoning": "Logical analysis (mention regime alignment)",
   "concerns": ["Any flaws you see"]
 }}"""
 
@@ -295,41 +317,28 @@ Output JSON:
         max_tokens: int = 2000
     ) -> str:
         """
-        Call Claude API (Anthropic).
+        Call Claude API (Anthropic SDK).
         """
         if not self.api_key:
             logger.warning("Claude API key not set - using mock response")
             return self._mock_response()
 
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
-
-        payload = {
-            "model": self.MODEL,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "system": system_prompt,
-            "messages": [
-                {"role": "user", "content": user_prompt}
-            ]
-        }
-
         try:
-            response = requests.post(
-                self.CLAUDE_API_URL,
-                headers=headers,
-                json=payload,
-                timeout=30
+            client = Anthropic(api_key=self.api_key)
+
+            message = client.messages.create(
+                model=self.MODEL,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt}
+                ]
             )
-            response.raise_for_status()
 
-            data = response.json()
-            return data["content"][0]["text"]
+            return message.content[0].text
 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.error(f"Claude API error: {e}")
             return self._mock_response()
 
