@@ -45,6 +45,7 @@ from libs.hydra.breeding_engine import get_breeding_engine
 from libs.hydra.lesson_memory import get_lesson_memory
 from libs.hydra.paper_trader import get_paper_trader
 from libs.hydra.database import init_hydra_db, HydraSession
+from libs.hydra.tournament_tracker import TournamentTracker
 
 # Gladiators
 from libs.hydra.gladiators.gladiator_a_deepseek import GladiatorA_DeepSeek
@@ -139,6 +140,9 @@ class HydraRuntime:
         # Paper Trading System
         self.paper_trader = get_paper_trader()
 
+        # Tournament Tracker (gladiator vote-level performance)
+        self.vote_tracker = TournamentTracker()
+
         # Data provider
         self.data_client = get_coinbase_client()
 
@@ -194,9 +198,10 @@ class HydraRuntime:
                 # Run tournament cycles (if needed)
                 self._run_tournament_cycles()
 
-                # Print paper trading stats
+                # Print paper trading stats and tournament leaderboard
                 if self.paper_trading and self.iteration % 10 == 0:  # Every 10 iterations
                     self._print_paper_trading_stats()
+                    self.vote_tracker.print_leaderboard()
 
                 # Sleep until next iteration
                 if iterations == -1 or self.iteration < iterations:
@@ -474,6 +479,9 @@ class HydraRuntime:
             self.gladiator_d.name: strategy_d
         }
 
+        # Create unique trade_id for this voting round
+        trade_id = f"{asset}_{int(time.time())}"
+
         for gladiator in self.gladiators:
             # Each gladiator votes on their OWN strategy, not D's
             gladiator_strategy = strategy_map.get(gladiator.name, strategy_d)
@@ -487,6 +495,16 @@ class HydraRuntime:
             )
             vote["gladiator"] = gladiator.name
             votes.append(vote)
+
+            # Record vote in tournament tracker
+            self.vote_tracker.record_vote(
+                trade_id=trade_id,
+                gladiator=gladiator.name,
+                asset=asset,
+                vote=vote["direction"],
+                confidence=vote.get("confidence", 0.5),
+                reasoning=vote.get("reasoning", "")
+            )
 
         # Get consensus
         consensus = self.consensus.get_consensus(votes)
@@ -811,6 +829,14 @@ class HydraRuntime:
             asset=trade.asset,
             regime=trade.regime,
             trade_result=trade_result
+        )
+
+        # Score gladiator votes for this trade
+        self.vote_tracker.score_trade_outcome(
+            trade_id=trade.trade_id,
+            actual_direction=trade.direction,
+            outcome=trade.outcome,
+            exit_reason=trade.exit_reason or "unknown"
         )
 
         # Learn from losses
