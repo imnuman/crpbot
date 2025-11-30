@@ -8,7 +8,7 @@
 
 ## 🎯 Executive Summary
 
-All 4 issues identified during validation have been fixed and deployed to production:
+All 5 issues identified during validation have been fixed and deployed to production:
 
 | Issue | Severity | Status | Commit |
 |-------|----------|--------|--------|
@@ -16,6 +16,7 @@ All 4 issues identified during validation have been fixed and deployed to produc
 | Per-gladiator win tracking | 🔴 High | ✅ BUILT | e4e33d3, 3ea75d2 |
 | Groq vs Grok naming | 🟡 Medium | ✅ FIXED | 9aba146 |
 | Tournament scoring incomplete | 🟡 Medium | ✅ INTEGRATED | 3ea75d2 |
+| **Tournament tracker KeyError** | 🔴 **CRITICAL** | ✅ **FIXED** | **df5156e** |
 
 ---
 
@@ -259,6 +260,84 @@ Tournament tracker now provides data for:
 
 ---
 
+## 📋 Issue #5: Tournament Tracker KeyError (CRITICAL BUG) ✅ FIXED
+
+### Problem
+HYDRA runtime was crashing every iteration with `KeyError: 'direction'` immediately after tournament tracker integration (commit 3ea75d2).
+
+**Symptoms**:
+- Runtime crashed continuously starting at iteration 40
+- Error: `Error in main loop: 'direction'`
+- Tournament tracker could not record any votes
+- System recovered after 60s but crashed again on next iteration
+
+### Root Cause
+**Type mismatch in tournament tracker integration** (apps/runtime/hydra_runtime.py:504):
+
+```python
+# WRONG - tried to access non-existent key
+self.vote_tracker.record_vote(
+    vote=vote["direction"],  # ❌ KeyError: gladiator votes don't have "direction" key
+    ...
+)
+```
+
+**Actual gladiator vote structure**:
+```python
+# Gladiators return (from gladiator_a_deepseek.py:135):
+{
+    "vote": "BUY",         # ✅ Correct key is "vote", not "direction"
+    "confidence": 0.8,
+    "reasoning": "..."
+}
+```
+
+### Fix Applied
+**Commit**: df5156e - "fix: tournament tracker vote key bug (vote vs direction)"
+
+Changed line 504 in `apps/runtime/hydra_runtime.py`:
+
+```python
+# BEFORE (crashing):
+vote=vote["direction"],
+
+# AFTER (fixed):
+vote=vote.get("vote", "HOLD"),  # Use correct key with fallback
+```
+
+### Files Modified
+- `apps/runtime/hydra_runtime.py` (line 504)
+
+### Verification
+```bash
+# Test import
+$ .venv/bin/python3 -c "from apps.runtime.hydra_runtime import HydraRuntime; print('Import successful')"
+Import successful
+✅ PASS
+
+# Runtime process check
+$ ps aux | grep hydra_runtime | grep -v grep
+root     3321401  ... .venv/bin/python3 apps/runtime/hydra_runtime.py
+✅ PASS
+
+# Vote recording in logs
+$ grep "tournament_tracker:record_vote" /tmp/hydra_tracker_20251130_1503.log
+2025-11-30 15:06:37.327 | DEBUG | libs.hydra.tournament_tracker:record_vote:125 - Recorded vote: Gladiator D votes HOLD on SOL-USD
+✅ PASS - No more KeyError, votes recording successfully
+```
+
+### Production Status
+- **Old Runtime**: PID 3316934 (crashed every 60s) - STOPPED
+- **New Runtime**: PID 3321401 (stable with fix) - ✅ RUNNING
+- **Log**: `/tmp/hydra_tracker_20251130_1503.log`
+- **Status**: Tournament tracker now recording votes without errors
+
+### Impact
+**Before fix**: HYDRA was non-functional - crashed every iteration, no votes recorded
+**After fix**: HYDRA running stably, tournament tracker operational, votes being recorded
+
+---
+
 ## 🔄 Deployment Status
 
 ### Git Commits (Pushed to GitHub)
@@ -268,14 +347,16 @@ Tournament tracker now provides data for:
 aa3252d - feat: add tournament competition mindset to all gladiator prompts
 e4e33d3 - feat: add tournament tracker for gladiator performance scoring
 3ea75d2 - feat: integrate tournament tracker into HYDRA runtime
+df5156e - fix: tournament tracker vote key bug (vote vs direction) [CRITICAL]
 ```
 
 ### Production Runtime
-- **Process**: PID 3316934 ✅ Running
-- **Started**: 2025-11-30 13:47 UTC
-- **Log**: `/tmp/hydra_tracker_20251130_1347.log`
+- **Process**: PID 3321401 ✅ Running (with bug fix)
+- **Started**: 2025-11-30 15:03 UTC
+- **Log**: `/tmp/hydra_tracker_20251130_1503.log`
 - **Assets**: BTC-USD, ETH-USD, SOL-USD
 - **Interval**: 300s (5 minutes)
+- **Status**: Stable, tournament tracker recording votes successfully
 
 ### Dashboard
 - **URL**: http://178.156.136.185:3000
