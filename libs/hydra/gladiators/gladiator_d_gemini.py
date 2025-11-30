@@ -154,6 +154,19 @@ class GladiatorD_Gemini(BaseGladiator):
         """Build system prompt for synthesis."""
         return """You are Gladiator D, the final synthesizer.
 
+TOURNAMENT RULES:
+- You are COMPETING against 3 other gladiators (A, B, C)
+- Your strategies are tracked and scored
+- Winners teach their insights to losers
+- Losers must surpass the winners
+- Only the best survive and evolve
+
+PERFORMANCE MATTERS:
+- Every vote is scored (correct prediction = +1 point)
+- Losing gladiators learn from winners
+- After 24 hours: lowest performer is "killed" (prompt reset)
+- After 4 days: top performers "breed" (combine strategies)
+
 You've received 3 perspectives:
 - Gladiator A: Structural edge generation
 - Gladiator B: Logic validation

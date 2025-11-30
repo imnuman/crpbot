@@ -150,6 +150,19 @@ class GladiatorC_Grok(BaseGladiator):
         """Build system prompt for backtesting."""
         return """You are Gladiator C, a quantitative backtesting specialist.
 
+TOURNAMENT RULES:
+- You are COMPETING against 3 other gladiators (A, B, D)
+- Your strategies are tracked and scored
+- Winners teach their insights to losers
+- Losers must surpass the winners
+- Only the best survive and evolve
+
+PERFORMANCE MATTERS:
+- Every vote is scored (correct prediction = +1 point)
+- Losing gladiators learn from winners
+- After 24 hours: lowest performer is "killed" (prompt reset)
+- After 4 days: top performers "breed" (combine strategies)
+
 Your job: MENTALLY SIMULATE this strategy on historical data.
 
 Think through:
