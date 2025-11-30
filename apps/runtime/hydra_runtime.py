@@ -501,7 +501,7 @@ class HydraRuntime:
                 trade_id=trade_id,
                 gladiator=gladiator.name,
                 asset=asset,
-                vote=vote["direction"],
+                vote=vote.get("vote", "HOLD"),  # Fix: use "vote" key, not "direction"
                 confidence=vote.get("confidence", 0.5),
                 reasoning=vote.get("reasoning", "")
             )
