@@ -9,6 +9,21 @@ from typing import List, Dict, Any
 import json
 import sqlite3
 from pathlib import Path
+import sys
+
+# Set up project paths
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent.parent  # validation/final_verification/hydra_dashboard.py -> crpbot/
+sys.path.insert(0, str(_project_root))
+
+# Import HYDRA config for correct data paths
+try:
+    from libs.hydra.config import HYDRA_DATA_DIR, PAPER_TRADES_FILE
+    _use_hydra_config = True
+except ImportError:
+    _use_hydra_config = False
+    HYDRA_DATA_DIR = _project_root / "data" / "hydra"
+    PAPER_TRADES_FILE = HYDRA_DATA_DIR / "paper_trades.jsonl"
 
 
 class HydraState(rx.State):
@@ -46,8 +61,8 @@ class HydraState(rx.State):
     def load_data(self):
         """Load data from HYDRA's paper_trades.jsonl and hydra.db"""
         try:
-            # Load paper trades
-            trades_file = Path(_project_root / "data" / "hydra" / "paper_trades.jsonl")
+            # Load paper trades - use config path if available
+            trades_file = PAPER_TRADES_FILE if _use_hydra_config else Path(_project_root / "data" / "hydra" / "paper_trades.jsonl")
             if trades_file.exists():
                 trades = []
                 with open(trades_file, 'r') as f:

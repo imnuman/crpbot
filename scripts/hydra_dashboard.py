@@ -20,7 +20,34 @@ from pathlib import Path
 from collections import deque
 from typing import Dict, List
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add project root to path
+_project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(_project_root))
+
+# Load environment variables from .env if not already set
+def _load_env():
+    """Load .env file if Coinbase credentials not already in environment."""
+    if os.environ.get("COINBASE_API_KEY_NAME"):
+        return  # Already loaded
+
+    env_file = _project_root / ".env"
+    if env_file.exists():
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    # Handle multiline values (like private keys with \n)
+                    key, _, value = line.partition('=')
+                    key = key.strip()
+                    value = value.strip()
+                    # Don't override existing env vars
+                    if key and not os.environ.get(key):
+                        # Decode escaped newlines in private keys
+                        if '\\n' in value:
+                            value = value.replace('\\n', '\n')
+                        os.environ[key] = value
+
+_load_env()
 
 try:
     from rich.console import Console
@@ -748,12 +775,13 @@ def main():
     print("\033[40m\033[2J\033[H", end="", flush=True)
 
     try:
-        # Refresh 4 times per second for smooth updates
-        with Live(render(), console=console, refresh_per_second=4,
-                  screen=True, transient=False) as live:
+        # Refresh 2 times per second - balanced for smoothness without flicker
+        # Using transient=True and vertical_overflow="ellipsis" for stability
+        with Live(render(), console=console, refresh_per_second=2,
+                  screen=True, transient=True, vertical_overflow="ellipsis") as live:
             while True:
-                # Short sleep, let Rich handle actual refresh rate
-                time.sleep(0.5)
+                # 1 second sleep - prices refresh every 2s anyway, so no need to go faster
+                time.sleep(1.0)
                 live.update(render())
     except KeyboardInterrupt:
         print("\033[0m")
