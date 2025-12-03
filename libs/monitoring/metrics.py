@@ -255,6 +255,122 @@ class HydraMetrics:
         'Current position size multiplier (1.0=normal, 0.5=reduced)'
     )
 
+    # ========== Per-Regime Performance (Phase 2) ==========
+
+    # Per-regime P&L
+    regime_pnl = Gauge(
+        'hydra_regime_pnl_percent',
+        'Total P&L percentage by regime',
+        ['regime']
+    )
+
+    # Per-regime win rate
+    regime_win_rate = Gauge(
+        'hydra_regime_win_rate',
+        'Win rate by regime (0-1)',
+        ['regime']
+    )
+
+    # Per-regime trade count
+    regime_trade_count = Gauge(
+        'hydra_regime_trade_count',
+        'Total trades by regime',
+        ['regime']
+    )
+
+    # Per-regime average P&L per trade
+    regime_avg_pnl = Gauge(
+        'hydra_regime_avg_pnl_percent',
+        'Average P&L per trade by regime',
+        ['regime']
+    )
+
+    # ========== Engine Analytics (Phase 3) ==========
+
+    # Engine per-asset P&L
+    engine_asset_pnl = Gauge(
+        'hydra_engine_asset_pnl_percent',
+        'Engine P&L by asset',
+        ['engine', 'asset']
+    )
+
+    # Engine per-asset accuracy
+    engine_asset_accuracy = Gauge(
+        'hydra_engine_asset_accuracy',
+        'Engine prediction accuracy by asset (0-1)',
+        ['engine', 'asset']
+    )
+
+    # Engine votes by direction
+    engine_votes = Gauge(
+        'hydra_engine_votes_total',
+        'Total votes by engine and direction',
+        ['engine', 'direction']
+    )
+
+    # Engine agreement rate
+    engine_agreement = Gauge(
+        'hydra_engine_agreement_rate',
+        'Rate at which engines agree on direction (0-1)'
+    )
+
+    # Engine last vote
+    engine_last_vote = Gauge(
+        'hydra_engine_last_vote',
+        'Last vote direction: 0=HOLD, 1=BUY, -1=SELL',
+        ['engine']
+    )
+
+    # ========== Advanced Statistics (Phase 4) ==========
+
+    # Sharpe ratio
+    sharpe_ratio = Gauge(
+        'hydra_sharpe_ratio',
+        'Risk-adjusted return (Sharpe ratio)'
+    )
+
+    # Sortino ratio
+    sortino_ratio = Gauge(
+        'hydra_sortino_ratio',
+        'Downside risk-adjusted return (Sortino ratio)'
+    )
+
+    # Max drawdown
+    max_drawdown = Gauge(
+        'hydra_max_drawdown_percent',
+        'Maximum drawdown from peak'
+    )
+
+    # Calmar ratio
+    calmar_ratio = Gauge(
+        'hydra_calmar_ratio',
+        'Return / Max Drawdown ratio'
+    )
+
+    # Profit factor
+    profit_factor = Gauge(
+        'hydra_profit_factor',
+        'Gross profit / Gross loss ratio'
+    )
+
+    # Expectancy
+    expectancy = Gauge(
+        'hydra_expectancy',
+        'Average expected profit per trade'
+    )
+
+    # Average R:R ratio
+    avg_risk_reward = Gauge(
+        'hydra_avg_risk_reward',
+        'Average risk-to-reward ratio'
+    )
+
+    # Total trades
+    total_trades = Gauge(
+        'hydra_total_trades',
+        'Total number of completed trades'
+    )
+
     # ========== Market Data ==========
 
     # Asset prices
@@ -507,6 +623,84 @@ class HydraMetrics:
         cls.emergency_shutdown.set(1 if emergency_shutdown else 0)
         cls.trading_allowed.set(1 if trading_allowed else 0)
         cls.position_size_multiplier.set(position_multiplier)
+
+    # ========== Phase 2 Convenience Methods ==========
+
+    @classmethod
+    def set_regime_stats(
+        cls,
+        regime: str,
+        pnl_percent: float,
+        win_rate: float,
+        trade_count: int,
+        avg_pnl: float
+    ):
+        """Set per-regime performance metrics."""
+        cls.regime_pnl.labels(regime=regime).set(pnl_percent)
+        cls.regime_win_rate.labels(regime=regime).set(win_rate)
+        cls.regime_trade_count.labels(regime=regime).set(trade_count)
+        cls.regime_avg_pnl.labels(regime=regime).set(avg_pnl)
+
+    # ========== Phase 3 Convenience Methods ==========
+
+    @classmethod
+    def set_engine_asset_performance(
+        cls,
+        engine: str,
+        asset: str,
+        pnl_percent: float,
+        accuracy: float
+    ):
+        """Set engine performance by asset."""
+        cls.engine_asset_pnl.labels(engine=engine, asset=asset).set(pnl_percent)
+        cls.engine_asset_accuracy.labels(engine=engine, asset=asset).set(accuracy)
+
+    @classmethod
+    def set_engine_votes(
+        cls,
+        engine: str,
+        buy_votes: int,
+        sell_votes: int,
+        hold_votes: int,
+        last_vote: str
+    ):
+        """Set engine voting statistics."""
+        cls.engine_votes.labels(engine=engine, direction='BUY').set(buy_votes)
+        cls.engine_votes.labels(engine=engine, direction='SELL').set(sell_votes)
+        cls.engine_votes.labels(engine=engine, direction='HOLD').set(hold_votes)
+
+        # Convert last vote to numeric
+        vote_map = {'HOLD': 0, 'BUY': 1, 'SELL': -1}
+        cls.engine_last_vote.labels(engine=engine).set(vote_map.get(last_vote, 0))
+
+    @classmethod
+    def set_engine_agreement(cls, rate: float):
+        """Set engine agreement rate."""
+        cls.engine_agreement.set(rate)
+
+    # ========== Phase 4 Convenience Methods ==========
+
+    @classmethod
+    def set_advanced_stats(
+        cls,
+        sharpe: float,
+        sortino: float,
+        max_dd: float,
+        calmar: float,
+        profit_factor: float,
+        expectancy: float,
+        avg_rr: float,
+        total_trades: int
+    ):
+        """Set advanced trading statistics."""
+        cls.sharpe_ratio.set(sharpe)
+        cls.sortino_ratio.set(sortino)
+        cls.max_drawdown.set(max_dd)
+        cls.calmar_ratio.set(calmar)
+        cls.profit_factor.set(profit_factor)
+        cls.expectancy.set(expectancy)
+        cls.avg_risk_reward.set(avg_rr)
+        cls.total_trades.set(total_trades)
 
     @classmethod
     def update_from_state(cls, state: Dict[str, Any]):

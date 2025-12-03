@@ -1000,6 +1000,126 @@ class HydraRuntime:
                     exposure=len(self.paper_trader.open_trades) * 2
                 )
 
+            # ========== Phase 2: Per-Regime Performance ==========
+            REGIMES = ['TRENDING_UP', 'TRENDING_DOWN', 'RANGING', 'VOLATILE', 'CHOPPY']
+            for regime in REGIMES:
+                try:
+                    regime_stats = self.paper_trader.get_stats_by_regime(regime)
+                    HydraMetrics.set_regime_stats(
+                        regime=regime,
+                        pnl_percent=regime_stats.get('total_pnl_percent', 0) * 100,
+                        win_rate=regime_stats.get('win_rate', 0),
+                        trade_count=regime_stats.get('total_trades', 0),
+                        avg_pnl=regime_stats.get('avg_pnl_percent', 0) * 100
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not get stats for regime {regime}: {e}")
+
+            # ========== Phase 3: Engine Analytics ==========
+            try:
+                ENGINES = ['A', 'B', 'C', 'D']
+                all_votes = []
+
+                for engine in ENGINES:
+                    engine_stats = self.vote_tracker.get_engine_stats(engine)
+                    if engine_stats:
+                        # Get vote breakdown
+                        buy_votes = engine_stats.get('correct_votes', 0)
+                        sell_votes = engine_stats.get('wrong_votes', 0)
+                        hold_votes = engine_stats.get('hold_votes', 0)
+
+                        HydraMetrics.set_engine_votes(
+                            engine=engine,
+                            buy_votes=buy_votes,
+                            sell_votes=sell_votes,
+                            hold_votes=hold_votes,
+                            last_vote='HOLD'  # Default, will be updated if available
+                        )
+
+                        # Store win rate for agreement calculation
+                        all_votes.append(engine_stats.get('win_rate', 0))
+
+                # Calculate agreement rate (variance of win rates - lower = more agreement)
+                if all_votes and len(all_votes) > 1:
+                    avg_wr = sum(all_votes) / len(all_votes)
+                    variance = sum((wr - avg_wr) ** 2 for wr in all_votes) / len(all_votes)
+                    # Convert to agreement rate (1 - normalized variance)
+                    agreement = max(0, 1 - (variance * 4))  # Scale factor for 0-1 range
+                    HydraMetrics.set_engine_agreement(agreement)
+
+            except Exception as e:
+                logger.debug(f"Could not get engine analytics: {e}")
+
+            # ========== Phase 4: Advanced Statistics ==========
+            try:
+                # Get closed trades for calculations
+                closed_trades = self.paper_trader.closed_trades
+
+                if closed_trades:
+                    returns = [t.pnl_percent for t in closed_trades]
+                    wins = [r for r in returns if r > 0]
+                    losses = [r for r in returns if r < 0]
+
+                    # Sharpe ratio (already calculated in get_overall_stats)
+                    sharpe = stats.get('sharpe_ratio', 0)
+
+                    # Sortino ratio (uses only downside deviation)
+                    if losses:
+                        downside_returns = [min(0, r) for r in returns]
+                        downside_variance = sum(r**2 for r in downside_returns) / len(downside_returns)
+                        downside_std = downside_variance ** 0.5
+                        avg_return = sum(returns) / len(returns)
+                        sortino = avg_return / downside_std if downside_std > 0 else 0
+                    else:
+                        sortino = 0
+
+                    # Max drawdown
+                    cumulative = 0
+                    peak = 0
+                    max_dd = 0
+                    for r in returns:
+                        cumulative += r
+                        if cumulative > peak:
+                            peak = cumulative
+                        dd = peak - cumulative
+                        if dd > max_dd:
+                            max_dd = dd
+
+                    # Calmar ratio (return / max drawdown)
+                    total_return = sum(returns)
+                    calmar = total_return / max_dd if max_dd > 0 else 0
+
+                    # Profit factor (gross profits / gross losses)
+                    gross_profit = sum(wins) if wins else 0
+                    gross_loss = abs(sum(losses)) if losses else 0
+                    profit_factor = gross_profit / gross_loss if gross_loss > 0 else (10.0 if gross_profit > 0 else 0)
+
+                    # Expectancy (win_rate * avg_win - loss_rate * avg_loss)
+                    win_rate = len(wins) / len(returns) if returns else 0
+                    avg_win = sum(wins) / len(wins) if wins else 0
+                    avg_loss = abs(sum(losses) / len(losses)) if losses else 0
+                    expectancy_val = (win_rate * avg_win) - ((1 - win_rate) * avg_loss)
+
+                    HydraMetrics.set_advanced_stats(
+                        sharpe=sharpe,
+                        sortino=sortino,
+                        max_dd=max_dd * 100,  # Convert to percent
+                        calmar=calmar,
+                        profit_factor=profit_factor,
+                        expectancy=expectancy_val * 100,  # Convert to percent
+                        avg_rr=stats.get('avg_rr', 0),
+                        total_trades=len(closed_trades)
+                    )
+                else:
+                    # No trades yet
+                    HydraMetrics.set_advanced_stats(
+                        sharpe=0, sortino=0, max_dd=0, calmar=0,
+                        profit_factor=0, expectancy=0, avg_rr=0, total_trades=0
+                    )
+
+            except Exception as e:
+                logger.debug(f"Could not calculate advanced stats: {e}")
+
             # Record cycle completion
             HydraMetrics.record_cycle(self.check_interval)
 
