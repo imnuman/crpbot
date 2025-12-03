@@ -3,10 +3,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies including ttyd
+# Install system dependencies and ttyd from GitHub
 RUN apt-get update && apt-get install -y \
     curl \
-    ttyd \
+    wget \
+    && wget -O /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
+    && chmod +x /usr/local/bin/ttyd \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency management
