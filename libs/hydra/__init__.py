@@ -13,6 +13,11 @@ __all__ = [
     "get_edge_graveyard",
     "bury_failed_edge",
     "DeathCause",
+    "APICache",
+    "get_api_cache",
+    "CacheType",
+    "cached",
+    "cached_async",
 ]
 
 
@@ -39,5 +44,10 @@ def __getattr__(name):
         from .edge_graveyard import EdgeGraveyard, get_edge_graveyard, bury_failed_edge, DeathCause
         return {"EdgeGraveyard": EdgeGraveyard, "get_edge_graveyard": get_edge_graveyard,
                 "bury_failed_edge": bury_failed_edge, "DeathCause": DeathCause}[name]
+
+    if name in ("APICache", "get_api_cache", "CacheType", "cached", "cached_async"):
+        from .api_cache import APICache, get_api_cache, CacheType, cached, cached_async
+        return {"APICache": APICache, "get_api_cache": get_api_cache, "CacheType": CacheType,
+                "cached": cached, "cached_async": cached_async}[name]
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
