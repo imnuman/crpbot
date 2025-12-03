@@ -4,7 +4,7 @@ HYDRA 3.0 - Data Feeds
 Real-time data sources for market intelligence:
 - Internet Search (Serper) - News and sentiment
 - Order Book (Coinbase) - Depth, imbalance, whale detection
-- Funding Rates (upcoming)
+- Funding Rates (Binance) - Perpetual futures sentiment
 - Liquidations (upcoming)
 """
 
@@ -24,6 +24,13 @@ from .order_book import (
     OrderLevel,
 )
 
+from .funding_rates import (
+    FundingRatesFeed,
+    get_funding_rates_feed,
+    FundingRate,
+    FundingSnapshot,
+)
+
 __all__ = [
     # Internet Search
     "InternetSearch",
@@ -37,4 +44,9 @@ __all__ = [
     "get_order_book_feed",
     "OrderBookMetrics",
     "OrderLevel",
+    # Funding Rates
+    "FundingRatesFeed",
+    "get_funding_rates_feed",
+    "FundingRate",
+    "FundingSnapshot",
 ]
