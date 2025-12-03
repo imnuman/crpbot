@@ -56,6 +56,9 @@ from libs.hydra.engines.engine_d_gemini import EngineD_Gemini
 # Data Provider
 from libs.data.coinbase_client import get_coinbase_client
 
+# Prometheus Monitoring
+from libs.monitoring import MetricsExporter, HydraMetrics
+
 
 class HydraRuntime:
     """
@@ -97,6 +100,10 @@ class HydraRuntime:
         self.last_elimination_check = None
         self.last_breeding_check = None
         self.open_positions = {}  # Track open positions: {asset: position_data}
+
+        # Start Prometheus metrics exporter
+        self.metrics_exporter = MetricsExporter(port=9100)
+        self.metrics_exporter.start()
 
         logger.success("HYDRA 3.0 initialized successfully")
 
@@ -202,6 +209,9 @@ class HydraRuntime:
                 if self.paper_trading and self.iteration % 10 == 0:  # Every 10 iterations
                     self._print_paper_trading_stats()
                     self.vote_tracker.print_leaderboard()
+
+                # Update Prometheus metrics
+                self._update_prometheus_metrics()
 
                 # Sleep until next iteration
                 if iterations == -1 or self.iteration < iterations:
@@ -875,6 +885,69 @@ class HydraRuntime:
         logger.info(f"Sharpe Ratio: {stats['sharpe_ratio']:.2f}")
         logger.info(f"Open Trades: {stats['open_trades']}")
         logger.info("="*80 + "\n")
+
+    def _update_prometheus_metrics(self):
+        """Update Prometheus metrics with current state."""
+        try:
+            # Get paper trading stats
+            stats = self.paper_trader.get_overall_stats()
+
+            # Update P&L metrics
+            HydraMetrics.set_pnl(
+                total=stats.get('total_pnl_percent', 0) * 100,
+                daily=0  # TODO: Calculate daily P&L
+            )
+
+            # Update win rate
+            HydraMetrics.set_win_rate(
+                rate_24h=stats.get('win_rate', 0) * 100,
+                rate_total=stats.get('win_rate', 0) * 100
+            )
+
+            # Update consecutive wins/losses
+            HydraMetrics.consecutive_wins.set(stats.get('consecutive_wins', 0))
+            HydraMetrics.consecutive_losses.set(stats.get('consecutive_losses', 0))
+
+            # Get tournament leaderboard for engine stats
+            leaderboard = self.vote_tracker.get_leaderboard()
+            for i, engine_stats in enumerate(leaderboard, 1):
+                engine = engine_stats.get('gladiator', '')
+                if engine in ['A', 'B', 'C', 'D']:
+                    # Calculate weight based on rank
+                    weights = {1: 40, 2: 30, 3: 20, 4: 10}
+                    HydraMetrics.set_engine_stats(
+                        engine=engine,
+                        rank=i,
+                        weight=weights.get(i, 10),
+                        points=engine_stats.get('total_points', 0),
+                        win_rate=engine_stats.get('win_rate', 0),
+                        active=True
+                    )
+
+            # Get asset prices
+            for asset in self.assets:
+                try:
+                    df = self.data_client.fetch_klines(symbol=asset, interval="1m", limit=1)
+                    if not df.empty:
+                        price = df.iloc[-1]['close']
+                        HydraMetrics.set_price(asset, price)
+                except Exception:
+                    pass
+
+            # Update Guardian/risk metrics
+            HydraMetrics.set_risk_metrics(
+                daily_dd=0,  # TODO: Get from Guardian
+                total_dd=0,  # TODO: Get from Guardian
+                kill_switch=False,  # TODO: Get from Guardian
+                exposure=len(self.paper_trader.open_trades) * 2  # Rough estimate
+            )
+
+            # Record cycle completion
+            HydraMetrics.record_cycle(self.check_interval)
+
+        except Exception as e:
+            logger.error(f"Error updating Prometheus metrics: {e}")
+            HydraMetrics.record_error("metrics_update", "hydra_runtime")
 
 
 def main():
