@@ -34,6 +34,14 @@ class EngineD_Gemini(BaseEngine):
 
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
+    # Rate limiting configuration
+    MIN_CALL_INTERVAL = 3.0  # Minimum seconds between API calls
+    MAX_RETRIES = 5  # Maximum retry attempts for rate limits
+    BASE_RETRY_DELAY = 5  # Base delay for exponential backoff (seconds)
+
+    # Class-level tracking for rate limiting
+    _last_call_time: float = 0.0
+
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
             name="D",
@@ -709,9 +717,18 @@ Output JSON:
             }
         }
 
-        # FIX BUG #1: Exponential backoff retry logic
-        max_retries = 3
-        base_delay = 2  # Start with 2 seconds
+        # Rate limiting: ensure minimum interval between calls
+        now = time.time()
+        time_since_last = now - EngineD_Gemini._last_call_time
+        if time_since_last < self.MIN_CALL_INTERVAL:
+            sleep_time = self.MIN_CALL_INTERVAL - time_since_last
+            logger.debug(f"Gemini rate limit: waiting {sleep_time:.1f}s before next call")
+            time.sleep(sleep_time)
+        EngineD_Gemini._last_call_time = time.time()
+
+        # FIX BUG #1: Exponential backoff retry logic (with increased limits)
+        max_retries = self.MAX_RETRIES
+        base_delay = self.BASE_RETRY_DELAY
 
         for attempt in range(max_retries):
             try:
