@@ -28,12 +28,13 @@ scrape_configs:
           service: 'prometheus'
 
   # HYDRA 4.0 Metrics Exporter
-  # The exporter runs inside the HYDRA runtime container and exposes metrics at /metrics
+  # The exporter runs on the host machine (not in Docker) and exposes metrics at /metrics
+  # Using host.docker.internal to reach host from inside Docker container
   - job_name: 'hydra'
     scrape_interval: 15s
     scrape_timeout: 10s
     static_configs:
-      - targets: ['hydra-runtime:9100']
+      - targets: ['host.docker.internal:9100']
         labels:
           service: 'hydra'
           environment: 'production'
