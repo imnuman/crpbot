@@ -33,6 +33,7 @@ from .internet_search import get_internet_search
 from .cycles.kill_cycle import get_kill_cycle
 from .cycles.breeding_cycle import get_breeding_cycle
 from .cycles.knowledge_transfer import get_knowledge_transfer
+from .cycles.stats_injector import get_stats_injector
 
 from .engines.engine_a_deepseek import EngineA_DeepSeek
 from .engines.engine_b_claude import EngineB_Claude
@@ -90,6 +91,7 @@ class MotherAI:
         self.kill_cycle = get_kill_cycle()
         self.breeding_cycle = get_breeding_cycle()
         self.knowledge_transfer = get_knowledge_transfer()
+        self.stats_injector = get_stats_injector()
 
         # Tournament state
         self.tournament_start_time = datetime.now(timezone.utc)
@@ -252,23 +254,45 @@ class MotherAI:
 
         decisions = {}
 
-        # Prepare enhanced market data with intelligence
-        enhanced_market_data = {
+        # Calculate tournament stats for prompt injection
+        rankings = self.tournament_manager.calculate_rankings()
+        tournament_stats = self.stats_injector.calculate_stats(rankings)
+
+        # Prepare base enhanced market data with intelligence
+        base_enhanced_data = {
             **market_data,
             "orderbook_analysis": market_intelligence.get("orderbook"),
             "market_feeds": market_intelligence.get("market_feeds"),
             "search_results": market_intelligence.get("search_results")
         }
 
+        # Create per-engine enhanced data with personalized stats
+        engine_market_data = {}
+        for name in ["A", "B", "C", "D"]:
+            # Get personalized stats for this engine
+            engine_stats = self.stats_injector.get_stats_for_engine(name, tournament_stats)
+            compact_stats = self.stats_injector.format_compact(name, tournament_stats)
+            emotion_prompt = self.stats_injector.format_emotion_prompt(name, tournament_stats)
+
+            engine_market_data[name] = {
+                **base_enhanced_data,
+                "tournament_stats": engine_stats,
+                "tournament_stats_compact": compact_stats,
+                "tournament_emotion_prompt": emotion_prompt
+            }
+
+            logger.debug(f"[Engine {name}] Stats: {compact_stats}")
+
         # Helper function to get decision from a single gladiator
         def get_gladiator_decision(name: str, gladiator):
             try:
+                # Use engine-specific market data with personalized tournament stats
                 decision = gladiator.make_trade_decision(
                     asset=asset,
                     asset_type="crypto",  # TODO: Make this dynamic
                     regime=regime,
                     regime_confidence=regime_confidence,
-                    market_data=enhanced_market_data
+                    market_data=engine_market_data[name]
                 )
 
                 if decision:

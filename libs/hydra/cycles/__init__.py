@@ -5,11 +5,13 @@ Implements tournament evolution mechanics:
 - Kill Cycle (24hr): Eliminate weakest, force new strategy
 - Breeding Cycle (4 days): Combine winners' DNA into offspring
 - Knowledge Transfer: Winner insights → all losers (every cycle)
+- Stats Injection: Tournament standings in every prompt
 """
 
 from .kill_cycle import KillCycle, get_kill_cycle
 from .breeding_cycle import BreedingCycle, get_breeding_cycle
 from .knowledge_transfer import KnowledgeTransfer, get_knowledge_transfer
+from .stats_injector import StatsInjector, get_stats_injector
 
 __all__ = [
     "KillCycle",
@@ -18,4 +20,6 @@ __all__ = [
     "get_breeding_cycle",
     "KnowledgeTransfer",
     "get_knowledge_transfer",
+    "StatsInjector",
+    "get_stats_injector",
 ]
