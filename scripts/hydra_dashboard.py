@@ -171,7 +171,7 @@ def get_prices():
 
 
 def get_engines():
-    """Fetch REAL engine rankings - forces fresh data each time."""
+    """Fetch REAL engine stats from paper_trades.jsonl directly."""
     global ENGINE_CACHE, LAST_ENGINE_UPDATE
 
     elapsed = (datetime.now() - LAST_ENGINE_UPDATE).total_seconds()
@@ -179,22 +179,35 @@ def get_engines():
         return ENGINE_CACHE
 
     try:
-        # Reset the singleton to force fresh data load
-        import libs.hydra.engine_portfolio as ep
-        ep._tournament_manager = None  # Force recreation
+        # Read directly from paper_trades.jsonl
+        trades_file = Path("/root/crpbot/data/hydra/paper_trades.jsonl")
+        stats = {eng: {"trades": 0, "wins": 0, "pnl": 0.0} for eng in ["A", "B", "C", "D"]}
 
-        mgr = ep.get_tournament_manager()
-        ranks = mgr.calculate_rankings()
+        if trades_file.exists():
+            with open(trades_file) as f:
+                for line in f:
+                    if line.strip():
+                        trade = json.loads(line)
+                        eng = trade.get("gladiator", "D")
+                        if eng in stats:
+                            stats[eng]["trades"] += 1
+                            if trade.get("outcome") == "win":
+                                stats[eng]["wins"] += 1
+                            stats[eng]["pnl"] += trade.get("pnl_usd", 0)
 
-        # Check if we have real data
-        has_data = any(s.total_trades > 0 for _, s in ranks)
+        # Calculate win rates and build result
+        has_data = any(s["trades"] > 0 for s in stats.values())
+        ENGINE_CACHE = []
+        for eng in ["A", "B", "C", "D"]:
+            s = stats[eng]
+            wr = (s["wins"] / s["trades"] * 100) if s["trades"] > 0 else 0
+            ENGINE_CACHE.append((eng, {
+                "wr": wr,
+                "pnl": s["pnl"],
+                "trades": s["trades"],
+                "source": "HYDRA" if has_data else "NO_DATA"
+            }))
 
-        ENGINE_CACHE = [(n, {
-            "wr": s.win_rate * 100,
-            "pnl": s.total_pnl_usd,
-            "trades": s.total_trades,
-            "source": "HYDRA" if has_data else "NO_DATA"
-        }) for n, s in ranks]
         LAST_ENGINE_UPDATE = datetime.now()
         return ENGINE_CACHE
     except Exception as e:
