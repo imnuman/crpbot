@@ -34,6 +34,7 @@ from .cycles.kill_cycle import get_kill_cycle
 from .cycles.breeding_cycle import get_breeding_cycle
 from .cycles.knowledge_transfer import get_knowledge_transfer
 from .cycles.stats_injector import get_stats_injector
+from .cycles.weight_adjuster import get_weight_adjuster
 
 from .engines.engine_a_deepseek import EngineA_DeepSeek
 from .engines.engine_b_claude import EngineB_Claude
@@ -92,6 +93,7 @@ class MotherAI:
         self.breeding_cycle = get_breeding_cycle()
         self.knowledge_transfer = get_knowledge_transfer()
         self.stats_injector = get_stats_injector()
+        self.weight_adjuster = get_weight_adjuster()
 
         # Tournament state
         self.tournament_start_time = datetime.now(timezone.utc)
@@ -423,11 +425,15 @@ class MotherAI:
                 f"learned from Engine {kill_event.winner_engine}"
             )
 
-        # Check for weight adjustment (every 24 hours)
-        time_since_adjustment = now - self.last_weight_adjustment
-        if time_since_adjustment >= timedelta(hours=24):
-            logger.info("🎯 24-hour mark reached - Adjusting weights based on performance")
-            self._adjust_weights()
+        # Check for weight adjustment (every 24 hours) - using WeightAdjuster
+        weight_result = self.weight_adjuster.adjust_weights(rankings)
+        if weight_result and weight_result.adjustment_made:
+            # Sync weights to tournament manager
+            for engine, ew in weight_result.engine_weights.items():
+                self.tournament_manager.update_weight(engine, ew.current_weight)
+            logger.info(
+                f"🎯 Weight adjustment complete: Strategy={weight_result.strategy.value}"
+            )
             self.last_weight_adjustment = now
 
         # Check for breeding cycle (every 4 days)
@@ -447,41 +453,23 @@ class MotherAI:
 
     def _adjust_weights(self):
         """
-        Adjust gladiator weights based on performance (every 24 hours).
+        Adjust gladiator weights based on performance.
 
-        Weight distribution:
-        - Rank #1: 40% weight
-        - Rank #2: 30% weight
-        - Rank #3: 20% weight
-        - Rank #4: 10% weight
+        DEPRECATED: Now uses WeightAdjuster system with:
+        - Multiple strategies (rank-based, Sharpe-based, hybrid)
+        - Smooth transitions
+        - Weight bounds (5% min, 50% max)
+        - Momentum bonuses
 
-        NOTE: No killing - all gladiators continue competing.
+        This method is kept for backwards compatibility.
         """
-        rankings = self.tournament_manager.get_tournament_summary()["rankings"]
+        rankings = self.tournament_manager.calculate_rankings()
+        result = self.weight_adjuster.adjust_weights(rankings, force=True)
 
-        # Define weight distribution
-        weights = {
-            1: 0.40,  # 40% for rank #1
-            2: 0.30,  # 30% for rank #2
-            3: 0.20,  # 20% for rank #3
-            4: 0.10   # 10% for rank #4
-        }
-
-        logger.info("Adjusting weights based on performance:")
-        for ranking in rankings:
-            gladiator_name = ranking["gladiator"]
-            rank = ranking["rank"]
-            new_weight = weights[rank]
-
-            # Update weight in tournament manager
-            self.tournament_manager.update_weight(gladiator_name, new_weight)
-
-            logger.info(
-                f"  [Gladiator {gladiator_name}] Rank #{rank} → Weight: {new_weight:.0%} "
-                f"(P&L: ${ranking['total_pnl_usd']:+.2f}, WR: {ranking['win_rate']:.1%})"
-            )
-
-        logger.success("Weight adjustment complete - all gladiators continue competing")
+        if result and result.adjustment_made:
+            for engine, ew in result.engine_weights.items():
+                self.tournament_manager.update_weight(engine, ew.current_weight)
+            logger.success(f"Weight adjustment complete using {result.strategy.value} strategy")
 
     def _execute_breeding(self):
         """
