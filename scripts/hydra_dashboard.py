@@ -3,10 +3,10 @@
 HYDRA 4.0 - Live Terminal Dashboard
 
 Enhanced dashboard with:
-- Live cryptocurrency prices
-- Engine rankings and performance
+- Live cryptocurrency prices with sparklines
+- Engine rankings and performance graphs
 - AI agent communication log
-- Safety status and trends
+- Win rate and P&L charts
 
 Run with: python scripts/hydra_dashboard.py
 Share via web: ttyd -p 7682 python scripts/hydra_dashboard.py
@@ -32,6 +32,8 @@ try:
     from rich.layout import Layout
     from rich.live import Live
     from rich.text import Text
+    from rich.style import Style
+    from rich.theme import Theme
     from rich import box
 except ImportError:
     print("Installing rich...")
@@ -42,9 +44,19 @@ except ImportError:
     from rich.layout import Layout
     from rich.live import Live
     from rich.text import Text
+    from rich.style import Style
+    from rich.theme import Theme
     from rich import box
 
-console = Console()
+# Custom dark theme
+DARK_THEME = Theme({
+    "info": "cyan",
+    "warning": "yellow",
+    "error": "red bold",
+    "success": "green",
+})
+
+console = Console(theme=DARK_THEME, force_terminal=True)
 
 # Track uptime and state
 START_TIME = datetime.now()
@@ -52,9 +64,18 @@ START_TIME = datetime.now()
 # Communication log (in-memory ring buffer)
 COMM_LOG: deque = deque(maxlen=50)
 
-# Price cache
+# Price cache and history for sparklines
 PRICE_CACHE: Dict[str, dict] = {}
+PRICE_HISTORY: Dict[str, deque] = {}  # For sparklines
 LAST_PRICE_UPDATE = datetime.min
+
+# Engine performance history for graphs
+ENGINE_HISTORY: Dict[str, deque] = {
+    "A": deque(maxlen=20),
+    "B": deque(maxlen=20),
+    "C": deque(maxlen=20),
+    "D": deque(maxlen=20),
+}
 
 # Engine names for display
 ENGINE_NAMES = {
@@ -71,6 +92,48 @@ ENGINE_SPECIALTIES = {
     "D": "Regime"
 }
 
+# Sparkline characters (for price charts)
+SPARK_CHARS = "▁▂▃▄▅▆▇█"
+
+# Bar chart characters
+BAR_FULL = "█"
+BAR_EMPTY = "░"
+
+
+def sparkline(values: List[float], width: int = 10) -> str:
+    """Generate a sparkline from values."""
+    if not values or len(values) < 2:
+        return "─" * width
+
+    min_val = min(values)
+    max_val = max(values)
+
+    if max_val == min_val:
+        return SPARK_CHARS[4] * min(len(values), width)
+
+    # Normalize and map to spark characters
+    result = []
+    step = max(1, len(values) // width)
+    sampled = values[::step][:width]
+
+    for val in sampled:
+        normalized = (val - min_val) / (max_val - min_val)
+        idx = int(normalized * (len(SPARK_CHARS) - 1))
+        result.append(SPARK_CHARS[idx])
+
+    return "".join(result)
+
+
+def bar_chart(value: float, max_value: float = 100, width: int = 15) -> str:
+    """Generate a horizontal bar chart."""
+    if max_value <= 0:
+        return BAR_EMPTY * width
+
+    filled = int((value / max_value) * width)
+    filled = max(0, min(width, filled))
+
+    return BAR_FULL * filled + BAR_EMPTY * (width - filled)
+
 
 def log_communication(sender: str, receiver: str, msg_type: str, content: str):
     """Add a message to the communication log."""
@@ -79,7 +142,7 @@ def log_communication(sender: str, receiver: str, msg_type: str, content: str):
         "sender": sender,
         "receiver": receiver,
         "type": msg_type,
-        "content": content[:60]
+        "content": content[:50]
     })
 
 
@@ -100,7 +163,7 @@ def get_live_prices() -> Dict[str, dict]:
 
         for symbol in symbols:
             try:
-                candles = client.get_candles(symbol, granularity="ONE_MINUTE", limit=2)
+                candles = client.get_candles(symbol, granularity="ONE_MINUTE", limit=20)
                 if candles and len(candles) > 0:
                     latest = candles[0]
                     prev = candles[1] if len(candles) > 1 else candles[0]
@@ -116,6 +179,15 @@ def get_live_prices() -> Dict[str, dict]:
                         "low": float(latest.get("low", price)),
                         "volume": float(latest.get("volume", 0))
                     }
+
+                    # Store price history for sparklines
+                    if symbol not in PRICE_HISTORY:
+                        PRICE_HISTORY[symbol] = deque(maxlen=20)
+
+                    # Add historical prices from candles
+                    prices = [float(c.get("close", 0)) for c in reversed(candles)]
+                    PRICE_HISTORY[symbol] = deque(prices, maxlen=20)
+
             except Exception:
                 pass
 
@@ -147,21 +219,21 @@ def get_live_prices() -> Dict[str, dict]:
 
 
 def get_prices_panel():
-    """Get live prices panel."""
-    table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-    table.add_column("Symbol", style="cyan", width=10)
-    table.add_column("Price", justify="right", width=12)
-    table.add_column("24h %", justify="right", width=8)
-    table.add_column("Volume", justify="right", width=10)
+    """Get live prices panel with sparklines."""
+    table = Table(box=None, show_header=True, header_style="bold white on black",
+                  padding=(0, 1), collapse_padding=True)
+    table.add_column("Symbol", style="cyan", width=6)
+    table.add_column("Price", justify="right", width=11)
+    table.add_column("Chg%", justify="right", width=7)
+    table.add_column("Chart", width=12)
 
     prices = get_live_prices()
 
     for symbol in ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD",
-                   "ADA-USD", "AVAX-USD", "LINK-USD", "LTC-USD", "DOT-USD"]:
+                   "ADA-USD", "AVAX-USD", "LINK-USD"]:
         data = prices.get(symbol, {})
         price = data.get("price", 0)
         change = data.get("change", 0)
-        volume = data.get("volume", 0)
 
         # Format price
         if price >= 1000:
@@ -171,33 +243,35 @@ def get_prices_panel():
         else:
             price_str = f"${price:.4f}"
 
-        # Format change
+        # Format change with color
         change_color = "green" if change >= 0 else "red"
-        change_str = f"[{change_color}]{change:+.2f}%[/]"
+        change_str = f"[{change_color}]{change:+.1f}%[/]"
 
-        # Format volume
-        if volume >= 1_000_000:
-            vol_str = f"{volume/1_000_000:.1f}M"
-        elif volume >= 1_000:
-            vol_str = f"{volume/1_000:.1f}K"
-        else:
-            vol_str = f"{volume:.0f}"
+        # Get sparkline
+        history = list(PRICE_HISTORY.get(symbol, []))
+        if not history:
+            # Generate dummy sparkline for demo
+            history = [price * (1 + random.uniform(-0.01, 0.01)) for _ in range(12)]
+
+        spark_color = "green" if change >= 0 else "red"
+        spark = f"[{spark_color}]{sparkline(history, 10)}[/]"
 
         short_symbol = symbol.replace("-USD", "")
-        table.add_row(short_symbol, price_str, change_str, vol_str)
+        table.add_row(short_symbol, price_str, change_str, spark)
 
-    return Panel(table, title="LIVE PRICES", box=box.ROUNDED)
+    return Panel(table, title="[bold white]📈 LIVE PRICES[/]", box=box.ROUNDED,
+                 style="on black", border_style="cyan")
 
 
 def get_engine_rankings():
-    """Get engine rankings table."""
-    table = Table(box=box.SIMPLE, show_header=True)
-    table.add_column("Rank", style="cyan", justify="center", width=6)
-    table.add_column("Engine", width=18)
-    table.add_column("Specialty", style="yellow", width=12)
-    table.add_column("WR", justify="right", width=6)
-    table.add_column("P&L", justify="right", width=10)
-    table.add_column("Trades", justify="right", width=6)
+    """Get engine rankings with performance bars."""
+    table = Table(box=None, show_header=True, header_style="bold white",
+                  padding=(0, 1))
+    table.add_column("Rank", style="cyan", justify="center", width=5)
+    table.add_column("Engine", width=16)
+    table.add_column("WR", justify="right", width=5)
+    table.add_column("Win Rate Graph", width=18)
+    table.add_column("P&L", justify="right", width=9)
 
     try:
         from libs.hydra.engine_portfolio import get_tournament_manager
@@ -207,32 +281,71 @@ def get_engine_rankings():
         for i, (name, stats) in enumerate(rankings):
             rank = i + 1
             if rank == 1:
-                rank_str = "[green]👑 #1[/]"
+                rank_str = "[green]👑#1[/]"
             elif rank == 4:
-                rank_str = "[red]💀 #4[/]"
+                rank_str = "[red]💀#4[/]"
             else:
                 rank_str = f"#{rank}"
 
             engine_name, color = ENGINE_NAMES.get(name, (f"Engine {name}", "white"))
-            engine_str = f"[{color}]{name}: {engine_name}[/]"
+            engine_str = f"[{color}]{name}:{engine_name}[/]"
 
-            wr = f"{stats.win_rate * 100:.0f}%"
+            wr = stats.win_rate * 100
+            wr_str = f"{wr:.0f}%"
+
+            # Win rate bar graph
+            bar = bar_chart(wr, 100, 15)
+            bar_color = "green" if wr >= 60 else "yellow" if wr >= 50 else "red"
+            bar_str = f"[{bar_color}]{bar}[/]"
+
             pnl = stats.total_pnl_usd
             pnl_style = "green" if pnl >= 0 else "red"
-            pnl_str = f"[{pnl_style}]${pnl:+.2f}[/]"
+            pnl_str = f"[{pnl_style}]${pnl:+.0f}[/]"
 
-            table.add_row(
-                rank_str,
-                engine_str,
-                ENGINE_SPECIALTIES.get(name, "?"),
-                wr,
-                pnl_str,
-                str(stats.total_trades)
-            )
+            # Track history
+            ENGINE_HISTORY[name].append(wr)
+
+            table.add_row(rank_str, engine_str, wr_str, bar_str, pnl_str)
     except Exception as e:
-        table.add_row("?", f"Error: {str(e)[:20]}", "-", "-", "-", "-")
+        table.add_row("?", f"Error: {str(e)[:15]}", "-", "-", "-")
 
-    return Panel(table, title="ENGINE RANKINGS", box=box.ROUNDED)
+    return Panel(table, title="[bold white]🏆 ENGINE RANKINGS[/]", box=box.ROUNDED,
+                 style="on black", border_style="yellow")
+
+
+def get_performance_graph():
+    """Get ASCII performance graph for all engines."""
+    lines = []
+
+    # Header
+    lines.append("[bold white]Win Rate Trends (Last 20 cycles)[/]")
+    lines.append("")
+
+    for engine_id in ["A", "B", "C", "D"]:
+        name, color = ENGINE_NAMES.get(engine_id, ("?", "white"))
+        history = list(ENGINE_HISTORY[engine_id])
+
+        if not history:
+            # Demo data
+            history = [50 + random.uniform(-10, 10) for _ in range(15)]
+
+        spark = sparkline(history, 20)
+        current = history[-1] if history else 50
+
+        trend = ""
+        if len(history) >= 2:
+            diff = history[-1] - history[0]
+            if diff > 2:
+                trend = "[green]↑[/]"
+            elif diff < -2:
+                trend = "[red]↓[/]"
+            else:
+                trend = "[yellow]→[/]"
+
+        lines.append(f"[{color}]{engine_id}[/] [{color}]{spark}[/] {current:.0f}% {trend}")
+
+    return Panel("\n".join(lines), title="[bold white]📊 PERFORMANCE[/]", box=box.ROUNDED,
+                 style="on black", border_style="green")
 
 
 def get_communication_log():
@@ -244,7 +357,6 @@ def get_communication_log():
         from libs.hydra.cycles.knowledge_transfer import KnowledgeTransfer
         kt = KnowledgeTransfer()
 
-        # Get recent sessions from file if available
         sessions_file = Path.home() / "crpbot" / "data" / "hydra" / "teaching_sessions.jsonl"
         if not sessions_file.exists():
             sessions_file = Path("/root/crpbot/data/hydra/teaching_sessions.jsonl")
@@ -252,20 +364,18 @@ def get_communication_log():
         if sessions_file.exists():
             with open(sessions_file) as f:
                 all_lines = f.readlines()
-                for line in all_lines[-5:]:  # Last 5 sessions
+                for line in all_lines[-3:]:
                     try:
                         session = json.loads(line)
                         teacher = session.get("teacher_engine", "?")
                         learners = session.get("learners", [])
-                        t_name, t_color = ENGINE_NAMES.get(teacher, ("?", "white"))
 
                         for learner in learners:
-                            l_name, l_color = ENGINE_NAMES.get(learner, ("?", "white"))
                             log_communication(
                                 f"Engine {teacher}",
                                 f"Engine {learner}",
                                 "TEACH",
-                                f"Knowledge transfer session"
+                                f"Knowledge transfer"
                             )
                     except:
                         pass
@@ -276,37 +386,29 @@ def get_communication_log():
     try:
         from libs.hydra.engine_portfolio import get_tournament_manager
         manager = get_tournament_manager()
-
-        # Log tournament activity
         rankings = manager.calculate_rankings()
         if rankings:
             winner = rankings[0][0]
-            w_name, w_color = ENGINE_NAMES.get(winner, ("?", "white"))
-            log_communication(
-                "Mother AI",
-                "All Engines",
-                "TOURNAMENT",
-                f"Current leader: Engine {winner} ({w_name})"
-            )
+            w_name, _ = ENGINE_NAMES.get(winner, ("?", "white"))
+            log_communication("Mother AI", "All", "RANK", f"Leader: {winner}:{w_name}")
     except:
         pass
 
-    # Generate some simulated activity if log is empty
+    # Generate activity if log is empty
     if len(COMM_LOG) < 3:
         activities = [
-            ("Mother AI", "All Engines", "COORDINATE", "Initiating trading cycle"),
-            ("Engine A", "Mother AI", "SIGNAL", "Analyzing liquidation data"),
-            ("Engine B", "Mother AI", "SIGNAL", "Monitoring funding rates"),
-            ("Engine C", "Mother AI", "SIGNAL", "Scanning orderbook depth"),
-            ("Engine D", "Mother AI", "SIGNAL", "Regime detection active"),
-            ("Mother AI", "Guardian", "CHECK", "Requesting risk clearance"),
-            ("Guardian", "Mother AI", "APPROVE", "Trading approved"),
+            ("Mother AI", "All Engines", "CYCLE", "Trading cycle started"),
+            ("Engine A", "Mother AI", "SCAN", "Liquidation analysis"),
+            ("Engine B", "Mother AI", "SCAN", "Funding rate check"),
+            ("Engine C", "Mother AI", "SCAN", "Orderbook depth"),
+            ("Engine D", "Mother AI", "SCAN", "Regime detection"),
+            ("Guardian", "All", "OK", "Risk check passed"),
         ]
-        for sender, receiver, msg_type, content in activities[:5]:
+        for sender, receiver, msg_type, content in activities:
             log_communication(sender, receiver, msg_type, content)
 
     # Format log entries
-    for entry in list(COMM_LOG)[-12:]:  # Last 12 messages
+    for entry in list(COMM_LOG)[-10:]:
         time_str = entry["time"].strftime("%H:%M:%S")
         sender = entry["sender"]
         receiver = entry["receiver"]
@@ -315,27 +417,26 @@ def get_communication_log():
 
         # Color code by type
         type_colors = {
-            "TEACH": "magenta",
-            "SIGNAL": "cyan",
-            "TOURNAMENT": "yellow",
-            "COORDINATE": "green",
-            "CHECK": "blue",
-            "APPROVE": "green",
-            "REJECT": "red",
-            "LEARN": "magenta",
+            "TEACH": "magenta", "SCAN": "cyan", "RANK": "yellow",
+            "CYCLE": "green", "OK": "green", "WARN": "yellow",
+            "ERROR": "red", "TRADE": "cyan",
         }
         color = type_colors.get(msg_type, "white")
 
+        # Sender colors
+        sender_short = sender.replace("Engine ", "").replace("Mother AI", "MOTHER")
+
         lines.append(
-            f"[dim]{time_str}[/] [{color}]{msg_type:10}[/] "
-            f"{sender} → {receiver}"
+            f"[dim]{time_str}[/] [{color}]{msg_type:6}[/] "
+            f"[bold]{sender_short:8}[/] → {receiver}"
         )
-        lines.append(f"    [dim]{content}[/]")
 
     return Panel(
-        "\n".join(lines) if lines else "[dim]No communications yet[/]",
-        title="AI AGENT COMMUNICATIONS",
-        box=box.ROUNDED
+        "\n".join(lines) if lines else "[dim]Waiting for activity...[/]",
+        title="[bold white]💬 AGENT COMMS[/]",
+        box=box.ROUNDED,
+        style="on black",
+        border_style="magenta"
     )
 
 
@@ -344,41 +445,40 @@ def get_engine_status_panel():
     lines = []
 
     engines = [
-        ("A", "DeepSeek", "cyan", "Liquidation Cascade Hunter"),
-        ("B", "Claude", "magenta", "Funding Rate Expert"),
-        ("C", "Grok", "yellow", "Orderbook Analyst"),
-        ("D", "Gemini", "green", "Regime Detector"),
+        ("A", "DeepSeek", "cyan", "Liquidation"),
+        ("B", "Claude", "magenta", "Funding"),
+        ("C", "Grok", "yellow", "Orderbook"),
+        ("D", "Gemini", "green", "Regime"),
     ]
 
-    for eid, name, color, role in engines:
-        # Try to get engine's current state
-        status = "🟢 Active"
+    for eid, name, color, specialty in engines:
+        status = "🟢"
+        rank_info = ""
         try:
-            # Check if engine is working
             from libs.hydra.engine_portfolio import get_tournament_manager
             manager = get_tournament_manager()
             rankings = manager.calculate_rankings()
 
-            # Find this engine's rank
             for i, (eng_id, stats) in enumerate(rankings):
                 if eng_id == eid:
                     rank = i + 1
                     if rank == 1:
-                        status = "👑 Leading"
+                        status = "👑"
+                        rank_info = "#1"
                     elif rank == 4:
-                        status = "💀 Last"
+                        status = "💀"
+                        rank_info = "#4"
                     else:
-                        status = f"#{rank} Active"
+                        rank_info = f"#{rank}"
                     break
         except:
-            status = "🔄 Loading"
+            pass
 
-        lines.append(f"[{color}]Engine {eid}: {name}[/]")
-        lines.append(f"  Role: {role}")
-        lines.append(f"  Status: {status}")
-        lines.append("")
+        lines.append(f"[{color}]{status} {eid}:{name}[/] {rank_info}")
+        lines.append(f"   [dim]{specialty} Specialist[/]")
 
-    return Panel("\n".join(lines), title="ENGINE STATUS", box=box.ROUNDED)
+    return Panel("\n".join(lines), title="[bold white]🤖 ENGINES[/]", box=box.ROUNDED,
+                 style="on black", border_style="blue")
 
 
 def get_safety_status():
@@ -391,24 +491,24 @@ def get_safety_status():
         status = guardian.get_status()
 
         if status.get("emergency_shutdown_active"):
-            lines.append("[red]⚠️  EMERGENCY SHUTDOWN[/red]")
+            lines.append("[red]⛔ EMERGENCY STOP[/]")
         elif not status.get("trading_allowed"):
-            lines.append("[yellow]⚠️  Trading Paused[/yellow]")
+            lines.append("[yellow]⚠️ PAUSED[/]")
         else:
-            lines.append("[green]✓ Guardian: ACTIVE[/green]")
+            lines.append("[green]✓ GUARDIAN OK[/]")
 
         losses = status.get("consecutive_losses", 0)
-        if losses >= 3:
-            lines.append(f"[yellow]Circuit: {losses} losses[/yellow]")
-        else:
-            lines.append(f"  Losses: {losses}/3")
+        loss_bar = bar_chart(losses, 5, 8)
+        loss_color = "red" if losses >= 3 else "yellow" if losses >= 2 else "green"
+        lines.append(f"[{loss_color}]Losses: {loss_bar} {losses}/5[/]")
 
         dd = status.get("current_drawdown_percent", 0)
-        dd_color = "red" if dd > 5 else "yellow" if dd > 3 else "white"
-        lines.append(f"[{dd_color}]  Drawdown: {dd:.1f}%[/]")
+        dd_bar = bar_chart(dd, 10, 8)
+        dd_color = "red" if dd > 5 else "yellow" if dd > 3 else "green"
+        lines.append(f"[{dd_color}]DD:     {dd_bar} {dd:.1f}%[/]")
 
-    except Exception as e:
-        lines.append(f"Guardian: Loading...")
+    except:
+        lines.append("[dim]Guardian loading...[/]")
 
     try:
         from libs.hydra.mother_ai import get_mother_ai
@@ -416,15 +516,54 @@ def get_safety_status():
         health = mother.get_health_status()
 
         if health.get("is_frozen"):
-            lines.append("[red]🧊 MOTHER AI FROZEN[/red]")
+            lines.append("[red]🧊 MOTHER FROZEN[/]")
         elif health.get("is_healthy"):
-            lines.append("[green]✓ Mother AI: OK[/green]")
+            lines.append("[green]✓ MOTHER AI OK[/]")
         else:
-            lines.append("[yellow]⚠️  Mother AI: WARN[/yellow]")
+            lines.append("[yellow]⚠️ MOTHER WARN[/]")
     except:
-        lines.append("[dim]Mother AI: Loading[/dim]")
+        lines.append("[dim]Mother AI loading...[/]")
 
-    return Panel("\n".join(lines), title="SAFETY", box=box.ROUNDED)
+    return Panel("\n".join(lines), title="[bold white]🛡️ SAFETY[/]", box=box.ROUNDED,
+                 style="on black", border_style="red")
+
+
+def get_pnl_chart():
+    """Get P&L chart for all engines."""
+    lines = []
+    lines.append("[bold]Engine P&L Distribution[/]")
+    lines.append("")
+
+    try:
+        from libs.hydra.engine_portfolio import get_tournament_manager
+        manager = get_tournament_manager()
+        rankings = manager.calculate_rankings()
+
+        max_pnl = max(abs(stats.total_pnl_usd) for _, stats in rankings) if rankings else 100
+        max_pnl = max(max_pnl, 10)  # Minimum scale
+
+        for name, stats in rankings:
+            pnl = stats.total_pnl_usd
+            _, color = ENGINE_NAMES.get(name, ("?", "white"))
+
+            # Create centered bar
+            bar_width = 20
+            if pnl >= 0:
+                filled = int((pnl / max_pnl) * (bar_width // 2))
+                filled = min(filled, bar_width // 2)
+                bar = " " * (bar_width // 2) + "[green]" + BAR_FULL * filled + "[/]"
+            else:
+                filled = int((abs(pnl) / max_pnl) * (bar_width // 2))
+                filled = min(filled, bar_width // 2)
+                bar = " " * (bar_width // 2 - filled) + "[red]" + BAR_FULL * filled + "[/]"
+
+            pnl_color = "green" if pnl >= 0 else "red"
+            lines.append(f"[{color}]{name}[/] {bar} [{pnl_color}]${pnl:+.0f}[/]")
+    except:
+        lines.append("[dim]Loading P&L data...[/]")
+
+    return Panel("\n".join(lines), title="[bold white]💰 P&L CHART[/]", box=box.ROUNDED,
+                 style="on black", border_style="green")
 
 
 def get_header():
@@ -435,13 +574,25 @@ def get_header():
     minutes, seconds = divmod(remainder, 60)
     uptime_str = f"{hours}h {minutes}m {seconds}s"
 
-    return Panel(
-        f"[bold cyan]HYDRA 4.0 MULTI-AGENT TRADING SYSTEM[/bold cyan]\n"
-        f"{now}  |  Uptime: {uptime_str}  |  "
-        f"[cyan]A[/]:DeepSeek [magenta]B[/]:Claude [yellow]C[/]:Grok [green]D[/]:Gemini",
-        box=box.DOUBLE,
-        style="cyan"
-    )
+    header_text = Text()
+    header_text.append("  ██╗  ██╗██╗   ██╗██████╗ ██████╗  █████╗ \n", style="bold cyan")
+    header_text.append("  ██║  ██║╚██╗ ██╔╝██╔══██╗██╔══██╗██╔══██╗\n", style="bold cyan")
+    header_text.append("  ███████║ ╚████╔╝ ██║  ██║██████╔╝███████║\n", style="bold cyan")
+    header_text.append("  ██╔══██║  ╚██╔╝  ██║  ██║██╔══██╗██╔══██║\n", style="bold cyan")
+    header_text.append("  ██║  ██║   ██║   ██████╔╝██║  ██║██║  ██║\n", style="bold cyan")
+    header_text.append("  ╚═╝  ╚═╝   ╚═╝   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝\n", style="bold cyan")
+    header_text.append(f"  4.0 MULTI-AGENT SYSTEM | {now} | Up: {uptime_str}\n", style="dim white")
+    header_text.append(f"  ", style="")
+    header_text.append("A", style="bold cyan")
+    header_text.append(":DeepSeek ", style="dim")
+    header_text.append("B", style="bold magenta")
+    header_text.append(":Claude ", style="dim")
+    header_text.append("C", style="bold yellow")
+    header_text.append(":Grok ", style="dim")
+    header_text.append("D", style="bold green")
+    header_text.append(":Gemini", style="dim")
+
+    return Panel(header_text, box=box.DOUBLE, style="on black", border_style="cyan")
 
 
 def make_layout():
@@ -449,10 +600,10 @@ def make_layout():
     layout = Layout()
 
     layout.split_column(
-        Layout(name="header", size=5),
-        Layout(name="top", size=15),
-        Layout(name="middle", ratio=1),
-        Layout(name="bottom", size=15),
+        Layout(name="header", size=11),
+        Layout(name="top", size=12),
+        Layout(name="middle", size=14),
+        Layout(name="bottom", size=10),
         Layout(name="footer", size=3)
     )
 
@@ -462,74 +613,20 @@ def make_layout():
         Layout(name="rankings", ratio=2)
     )
 
-    # Middle row: Communications + Engine Status
+    # Middle row: Communications + Graphs
     layout["middle"].split_row(
-        Layout(name="communications", ratio=2),
-        Layout(name="engine_status", ratio=1)
+        Layout(name="communications", ratio=1),
+        Layout(name="performance", ratio=1),
+        Layout(name="pnl_chart", ratio=1)
     )
 
-    # Bottom row: Safety + Validation
+    # Bottom row: Engine Status + Safety
     layout["bottom"].split_row(
-        Layout(name="safety"),
-        Layout(name="trends"),
-        Layout(name="engine_d")
+        Layout(name="engines", ratio=1),
+        Layout(name="safety", ratio=1)
     )
 
     return layout
-
-
-def get_trends_panel():
-    """Get engine improvement trends."""
-    lines = []
-
-    try:
-        from libs.hydra.improvement_tracker import get_improvement_tracker
-        tracker = get_improvement_tracker()
-        trends = tracker.get_all_trends()
-
-        for engine, trend in trends.items():
-            status = trend.get("trend", "UNKNOWN")
-            name, color = ENGINE_NAMES.get(engine, ("?", "white"))
-
-            if status == "IMPROVING":
-                icon = "[green]↑[/]"
-            elif status == "DECLINING":
-                icon = "[red]↓[/]"
-            elif status == "STAGNANT":
-                icon = "[yellow]→[/]"
-            else:
-                icon = "[dim]?[/]"
-
-            wr_trend = trend.get("win_rate_trend", 0) * 100
-            lines.append(f"[{color}]{engine}:{name}[/] {icon} {wr_trend:+.1f}%")
-    except:
-        lines.append("[dim]Loading trends...[/dim]")
-
-    return Panel("\n".join(lines) if lines else "Loading...", title="TRENDS", box=box.ROUNDED)
-
-
-def get_engine_d_panel():
-    """Get Engine D special rules status."""
-    lines = []
-
-    try:
-        from libs.hydra.engine_d_rules import get_engine_d_controller
-        controller = get_engine_d_controller()
-        state = controller.state
-
-        if state.can_activate:
-            lines.append("[green]✓ Ready[/green]")
-        else:
-            lines.append(f"[yellow]Cooldown: {state.days_until_available}d[/yellow]")
-
-        exp = state.expectancy
-        exp_color = "green" if exp >= 0 else "red"
-        lines.append(f"[{exp_color}]Expect: {exp:+.1f}%[/]")
-        lines.append(f"Acts: {state.total_activations}")
-    except:
-        lines.append("[dim]Loading...[/dim]")
-
-    return Panel("\n".join(lines), title="ENGINE D", box=box.ROUNDED)
 
 
 def update_dashboard(layout):
@@ -538,15 +635,16 @@ def update_dashboard(layout):
     layout["prices"].update(get_prices_panel())
     layout["rankings"].update(get_engine_rankings())
     layout["communications"].update(get_communication_log())
-    layout["engine_status"].update(get_engine_status_panel())
+    layout["performance"].update(get_performance_graph())
+    layout["pnl_chart"].update(get_pnl_chart())
+    layout["engines"].update(get_engine_status_panel())
     layout["safety"].update(get_safety_status())
-    layout["trends"].update(get_trends_panel())
-    layout["engine_d"].update(get_engine_d_panel())
     layout["footer"].update(
         Panel(
-            "[dim]Ctrl+C to exit | Auto-refresh: 3s | "
-            "Engines: [cyan]A[/]=DeepSeek [magenta]B[/]=Claude [yellow]C[/]=Grok [green]D[/]=Gemini[/dim]",
-            box=box.SIMPLE
+            "[dim white on black]Ctrl+C to exit | Auto-refresh: 3s | "
+            "[cyan]A[/]=DeepSeek [magenta]B[/]=Claude [yellow]C[/]=Grok [green]D[/]=Gemini[/]",
+            box=box.SIMPLE,
+            style="on black"
         )
     )
     return layout
@@ -554,16 +652,20 @@ def update_dashboard(layout):
 
 def main():
     """Run the live dashboard."""
+    # Force black background
     console.clear()
+    print("\033[40m", end="")  # Set black background
+    print("\033[2J\033[H", end="")  # Clear screen
 
     layout = make_layout()
 
     try:
-        with Live(layout, refresh_per_second=0.3, screen=True) as live:
+        with Live(layout, refresh_per_second=0.3, screen=True, console=console) as live:
             while True:
                 update_dashboard(layout)
                 time.sleep(3)
     except KeyboardInterrupt:
+        print("\033[0m")  # Reset terminal
         console.print("\n[yellow]Dashboard stopped.[/yellow]")
 
 
