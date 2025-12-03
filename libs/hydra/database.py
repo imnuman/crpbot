@@ -122,7 +122,7 @@ class HydraTrade(Base):
     votes_hold = Column(Integer, nullable=False)
 
     # Trade details
-    direction = Column(String(10), nullable=False)  # LONG, SHORT
+    direction = Column(String(10), nullable=False)  # BUY, SELL
     entry_price = Column(Float, nullable=False)
     sl_price = Column(Float, nullable=False)
     tp_price = Column(Float, nullable=False)
@@ -150,7 +150,7 @@ class HydraTrade(Base):
 # ==================== CONSENSUS VOTES ====================
 
 class ConsensusVote(Base):
-    """Individual gladiator votes for each trade opportunity."""
+    """Individual engine votes for each trade opportunity."""
     __tablename__ = "consensus_votes"
 
     id = Column(Integer, primary_key=True)
@@ -492,3 +492,26 @@ class HydraDatabase:
             return query.order_by(LessonLearned.date.desc()).all()
         finally:
             session.close()
+
+
+# ==================== SINGLETON & INITIALIZATION ====================
+
+_hydra_db = None
+
+def init_hydra_db(db_path: str = "data/hydra/hydra.db") -> HydraDatabase:
+    """Initialize and return singleton HYDRA database instance."""
+    global _hydra_db
+    if _hydra_db is None:
+        _hydra_db = HydraDatabase(db_path=db_path)
+    return _hydra_db
+
+
+def get_hydra_session():
+    """Get a new database session from the singleton database."""
+    global _hydra_db
+    if _hydra_db is None:
+        _hydra_db = init_hydra_db()
+    return _hydra_db.Session()
+
+# Backwards compatibility alias
+HydraSession = get_hydra_session

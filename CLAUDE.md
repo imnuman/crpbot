@@ -491,6 +491,47 @@ tail -100 /tmp/v7_runtime_*.log          # Check for errors
 **Expected**: V7 is conservative (high HOLD rate = intentional)
 **Not a bug**: 76% HOLD signals is normal during ranging markets
 
+### 7. Dashboard Not Loading Data
+**Symptom**: Dashboard shows "Last Update: Never" with all zeros
+**Root Cause**: Reflex 0.8.20 event handlers don't fire reliably
+**Fix**: Use State `__init__` method instead of `on_mount` (fixed 2025-12-02)
+**See**: `DASHBOARD_FIXES_2025-12-02.md` for complete solution
+
+---
+
+## 📊 Dashboard
+
+### HYDRA 3.0 Dashboard (Reflex)
+**Location**: `apps/dashboard_reflex/`
+**URL**: http://178.156.136.185:3000/
+**Status**: ✅ **OPERATIONAL** (Auto-refresh every 30s)
+
+**Features**:
+- Real-time Mother AI tournament data
+- Gladiator performance metrics
+- Recent cycles display
+- Auto-refresh (30 seconds)
+- Manual refresh button
+
+**Managing Dashboard**:
+```bash
+# Check status
+ps aux | grep "reflex run" | grep -v grep
+
+# View logs
+tail -f /tmp/dashboard_AUTO_REFRESH.log
+
+# Restart dashboard
+sudo lsof -ti:3000 -ti:8000 | xargs -r sudo kill -9
+nohup /root/crpbot/.venv/bin/reflex run --loglevel info --backend-host 0.0.0.0 > /tmp/dashboard_$(date +%Y%m%d_%H%M).log 2>&1 &
+```
+
+**Data Source**: `/root/crpbot/data/hydra/mother_ai_state.json`
+
+**Known Issues (Fixed)**:
+- ~~Event handlers not firing~~ → Fixed with State `__init__` (2025-12-02)
+- ~~No auto-refresh~~ → Implemented client-side JavaScript (2025-12-02)
+
 ---
 
 ## 📚 Key Documentation
@@ -514,31 +555,126 @@ tail -100 /tmp/v7_runtime_*.log          # Check for errors
 
 ---
 
-## 🔮 Current Status (November 2025)
+## 🎯 HYDRA 3.0 - Pre-AGI Multi-Agent System (IN DEVELOPMENT)
 
+**STATUS**: 🚧 **BUILDING** - Phase 1 (Steps 9/38 complete, 23.7%)
+**Start Date**: 2025-12-02
 **Branch**: `feature/v7-ultimate`
-**Phase**: Monitoring & Data Collection (2025-11-22 to 2025-11-25)
 
-**V7 Ultimate**:
-- ✅ All 11 theories operational (100%)
+### Architecture Overview
+
+**HYDRA 3.0 = Mother AI + 4 Independent Gladiator Engines**
+
+**L1 - Mother AI** (Supreme Orchestrator):
+- Tournament management and rankings
+- Final trade approval with FTMO governance
+- Weight adjustment (24-hour cycle)
+- Breeding mechanism (4-day cycle)
+- Winner teaches losers system
+- Emergency shutdown authority
+
+**L2 - 4 Gladiator Engines** (Independent Competitors):
+- Engine A (DeepSeek) - Structural edge hunter
+- Engine B (Claude) - Logic validator
+- Engine C (Grok) - Historical pattern matcher
+- Engine D (Gemini) - Synthesis engine
+
+**Key Design Principles**:
+- Each engine trades INDEPENDENTLY (not consensus voting)
+- Each engine has OWN P&L tracking and portfolio
+- Parallel execution: A||B||C||D (replaced pipeline A→B→C→D)
+- Tournament ranking by actual P&L performance
+- Weight distribution: #1=40%, #2=30%, #3=20%, #4=10%
+- Emotion prompts with stats injection ({rank}, {wr}, {gap})
+
+### HYDRA 3.0 File Structure
+```
+libs/hydra/
+├── mother_ai.py              # ✅ L1 orchestrator (complete)
+├── engines/
+│   ├── base_engine.py        # ✅ Abstract base class
+│   ├── engine_a_deepseek.py  # ✅ Independent engine (refactored)
+│   ├── engine_b_claude.py    # ✅ Independent engine (refactored)
+│   ├── engine_c_grok.py      # ✅ Independent engine (refactored)
+│   └── engine_d_gemini.py    # ✅ Independent engine (refactored)
+├── engine_portfolio.py       # ✅ P&L tracking per engine (fixed bug line 281)
+├── regime_detector.py        # Market regime detection
+├── market_data_feeds.py      # Funding, liquidations
+├── orderbook_feed.py         # Order book analysis
+└── internet_search.py        # News & edge discovery
+```
+
+### Running HYDRA 3.0
+```bash
+# Check Mother AI status
+ps aux | grep mother_ai_runtime | grep -v grep
+
+# Monitor logs
+tail -f /tmp/mother_ai_*.log
+
+# Terminal Dashboard (htop-like, via ttyd)
+# URL: http://178.156.136.185:9090
+scripts/start_hydra_dashboard.sh
+
+# Database queries
+sqlite3 /root/crpbot/data/hydra/hydra.db "
+SELECT engine, COUNT(*), AVG(pnl_percent),
+       SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END) as wins
+FROM hydra_trades
+WHERE status='CLOSED'
+GROUP BY engine
+ORDER BY AVG(pnl_percent) DESC;"
+```
+
+### Progress (Steps 1-9 COMPLETE)
+- ✅ Step 1: Mother AI orchestrator core
+- ✅ Step 2: Terminal dashboard with ttyd
+- ✅ Step 3-6: All 4 engines refactored for independence
+- ✅ Step 7: Emotion prompts installed
+- ✅ Step 8: Portfolio tracker verified (bug fixed)
+- ✅ Step 9: Parallel execution implemented (ThreadPoolExecutor)
+- ⏳ Steps 10-38: Pending (tournament manager, Guardian, validators, data feeds)
+
+### Implementation Reference
+- `HYDRA_3.0_IMPLEMENTATION_PLAN.md` - Complete 38-step blueprint
+- `apps/dashboard_terminal/hydra_monitor.py` - Terminal monitor (325 lines)
+- `scripts/start_hydra_dashboard.sh` - Dashboard launcher
+
+---
+
+## 🔮 Current Status (December 2025)
+
+**Active Systems**:
+1. **V7 Ultimate** (Production) - Data collection phase
+2. **HYDRA 3.0** (Development) - 23.7% complete (9/38 steps)
+
+**V7 Ultimate** (Production):
+- ✅ All 11 theories operational
 - ✅ DeepSeek LLM integration working
 - ✅ Paper trading active (13 trades, 53.8% win rate)
-- ✅ A/B testing running (2 variants)
 - ✅ Dashboard live (http://178.156.136.185:3000)
 - ⏳ Collecting data (need 20+ trades for Sharpe ratio)
+- **Review Date**: 2025-11-25 (Monday)
 
-**Next Actions**:
-- **Builder Claude**: Daily monitoring (5-10 min/day)
-- **QC Claude**: Await Monday 2025-11-25 review
-- **Decision**: Based on Sharpe ratio, decide on Phase 1 enhancements
+**HYDRA 3.0** (Development):
+- ✅ Core foundation (Steps 1-9) - Mother AI + 4 engines operational
+- ✅ Parallel execution working (ThreadPoolExecutor)
+- ⏳ Tournament system (Steps 10-16) - Pending
+- ⏳ Validation engines (Steps 17-21) - Pending
+- ⏳ Data feeds (Steps 22-27) - Pending
+- ⏳ Dashboard enhancements (Steps 28-32) - Pending
+- ⏳ Database tables (Steps 33-36) - Pending
+- ⏳ Testing & deployment (Steps 37-38) - Pending
 
 **Production Environment**:
 - Runtime: Cloud server (178.156.136.185)
-- Database: SQLite (local file, 4,075 signals)
+- Database: SQLite (local file)
+  - V7: `/root/crpbot/tradingai.db` (4,075 signals)
+  - HYDRA: `/root/crpbot/data/hydra/hydra.db` (new)
 - Cost: $0.19/$150 DeepSeek budget (0.13% used)
 - AWS: $79/month (down from $140 after cleanup)
 
 ---
 
-**Last Updated**: 2025-11-22
-**Next Review**: 2025-11-25 (Monday - Sharpe ratio decision)
+**Last Updated**: 2025-12-02
+**Next Milestone**: HYDRA 3.0 Step 10 (Tournament Manager)

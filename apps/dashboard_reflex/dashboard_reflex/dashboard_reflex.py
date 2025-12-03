@@ -45,58 +45,78 @@ class HydraState(rx.State):
     last_update: str = "Never"
     hydra_running: bool = False
 
-    def load_data(self):
-        """Load data from HYDRA's paper_trades.jsonl and hydra.db"""
+    # Auto-refresh control
+    _refresh_active: bool = False
+
+    def _load_mother_ai_data(self):
+        """Internal method to load Mother AI state file"""
         try:
-            # Load paper trades
-            trades_file = Path("/root/crpbot/data/hydra/paper_trades.jsonl")
-            if trades_file.exists():
-                trades = []
-                with open(trades_file, 'r') as f:
-                    for line in f:
-                        if line.strip():
-                            trades.append(json.loads(line))
+            mother_ai_state = Path("/root/crpbot/data/hydra/mother_ai_state.json")
 
-                # Calculate stats
-                self.total_trades = len(trades)
-                self.open_trades = sum(1 for t in trades if t.get('status') == 'OPEN')
-                self.closed_trades = sum(1 for t in trades if t.get('status') == 'CLOSED')
+            if not mother_ai_state.exists():
+                return False
 
-                closed = [t for t in trades if t.get('outcome') in ['WIN', 'LOSS']]
-                if closed:
-                    wins = [t for t in closed if t.get('outcome') == 'WIN']
-                    losses = [t for t in closed if t.get('outcome') == 'LOSS']
+            with open(mother_ai_state, 'r') as f:
+                state = json.load(f)
 
-                    self.win_rate = (len(wins) / len(closed)) * 100 if closed else 0.0
+            gladiators = state.get("gladiators", {})
 
-                    if wins:
-                        self.avg_win = sum(t.get('pnl_percent', 0) for t in wins) / len(wins)
-                    if losses:
-                        self.avg_loss = sum(t.get('pnl_percent', 0) for t in losses) / len(losses)
+            # Set gladiator action counts
+            self.gladiator_a_strategies = gladiators.get("A", {}).get("total_trades", 0)
+            self.gladiator_b_approvals = gladiators.get("B", {}).get("total_trades", 0)
+            self.gladiator_c_backtests = gladiators.get("C", {}).get("total_trades", 0)
+            self.gladiator_d_syntheses = gladiators.get("D", {}).get("total_trades", 0)
 
-                    self.total_pnl_percent = sum(t.get('pnl_percent', 0) for t in closed)
+            # Calculate aggregate stats
+            self.total_trades = sum(g.get("total_trades", 0) for g in gladiators.values())
+            self.open_trades = sum(g.get("open_trades", 0) for g in gladiators.values())
+            self.closed_trades = sum(g.get("closed_trades", 0) for g in gladiators.values())
 
-                # Recent trades (last 10)
-                self.recent_trades = trades[-10:] if trades else []
+            # Win rate
+            if self.closed_trades > 0:
+                total_wins = sum(g.get("wins", 0) for g in gladiators.values())
+                self.win_rate = (total_wins / self.closed_trades) * 100
+            else:
+                self.win_rate = 0.0
 
-                # Count gladiator actions from paper trades
-                self.gladiator_a_strategies = sum(1 for t in trades if t.get('gladiator') == 'A')
-                self.gladiator_b_approvals = sum(1 for t in trades if t.get('gladiator') == 'B')
-                self.gladiator_c_backtests = sum(1 for t in trades if t.get('gladiator') == 'C')
-                self.gladiator_d_syntheses = sum(1 for t in trades if t.get('gladiator') == 'D')
+            # P&L
+            self.total_pnl_percent = sum(g.get("total_pnl_percent", 0) for g in gladiators.values())
 
-            self.last_update = datetime.now().strftime("%H:%M:%S")
+            # Empty trades for now
+            self.recent_trades = []
 
-            # Check if HYDRA is running
-            import subprocess
-            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
-            self.hydra_running = 'hydra_runtime.py' in result.stdout
+            return True
 
         except Exception as e:
-            print(f"Error loading HYDRA data: {e}")
+            print(f"[DASHBOARD] ERROR loading Mother AI data: {e}")
+            return False
+
+    def load_data(self):
+        """Public method to reload data - called by Refresh button"""
+        self._load_mother_ai_data()
+        self.last_update = datetime.now().strftime("%H:%M:%S")
+
+        # Check if Mother AI is running
+        import subprocess
+        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+        self.hydra_running = ('mother_ai_runtime.py' in result.stdout or
+                            'hydra_runtime.py' in result.stdout)
+
+    def __init__(self, *args, **kwargs):
+        """Initialize state and load initial data"""
+        super().__init__(*args, **kwargs)
+        # Load data immediately on state creation
+        self._load_mother_ai_data()
+        self.last_update = datetime.now().strftime("%H:%M:%S")
+
+        # Check if Mother AI is running
+        import subprocess
+        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+        self.hydra_running = ('mother_ai_runtime.py' in result.stdout or
+                            'hydra_runtime.py' in result.stdout)
 
 
-def gladiator_card(name: str, role: str, provider: str, count, color: str) -> rx.Component:
+def engine_card(name: str, role: str, provider: str, count, color: str) -> rx.Component:
     """Card showing gladiator stats"""
     return rx.card(
         rx.vstack(
@@ -153,42 +173,50 @@ def trade_row(trade: Dict[str, Any]) -> rx.Component:
 
 def index() -> rx.Component:
     """Main dashboard page"""
-    return rx.container(
-        rx.vstack(
-            # Navigation
-            rx.hstack(
-                rx.link(
-                    rx.button("Dashboard", variant="soft", color_scheme="blue"),
-                    href="/",
-                ),
-                rx.link(
-                    rx.button("Chat", variant="soft", color_scheme="purple"),
-                    href="/chat",
-                ),
-                spacing="2",
-                margin_bottom="4",
-            ),
+    return rx.fragment(
+        # Auto-refresh script - reloads page every 30 seconds
+        rx.script("""
+            setInterval(function() {
+                window.location.reload();
+            }, 30000);  // 30 seconds
+        """),
 
-            # Header
-            rx.heading("HYDRA 3.0 Dashboard", size="8"),
-            rx.hstack(
-                rx.badge(
-                    "Live",
-                    color_scheme="green",
-                    variant="solid",
+        rx.container(
+            rx.vstack(
+                # Navigation
+                rx.hstack(
+                    rx.link(
+                        rx.button("Dashboard", variant="soft", color_scheme="blue"),
+                        href="/",
+                    ),
+                    rx.link(
+                        rx.button("Chat", variant="soft", color_scheme="purple"),
+                        href="/chat",
+                    ),
+                    spacing="2",
+                    margin_bottom="4",
                 ),
-                rx.text(f"Last Update: {HydraState.last_update}", size="2", color="gray"),
-                rx.button("Refresh", on_click=HydraState.load_data, size="1"),
-                spacing="3",
-            ),
+
+                # Header
+                rx.heading("HYDRA 3.0 Dashboard", size="8"),
+                rx.hstack(
+                    rx.badge(
+                        "Live Auto-Refresh (30s)",
+                        color_scheme="green",
+                        variant="solid",
+                    ),
+                    rx.text(f"Last Update: {HydraState.last_update}", size="2", color="gray"),
+                    rx.button("Refresh Now", on_click=HydraState.load_data, size="1"),
+                    spacing="3",
+                ),
 
             # Gladiators Grid
             rx.heading("Gladiators", size="6", margin_top="4"),
             rx.grid(
-                gladiator_card("A", "Structural Edge", "DeepSeek", HydraState.gladiator_a_strategies, "blue"),
-                gladiator_card("B", "Logic Validator", "Claude", HydraState.gladiator_b_approvals, "purple"),
-                gladiator_card("C", "Fast Backtester", "Grok", HydraState.gladiator_c_backtests, "orange"),
-                gladiator_card("D", "Synthesizer", "Gemini", HydraState.gladiator_d_syntheses, "green"),
+                engine_card("A", "Structural Edge", "DeepSeek", HydraState.gladiator_a_strategies, "blue"),
+                engine_card("B", "Logic Validator", "Claude", HydraState.gladiator_b_approvals, "purple"),
+                engine_card("C", "Fast Backtester", "Grok", HydraState.gladiator_c_backtests, "orange"),
+                engine_card("D", "Synthesizer", "Gemini", HydraState.gladiator_d_syntheses, "green"),
                 columns="4",
                 spacing="4",
                 width="100%",
@@ -228,8 +256,8 @@ def index() -> rx.Component:
             padding="4",
         ),
         max_width="1400px",
-        on_mount=HydraState.load_data,
     )
+)
 
 
 # App configuration

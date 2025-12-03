@@ -11,7 +11,7 @@ Classifies market into 5 regimes:
 Uses ADX, ATR, and Bollinger Band width to determine regime.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from loguru import logger
 import numpy as np
 from datetime import datetime, timezone
@@ -47,7 +47,7 @@ class RegimeDetector:
         lookback_adx: int = 14,
         lookback_atr: int = 14,
         lookback_bb: int = 20
-    ) -> Tuple[str, Dict]:
+    ) -> Dict:
         """
         Detect current market regime.
 
@@ -59,11 +59,15 @@ class RegimeDetector:
             lookback_bb: Bollinger Band period
 
         Returns:
-            (regime: str, metrics: Dict)
+            Dict with keys: "regime" (str), "confidence" (float), "metrics" (Dict)
         """
         if len(candles) < max(lookback_adx, lookback_atr, lookback_bb) + 1:
             logger.warning(f"Insufficient candles for {symbol}: {len(candles)}")
-            return "CHOPPY", {}
+            return {
+                "regime": "CHOPPY",
+                "confidence": 0.5,
+                "metrics": {}
+            }
 
         # Calculate indicators
         adx = self._calculate_adx(candles, lookback_adx)
@@ -97,8 +101,15 @@ class RegimeDetector:
             if ts.timestamp() > cutoff
         ]
 
+        # Calculate confidence
+        confidence = self.get_regime_confidence(symbol)
+
         logger.info(f"{symbol} regime: {regime} (ADX: {adx:.1f}, ATR: {atr:.4f}, BB: {bb_width:.4f})")
-        return regime, metrics
+        return {
+            "regime": regime,
+            "confidence": confidence,
+            "metrics": metrics
+        }
 
     def _classify_regime(
         self,
@@ -324,7 +335,13 @@ class RegimeDetector:
         Simple: Price > SMA(20)
         """
         if len(candles) < lookback:
-            return True  # Default to long bias
+            # FIX BUG #4: When insufficient candles, use last 2 candles instead of defaulting to long
+            if len(candles) >= 2:
+                # Short-term trend: current close vs previous close
+                return candles[-1]['close'] > candles[-2]['close']
+            else:
+                # Ultimate fallback: neutral (return False to avoid false longs)
+                return False
 
         closes = [c['close'] for c in candles[-lookback:]]
         sma = np.mean(closes)
@@ -387,3 +404,15 @@ class RegimeDetector:
             return duration
 
         return 0.0
+
+
+# ==================== SINGLETON PATTERN ====================
+
+_regime_detector = None
+
+def get_regime_detector() -> RegimeDetector:
+    """Get singleton instance of RegimeDetector."""
+    global _regime_detector
+    if _regime_detector is None:
+        _regime_detector = RegimeDetector()
+    return _regime_detector

@@ -19,9 +19,9 @@ from loguru import logger
 
 class ConsensusEngine:
     """
-    Aggregates votes from all 4 gladiators into final decision.
+    Aggregates votes from all 4 engines into final decision.
 
-    Each gladiator votes: BUY, SELL, or HOLD
+    Each engine votes: BUY, SELL, or HOLD
     Consensus determines: trade or not + position size modifier
     """
 
@@ -41,10 +41,10 @@ class ConsensusEngine:
         require_unanimous: bool = False
     ) -> Dict:
         """
-        Calculate consensus from gladiator votes.
+        Calculate consensus from engine votes.
 
         Args:
-            votes: List of vote dicts from each gladiator
+            votes: List of vote dicts from each engine
                 [
                     {"gladiator": "A", "vote": "BUY", "confidence": 0.7, "reasoning": "..."},
                     {"gladiator": "B", "vote": "BUY", "confidence": 0.6, "reasoning": "..."},
@@ -273,7 +273,7 @@ class ConsensusEngine:
             "avg_confidence": sum(v.get("avg_confidence", 0) for v in recent) / len(recent)
         }
 
-    def get_gladiator_agreement_matrix(self) -> Dict[str, Dict[str, float]]:
+    def get_engine_agreement_matrix(self) -> Dict[str, Dict[str, float]]:
         """
         Calculate how often each pair of gladiators agree.
 

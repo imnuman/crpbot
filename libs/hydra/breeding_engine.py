@@ -65,8 +65,8 @@ class BreedingEngine:
         Breed two parent strategies to create offspring.
 
         Args:
-            parent1: First parent strategy dict (from gladiator)
-            parent2: Second parent strategy dict (from gladiator)
+            parent1: First parent strategy dict (from engine)
+            parent2: Second parent strategy dict (from engine)
             parent1_fitness: Fitness score of parent 1 (0-1)
             parent2_fitness: Fitness score of parent 2 (0-1)
             crossover_type: "half_half" | "best_of_both" | "weighted_fitness"

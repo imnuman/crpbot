@@ -9,7 +9,7 @@ Signal Flow:
 3. Anti-Manipulation → Pre-filter suspicious conditions
 4. Gladiators (A/B/C/D) → Generate, validate, backtest, synthesize
 5. Tournament → Track strategy performance
-6. Consensus → Aggregate gladiator votes
+6. Consensus → Aggregate engine votes
 7. Cross-Asset Filter → Check macro correlations
 8. Lesson Memory → Check for known failures
 9. Guardian → Final risk validation (9 sacred rules)
@@ -48,10 +48,10 @@ from libs.hydra.database import init_hydra_db, HydraSession
 from libs.hydra.tournament_tracker import TournamentTracker
 
 # Gladiators
-from libs.hydra.gladiators.gladiator_a_deepseek import GladiatorA_DeepSeek
-from libs.hydra.gladiators.gladiator_b_claude import GladiatorB_Claude
-from libs.hydra.gladiators.gladiator_c_grok import GladiatorC_Grok
-from libs.hydra.gladiators.gladiator_d_gemini import GladiatorD_Gemini
+from libs.hydra.engines.gladiator_a_deepseek import EngineA_DeepSeek
+from libs.hydra.engines.gladiator_b_claude import EngineB_Claude
+from libs.hydra.engines.gladiator_c_grok import EngineC_Grok
+from libs.hydra.engines.gladiator_d_gemini import EngineD_Gemini
 
 # Data Provider
 from libs.data.coinbase_client import get_coinbase_client
@@ -90,7 +90,7 @@ class HydraRuntime:
         self._init_layers()
 
         # Initialize gladiators
-        self._init_gladiators()
+        self._init_engines()
 
         # State tracking
         self.iteration = 0
@@ -148,16 +148,16 @@ class HydraRuntime:
 
         logger.success("All layers initialized")
 
-    def _init_gladiators(self):
+    def _init_engines(self):
         """Initialize 4 gladiators with API keys."""
         logger.info("Initializing Gladiators...")
 
-        self.gladiator_a = GladiatorA_DeepSeek(api_key=os.getenv("DEEPSEEK_API_KEY"))
-        self.gladiator_b = GladiatorB_Claude(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        self.gladiator_c = GladiatorC_Grok(api_key=os.getenv("GROQ_API_KEY"))
-        self.gladiator_d = GladiatorD_Gemini(api_key=os.getenv("GEMINI_API_KEY"))
+        self.gladiator_a = EngineA_DeepSeek(api_key=os.getenv("DEEPSEEK_API_KEY"))
+        self.gladiator_b = EngineB_Claude(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        self.gladiator_c = EngineC_Grok(api_key=os.getenv("GROQ_API_KEY"))
+        self.gladiator_d = EngineD_Gemini(api_key=os.getenv("GEMINI_API_KEY"))
 
-        self.gladiators = [
+        self.engines = [
             self.gladiator_a,
             self.gladiator_b,
             self.gladiator_c,
@@ -391,7 +391,7 @@ class HydraRuntime:
             for s in population
         ]
 
-        # Generate strategies from all 4 gladiators
+        # Generate strategies from all 4 engines
         strategies = []
 
         # Gladiator A: Generate structural edge
@@ -458,7 +458,7 @@ class HydraRuntime:
                         regime=regime
                     )
 
-        # Get votes from all gladiators (each votes on their OWN strategy)
+        # Get votes from all engines (each votes on their OWN strategy)
         votes = []
 
         # Create mock signal for voting
@@ -482,8 +482,8 @@ class HydraRuntime:
         # Create unique trade_id for this voting round
         trade_id = f"{asset}_{int(time.time())}"
 
-        for gladiator in self.gladiators:
-            # Each gladiator votes on their OWN strategy, not D's
+        for gladiator in self.engines:
+            # Each engine votes on their OWN strategy, not D's
             gladiator_strategy = strategy_map.get(gladiator.name, strategy_d)
             vote = gladiator.vote_on_trade(
                 asset=asset,
@@ -705,7 +705,7 @@ class HydraRuntime:
 
     def _create_market_summary(self, candles: List[Dict]) -> Dict:
         """
-        Create summary dict from candle data for gladiators.
+        Create summary dict from candle data for engines.
 
         Bug Fix #41: Gladiators expect a single dict with market statistics,
         not a list of candles.
@@ -831,7 +831,7 @@ class HydraRuntime:
             trade_result=trade_result
         )
 
-        # Score gladiator votes for this trade
+        # Score engine votes for this trade
         self.vote_tracker.score_trade_outcome(
             trade_id=trade.trade_id,
             actual_direction=trade.direction,

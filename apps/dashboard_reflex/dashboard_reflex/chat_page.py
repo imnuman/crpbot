@@ -15,10 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "libs"))
 
 from hydra.chat_interface import HydraChat
-from hydra.gladiators.gladiator_a_deepseek import GladiatorA_DeepSeek
-from hydra.gladiators.gladiator_b_claude import GladiatorB_Claude
-from hydra.gladiators.gladiator_c_grok import GladiatorC_Grok
-from hydra.gladiators.gladiator_d_gemini import GladiatorD_Gemini
+from hydra.engines.engine_a_deepseek import EngineA_DeepSeek
+from hydra.engines.engine_b_claude import EngineB_Claude
+from hydra.engines.engine_c_grok import EngineC_Grok
+from hydra.engines.engine_d_gemini import EngineD_Gemini
 
 
 class ChatState(rx.State):
@@ -39,14 +39,14 @@ class ChatState(rx.State):
     _gladiators: Dict = {}
     _chat: HydraChat = None
 
-    def initialize_gladiators(self):
+    def initialize_engines(self):
         """Initialize gladiator instances (lazy loading)"""
         if not self._gladiators:
             self._gladiators = {
-                "A": GladiatorA_DeepSeek(),
-                "B": GladiatorB_Claude(),
-                "C": GladiatorC_Grok(),
-                "D": GladiatorD_Gemini(),
+                "A": EngineA_DeepSeek(),
+                "B": EngineB_Claude(),
+                "C": EngineC_Grok(),
+                "D": EngineD_Gemini(),
             }
             self._chat = HydraChat(self._gladiators)
 
@@ -67,7 +67,7 @@ class ChatState(rx.State):
         self.messages.append(user_msg)
 
         # Initialize gladiators if needed
-        self.initialize_gladiators()
+        self.initialize_engines()
 
         # Determine target gladiator
         target = "all"
@@ -80,21 +80,21 @@ class ChatState(rx.State):
         elif "@D" in self.user_input or "@Gladiator-D" in self.user_input:
             target = "D"
 
-        # Get responses from gladiators
+        # Get responses from engines
         try:
-            responses = self._chat.ask_gladiator(
+            responses = self._chat.ask_engine(
                 user_message=self.user_input,
                 target=target
             )
 
             # Add gladiator responses
-            for gladiator_name, response_text in responses.items():
+            for engine_name, response_text in responses.items():
                 glad_msg = {
-                    "sender": f"Gladiator {gladiator_name}",
+                    "sender": f"Gladiator {engine_name}",
                     "text": response_text,
                     "timestamp": datetime.now().strftime("%H:%M:%S"),
                     "type": "gladiator",
-                    "gladiator": gladiator_name
+                    "gladiator": engine_name
                 }
                 self.messages.append(glad_msg)
 
@@ -115,7 +115,7 @@ class ChatState(rx.State):
         self.is_loading = True
 
         # Initialize gladiators if needed
-        self.initialize_gladiators()
+        self.initialize_engines()
 
         # For demo, use current market data (in production, fetch real-time)
         try:
@@ -159,7 +159,7 @@ class ChatState(rx.State):
             return
 
         # Initialize chat if needed
-        self.initialize_gladiators()
+        self.initialize_engines()
 
         feedback = {
             "helpful": self.feedback_helpful,
@@ -428,5 +428,5 @@ def chat_interface() -> rx.Component:
             padding="4",
         ),
         max_width="1000px",
-        on_mount=ChatState.initialize_gladiators,
+        on_mount=ChatState.initialize_engines,
     )

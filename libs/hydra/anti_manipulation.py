@@ -2,7 +2,7 @@
 HYDRA 3.0 - Anti-Manipulation Filter (Layer 9)
 
 7-layer filter system to catch:
-- Bad strategies from gladiators (hallucinations)
+- Bad strategies from engines (hallucinations)
 - Market manipulation (fake volume, whale dumps, spoofing)
 - Correlation conflicts (fighting macro forces)
 
@@ -191,7 +191,7 @@ class AntiManipulationFilter:
 
         Args:
             strategy: Strategy to audit
-            auditor_approvals: List of True/False from auditing gladiators
+            auditor_approvals: List of True/False from auditing engines
 
         Returns:
             (passed: bool, reason: str)
@@ -416,7 +416,7 @@ class AntiManipulationFilter:
             strategy: Strategy dict with entry/exit rules
             backtest_results: Backtest performance
             paper_results: Paper trading results (optional)
-            auditor_approvals: List of approvals from other gladiators
+            auditor_approvals: List of approvals from other engines
             market_data: Current market conditions
             cross_asset_data: DXY, BTC, yields, sentiment
 
@@ -517,3 +517,16 @@ class AntiManipulationFilter:
 
         # All filters passed!
         return True, results
+
+
+
+# ==================== SINGLETON PATTERN ====================
+
+_anti_manipulation_filter = None
+
+def get_anti_manipulation_filter() -> AntiManipulationFilter:
+    """Get singleton instance of AntiManipulationFilter."""
+    global _anti_manipulation_filter
+    if _anti_manipulation_filter is None:
+        _anti_manipulation_filter = AntiManipulationFilter()
+    return _anti_manipulation_filter

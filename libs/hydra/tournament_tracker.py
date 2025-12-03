@@ -132,7 +132,7 @@ class TournamentTracker:
         exit_reason: str = ""
     ) -> Dict[str, int]:
         """
-        Score all gladiator votes for a completed trade.
+        Score all engine votes for a completed trade.
 
         Scoring Logic:
         - If trade WON: gladiators who voted same direction as trade get +1
@@ -203,7 +203,7 @@ class TournamentTracker:
             points_awarded[gladiator] = points
 
             # Update gladiator's running score
-            self._update_gladiator_score(
+            self._update_engine_score(
                 gladiator=gladiator,
                 points=points,
                 vote=vote,
@@ -214,7 +214,7 @@ class TournamentTracker:
         logger.info(f"Scored trade {trade_id}: {points_awarded}")
         return points_awarded
 
-    def _update_gladiator_score(
+    def _update_engine_score(
         self,
         gladiator: str,
         points: int,
@@ -305,7 +305,7 @@ class TournamentTracker:
 
         return leaderboard
 
-    def get_gladiator_stats(self, gladiator: str) -> Optional[Dict]:
+    def get_engine_stats(self, gladiator: str) -> Optional[Dict]:
         """Get detailed stats for a specific gladiator."""
         return self.scores.get(gladiator)
 

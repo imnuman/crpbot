@@ -16,7 +16,7 @@ NO BLACK BOXES.
 
 import json
 from typing import Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from loguru import logger
 
@@ -180,7 +180,7 @@ class ExplainabilityLogger:
         return str(log_file)
 
     def _summarize_votes(self, votes: List[Dict]) -> Dict:
-        """Summarize gladiator votes."""
+        """Summarize engine votes."""
         buy_votes = [v for v in votes if v.get("vote") == "BUY"]
         sell_votes = [v for v in votes if v.get("vote") == "SELL"]
         hold_votes = [v for v in votes if v.get("vote") == "HOLD"]

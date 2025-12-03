@@ -9,12 +9,20 @@ from typing import List, Dict, Any
 import json
 import sqlite3
 from pathlib import Path
+import sys
+
+# Add libs to path for portfolio imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+from libs.hydra.engine_portfolio import get_tournament_manager
 
 
 class HydraState(rx.State):
     """Main state for HYDRA dashboard with real-time updates"""
 
-    # Gladiator stats
+    # Tournament Rankings
+    tournament_rankings: List[Dict[str, Any]] = []
+
+    # Gladiator stats (legacy - kept for compatibility)
     gladiator_a_strategies: int = 0
     gladiator_b_approvals: int = 0
     gladiator_b_rejections: int = 0
@@ -44,9 +52,18 @@ class HydraState(rx.State):
     hydra_running: bool = False
 
     def load_data(self):
-        """Load data from HYDRA's paper_trades.jsonl and hydra.db"""
+        """Load data from HYDRA's paper_trades.jsonl and tournament portfolios"""
         try:
-            # Load paper trades
+            # Load tournament rankings from portfolio system
+            try:
+                manager = get_tournament_manager()
+                tournament_summary = manager.get_tournament_summary()
+                self.tournament_rankings = tournament_summary.get("rankings", [])
+            except Exception as e:
+                print(f"Error loading tournament data: {e}")
+                self.tournament_rankings = []
+
+            # Load paper trades (legacy)
             trades_file = Path("/root/crpbot/data/hydra/paper_trades.jsonl")
             if trades_file.exists():
                 trades = []
@@ -60,10 +77,10 @@ class HydraState(rx.State):
                 self.open_trades = sum(1 for t in trades if t.get('status') == 'OPEN')
                 self.closed_trades = sum(1 for t in trades if t.get('status') == 'CLOSED')
 
-                closed = [t for t in trades if t.get('outcome') in ['WIN', 'LOSS']]
+                closed = [t for t in trades if t.get('outcome') in ['win', 'loss']]
                 if closed:
-                    wins = [t for t in closed if t.get('outcome') == 'WIN']
-                    losses = [t for t in closed if t.get('outcome') == 'LOSS']
+                    wins = [t for t in closed if t.get('outcome') == 'win']
+                    losses = [t for t in closed if t.get('outcome') == 'loss']
 
                     self.win_rate = (len(wins) / len(closed)) * 100 if closed else 0.0
 
@@ -94,7 +111,7 @@ class HydraState(rx.State):
             print(f"Error loading HYDRA data: {e}")
 
 
-def gladiator_card(name: str, role: str, provider: str, count, color: str) -> rx.Component:
+def engine_card(name: str, role: str, provider: str, count, color: str) -> rx.Component:
     """Card showing gladiator stats"""
     return rx.card(
         rx.vstack(
@@ -149,6 +166,33 @@ def trade_row(trade: Dict[str, Any]) -> rx.Component:
     )
 
 
+def tournament_ranking_row(ranking: Dict[str, Any]) -> rx.Component:
+    """Row showing a gladiator's tournament ranking"""
+    # Color based on rank
+    rank_colors = {1: "gold", 2: "cyan", 3: "orange", 4: "gray"}
+    color = rank_colors.get(ranking["rank"], "gray")
+
+    return rx.table.row(
+        rx.table.cell(
+            rx.badge(f"#{ranking['rank']}", color_scheme=color, variant="solid")
+        ),
+        rx.table.cell(f"Gladiator {ranking['gladiator']}"),
+        rx.table.cell(f"{ranking['weight'] * 100:.0f}%"),
+        rx.table.cell(ranking["total_trades"]),
+        rx.table.cell(f"{ranking['win_rate'] * 100:.1f}%"),
+        rx.table.cell(
+            rx.text(
+                f"${ranking['total_pnl_usd']:+.2f}",
+                color=rx.cond(ranking["total_pnl_usd"] >= 0, "green", "red"),
+                weight="bold"
+            )
+        ),
+        rx.table.cell(
+            f"{ranking['sharpe_ratio']:.2f}" if ranking.get("sharpe_ratio") else "N/A"
+        ),
+    )
+
+
 def index() -> rx.Component:
     """Main dashboard page"""
     return rx.container(
@@ -166,13 +210,33 @@ def index() -> rx.Component:
                 spacing="3",
             ),
 
+            # Tournament Rankings
+            rx.heading("Tournament Rankings", size="6", margin_top="4"),
+            rx.table.root(
+                rx.table.header(
+                    rx.table.row(
+                        rx.table.column_header_cell("Rank"),
+                        rx.table.column_header_cell("Gladiator"),
+                        rx.table.column_header_cell("Weight"),
+                        rx.table.column_header_cell("Trades"),
+                        rx.table.column_header_cell("Win Rate"),
+                        rx.table.column_header_cell("Total P&L"),
+                        rx.table.column_header_cell("Sharpe"),
+                    ),
+                ),
+                rx.table.body(
+                    rx.foreach(HydraState.tournament_rankings, tournament_ranking_row)
+                ),
+                width="100%",
+            ),
+
             # Gladiators Grid
             rx.heading("Gladiators", size="6", margin_top="4"),
             rx.grid(
-                gladiator_card("A", "Structural Edge", "DeepSeek", HydraState.gladiator_a_strategies, "blue"),
-                gladiator_card("B", "Logic Validator", "Claude", HydraState.gladiator_b_approvals, "purple"),
-                gladiator_card("C", "Fast Backtester", "Grok", HydraState.gladiator_c_backtests, "orange"),
-                gladiator_card("D", "Synthesizer", "Gemini", HydraState.gladiator_d_syntheses, "green"),
+                engine_card("A", "Structural Edge", "DeepSeek", HydraState.gladiator_a_strategies, "blue"),
+                engine_card("B", "Logic Validator", "Claude", HydraState.gladiator_b_approvals, "purple"),
+                engine_card("C", "Fast Backtester", "Grok", HydraState.gladiator_c_backtests, "orange"),
+                engine_card("D", "Synthesizer", "Gemini", HydraState.gladiator_d_syntheses, "green"),
                 columns="4",
                 spacing="4",
                 width="100%",
