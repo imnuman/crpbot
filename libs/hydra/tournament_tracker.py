@@ -20,6 +20,8 @@ from loguru import logger
 import json
 from collections import defaultdict
 
+from .config import HYDRA_DATA_DIR, TOURNAMENT_VOTES_FILE, TOURNAMENT_SCORES_FILE
+
 
 VoteDirection = Literal["BUY", "SELL", "HOLD"]
 Outcome = Literal["win", "loss", "neutral"]
@@ -41,10 +43,12 @@ class TournamentTracker:
     - Gladiator votes HOLD → 0 points (regardless of outcome)
     """
 
-    def __init__(self, data_dir: str = "data/hydra"):
+    def __init__(self, data_dir: Optional[Path] = None):
+        if data_dir is None:
+            data_dir = HYDRA_DATA_DIR
         self.data_dir = Path(data_dir)
-        self.votes_file = self.data_dir / "tournament_votes.jsonl"
-        self.scores_file = self.data_dir / "tournament_scores.jsonl"
+        self.votes_file = TOURNAMENT_VOTES_FILE if data_dir == HYDRA_DATA_DIR else self.data_dir / "tournament_votes.jsonl"
+        self.scores_file = TOURNAMENT_SCORES_FILE if data_dir == HYDRA_DATA_DIR else self.data_dir / "tournament_scores.jsonl"
 
         # Ensure directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)

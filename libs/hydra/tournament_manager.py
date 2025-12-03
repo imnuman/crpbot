@@ -16,8 +16,12 @@ This is how HYDRA evolves: strategies compete, winners teach, losers die.
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from loguru import logger
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import statistics
+import json
+from pathlib import Path
+
+from .config import HYDRA_DATA_DIR
 
 
 @dataclass
@@ -100,7 +104,12 @@ class TournamentManager:
     MIN_SHARPE = -0.5  # Below -0.5 Sharpe = immediate elimination
     MAX_DRAWDOWN_THRESHOLD = 0.15  # Above 15% DD = immediate elimination
 
-    def __init__(self):
+    def __init__(self, data_dir: Optional[Path] = None):
+        if data_dir is None:
+            data_dir = HYDRA_DATA_DIR
+        self.data_dir = Path(data_dir)
+        self.state_file = self.data_dir / "tournament_populations.json"
+
         self.populations: Dict[str, List[StrategyPerformance]] = {}
         # Key: "BTC-USD:TRENDING" -> List of strategies
 
@@ -109,7 +118,111 @@ class TournamentManager:
 
         self.tournament_history: List[Dict] = []
 
-        logger.info("Tournament Manager initialized")
+        # Load existing state from disk
+        self._load_state()
+
+        logger.info(f"Tournament Manager initialized (populations: {len(self.populations)})")
+
+    # ==================== PERSISTENCE ====================
+
+    def _load_state(self):
+        """Load tournament state from disk."""
+        if not self.state_file.exists():
+            logger.info("No existing tournament state found, starting fresh")
+            return
+
+        try:
+            with open(self.state_file, 'r') as f:
+                data = json.load(f)
+
+            # Restore populations
+            for pop_key, strategies in data.get('populations', {}).items():
+                self.populations[pop_key] = []
+                for s in strategies:
+                    # Convert dict back to StrategyPerformance
+                    # Handle last_trade_timestamp conversion
+                    last_ts = s.get('last_trade_timestamp')
+                    if last_ts and isinstance(last_ts, str):
+                        try:
+                            s['last_trade_timestamp'] = datetime.fromisoformat(last_ts)
+                        except:
+                            s['last_trade_timestamp'] = None
+                    perf = StrategyPerformance(**s)
+                    self.populations[pop_key].append(perf)
+
+            # Restore elimination timestamps
+            for key, ts_str in data.get('last_elimination', {}).items():
+                try:
+                    self.last_elimination[key] = datetime.fromisoformat(ts_str)
+                except:
+                    pass
+
+            # Restore breeding timestamps
+            for key, ts_str in data.get('last_breeding', {}).items():
+                try:
+                    self.last_breeding[key] = datetime.fromisoformat(ts_str)
+                except:
+                    pass
+
+            # Restore history (limited to last 100 entries)
+            self.tournament_history = data.get('tournament_history', [])[-100:]
+
+            logger.info(
+                f"Loaded tournament state: {len(self.populations)} populations, "
+                f"{sum(len(p) for p in self.populations.values())} total strategies"
+            )
+
+        except Exception as e:
+            logger.error(f"Error loading tournament state: {e}")
+
+    def _save_state(self):
+        """Save tournament state to disk."""
+        try:
+            # Ensure directory exists
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+
+            # Convert populations to serializable format
+            populations_data = {}
+            for pop_key, strategies in self.populations.items():
+                populations_data[pop_key] = []
+                for s in strategies:
+                    s_dict = asdict(s)
+                    # Convert datetime to string
+                    if s_dict.get('last_trade_timestamp'):
+                        s_dict['last_trade_timestamp'] = s_dict['last_trade_timestamp'].isoformat()
+                    populations_data[pop_key].append(s_dict)
+
+            # Convert datetime dicts
+            last_elimination_data = {
+                k: v.isoformat() for k, v in self.last_elimination.items()
+            }
+            last_breeding_data = {
+                k: v.isoformat() for k, v in self.last_breeding.items()
+            }
+
+            # Process tournament history - convert datetime objects
+            history_data = []
+            for entry in self.tournament_history[-100:]:  # Limit to last 100
+                entry_copy = entry.copy()
+                if 'timestamp' in entry_copy and isinstance(entry_copy['timestamp'], datetime):
+                    entry_copy['timestamp'] = entry_copy['timestamp'].isoformat()
+                history_data.append(entry_copy)
+
+            data = {
+                'populations': populations_data,
+                'last_elimination': last_elimination_data,
+                'last_breeding': last_breeding_data,
+                'tournament_history': history_data,
+                'saved_at': datetime.now(timezone.utc).isoformat()
+            }
+
+            with open(self.state_file, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            logger.debug(f"Saved tournament state to {self.state_file}")
+
+        except Exception as e:
+            logger.error(f"Error saving tournament state: {e}")
 
     # ==================== POPULATION MANAGEMENT ====================
 
@@ -149,6 +262,9 @@ class TournamentManager:
             f"Strategy {strategy_id} registered in {population_key} "
             f"(population: {len(self.populations[population_key])})"
         )
+
+        # Persist state
+        self._save_state()
 
     def update_strategy_performance(
         self,
@@ -218,6 +334,9 @@ class TournamentManager:
             f"Updated {strategy_id}: {strategy.total_trades} trades, "
             f"{strategy.win_rate:.1%} WR, {strategy.sharpe_ratio:.2f} Sharpe"
         )
+
+        # Persist state
+        self._save_state()
 
     def _calculate_sharpe(self, strategy: StrategyPerformance) -> float:
         """
@@ -365,6 +484,9 @@ class TournamentManager:
             f"{len(immediate_eliminations)} eliminated, {population_after} remain"
         )
 
+        # Persist state
+        self._save_state()
+
         return result
 
     # ==================== BREEDING CYCLE (4 DAYS) ====================
@@ -453,6 +575,9 @@ class TournamentManager:
             f"{parent1.strategy_id} (fitness {parent1.fitness_score:.2f}) x "
             f"{parent2.strategy_id} (fitness {parent2.fitness_score:.2f})"
         )
+
+        # Persist state
+        self._save_state()
 
         return result
 
