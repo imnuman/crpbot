@@ -1,5 +1,5 @@
 # Alertmanager Configuration for HYDRA 4.0
-# Routes alerts to Telegram
+# Basic config - Telegram can be added later via Grafana UI
 
 global:
   resolve_timeout: 5m
@@ -9,73 +9,27 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
-  receiver: 'telegram-critical'
+  receiver: 'default'
   routes:
-    # Critical alerts go to Telegram immediately
+    # Critical alerts
     - match:
         severity: critical
-      receiver: 'telegram-critical'
+      receiver: 'default'
       group_wait: 10s
       repeat_interval: 1h
 
     # Warning alerts
     - match:
         severity: warning
-      receiver: 'telegram-warning'
+      receiver: 'default'
       group_wait: 1m
       repeat_interval: 4h
 
-    # Info alerts (optional - can be disabled)
-    - match:
-        severity: info
-      receiver: 'telegram-info'
-      group_wait: 5m
-      repeat_interval: 12h
-
 receivers:
-  # Telegram receiver for critical alerts
-  - name: 'telegram-critical'
-    telegram_configs:
-      - bot_token: '${TELEGRAM_TOKEN}'
-        chat_id: ${TELEGRAM_CHAT_ID}
-        parse_mode: 'HTML'
-        message: |
-          <b>HYDRA ALERT - CRITICAL</b>
-
-          <b>Alert:</b> {{ .CommonLabels.alertname }}
-          <b>Severity:</b> {{ .CommonLabels.severity }}
-          <b>Status:</b> {{ .Status }}
-
-          {{ range .Alerts }}
-          <b>Summary:</b> {{ .Annotations.summary }}
-          <b>Description:</b> {{ .Annotations.description }}
-          {{ end }}
-
-          <i>Time: {{ .CommonAnnotations.time }}</i>
-
-  # Telegram receiver for warnings
-  - name: 'telegram-warning'
-    telegram_configs:
-      - bot_token: '${TELEGRAM_TOKEN}'
-        chat_id: ${TELEGRAM_CHAT_ID}
-        parse_mode: 'HTML'
-        message: |
-          <b>HYDRA Warning</b>
-
-          <b>Alert:</b> {{ .CommonLabels.alertname }}
-          {{ range .Alerts }}
-          {{ .Annotations.summary }}
-          {{ end }}
-
-  # Telegram receiver for info (less urgent)
-  - name: 'telegram-info'
-    telegram_configs:
-      - bot_token: '${TELEGRAM_TOKEN}'
-        chat_id: ${TELEGRAM_CHAT_ID}
-        parse_mode: 'HTML'
-        message: |
-          HYDRA Info: {{ .CommonLabels.alertname }}
-          {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}
+  # Default receiver - logs alerts
+  # Telegram integration can be configured via Grafana UI
+  - name: 'default'
+    webhook_configs: []
 
 inhibit_rules:
   # Inhibit warning if critical is firing
