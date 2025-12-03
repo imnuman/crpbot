@@ -145,6 +145,116 @@ class HydraMetrics:
         'Current risk exposure as percentage of capital'
     )
 
+    # ========== Per-Asset Performance (Phase 1) ==========
+
+    # Per-asset P&L
+    asset_pnl = Gauge(
+        'hydra_asset_pnl_percent',
+        'Total P&L percentage by asset',
+        ['asset']
+    )
+
+    # Per-asset win rate
+    asset_win_rate = Gauge(
+        'hydra_asset_win_rate',
+        'Win rate by asset (0-1)',
+        ['asset']
+    )
+
+    # Per-asset trade count
+    asset_trade_count = Gauge(
+        'hydra_asset_trade_count',
+        'Total trades by asset',
+        ['asset']
+    )
+
+    # ========== Technical Indicators (Phase 1) ==========
+
+    # Current market regime
+    regime_current = Gauge(
+        'hydra_regime_current',
+        'Current regime: 0=CHOPPY, 1=RANGING, 2=TRENDING_UP, 3=TRENDING_DOWN, 4=VOLATILE',
+        ['asset']
+    )
+
+    # Regime confidence
+    regime_confidence = Gauge(
+        'hydra_regime_confidence',
+        'Regime detection confidence (0-1)',
+        ['asset']
+    )
+
+    # ADX indicator
+    indicator_adx = Gauge(
+        'hydra_indicator_adx',
+        'Average Directional Index (trend strength)',
+        ['asset']
+    )
+
+    # ATR indicator
+    indicator_atr = Gauge(
+        'hydra_indicator_atr',
+        'Average True Range (volatility)',
+        ['asset']
+    )
+
+    # Bollinger Band width
+    indicator_bb_width = Gauge(
+        'hydra_indicator_bb_width',
+        'Bollinger Band width (squeeze indicator)',
+        ['asset']
+    )
+
+    # ========== Guardian Full State (Phase 1) ==========
+
+    # Account balance
+    account_balance = Gauge(
+        'hydra_account_balance_usd',
+        'Current account balance in USD'
+    )
+
+    # Peak balance (for drawdown calculation)
+    peak_balance = Gauge(
+        'hydra_peak_balance_usd',
+        'Peak account balance in USD'
+    )
+
+    # Daily P&L USD
+    daily_pnl_usd = Gauge(
+        'hydra_daily_pnl_usd',
+        'Daily P&L in USD'
+    )
+
+    # Daily P&L percent
+    daily_pnl_percent = Gauge(
+        'hydra_daily_pnl_percent',
+        'Daily P&L as percentage'
+    )
+
+    # Circuit breaker active
+    circuit_breaker_active = Gauge(
+        'hydra_circuit_breaker_active',
+        'Circuit breaker status: 1=active (reduced size), 0=normal'
+    )
+
+    # Emergency shutdown
+    emergency_shutdown = Gauge(
+        'hydra_emergency_shutdown_active',
+        'Emergency shutdown: 1=active, 0=normal'
+    )
+
+    # Trading allowed
+    trading_allowed = Gauge(
+        'hydra_trading_allowed',
+        'Trading allowed: 1=yes, 0=no (shutdown/circuit breaker)'
+    )
+
+    # Position size multiplier (affected by circuit breaker)
+    position_size_multiplier = Gauge(
+        'hydra_position_size_multiplier',
+        'Current position size multiplier (1.0=normal, 0.5=reduced)'
+    )
+
     # ========== Market Data ==========
 
     # Asset prices
@@ -333,6 +443,70 @@ class HydraMetrics:
         cls.cycle_duration.observe(duration)
         cls.last_cycle_timestamp.set(time.time())
         cls.update_uptime()
+
+    # ========== Phase 1 Convenience Methods ==========
+
+    @classmethod
+    def set_asset_stats(
+        cls,
+        asset: str,
+        pnl_percent: float,
+        win_rate: float,
+        trade_count: int
+    ):
+        """Set per-asset performance metrics."""
+        cls.asset_pnl.labels(asset=asset).set(pnl_percent)
+        cls.asset_win_rate.labels(asset=asset).set(win_rate)
+        cls.asset_trade_count.labels(asset=asset).set(trade_count)
+
+    @classmethod
+    def set_regime_info(
+        cls,
+        asset: str,
+        regime: str,
+        confidence: float,
+        adx: float,
+        atr: float,
+        bb_width: float
+    ):
+        """Set regime and technical indicator metrics."""
+        # Convert regime string to numeric
+        regime_map = {
+            'CHOPPY': 0,
+            'RANGING': 1,
+            'TRENDING_UP': 2,
+            'TRENDING_DOWN': 3,
+            'VOLATILE': 4
+        }
+        regime_num = regime_map.get(regime, 0)
+
+        cls.regime_current.labels(asset=asset).set(regime_num)
+        cls.regime_confidence.labels(asset=asset).set(confidence)
+        cls.indicator_adx.labels(asset=asset).set(adx)
+        cls.indicator_atr.labels(asset=asset).set(atr)
+        cls.indicator_bb_width.labels(asset=asset).set(bb_width)
+
+    @classmethod
+    def set_guardian_state(
+        cls,
+        account_bal: float,
+        peak_bal: float,
+        daily_pnl: float,
+        daily_pnl_pct: float,
+        circuit_breaker: bool,
+        emergency_shutdown: bool,
+        trading_allowed: bool,
+        position_multiplier: float
+    ):
+        """Set Guardian full state metrics."""
+        cls.account_balance.set(account_bal)
+        cls.peak_balance.set(peak_bal)
+        cls.daily_pnl_usd.set(daily_pnl)
+        cls.daily_pnl_percent.set(daily_pnl_pct)
+        cls.circuit_breaker_active.set(1 if circuit_breaker else 0)
+        cls.emergency_shutdown.set(1 if emergency_shutdown else 0)
+        cls.trading_allowed.set(1 if trading_allowed else 0)
+        cls.position_size_multiplier.set(position_multiplier)
 
     @classmethod
     def update_from_state(cls, state: Dict[str, Any]):

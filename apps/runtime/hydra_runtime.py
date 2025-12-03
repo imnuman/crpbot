@@ -895,7 +895,7 @@ class HydraRuntime:
             # Update P&L metrics
             HydraMetrics.set_pnl(
                 total=stats.get('total_pnl_percent', 0) * 100,
-                daily=0  # TODO: Calculate daily P&L
+                daily=0  # Will be set from Guardian below
             )
 
             # Update win rate
@@ -924,23 +924,81 @@ class HydraRuntime:
                         active=True
                     )
 
-            # Get asset prices
+            # ========== Phase 1: Per-Asset Metrics ==========
             for asset in self.assets:
                 try:
-                    df = self.data_client.fetch_klines(symbol=asset, interval="1m", limit=1)
+                    # Get per-asset stats from paper trader
+                    asset_stats = self.paper_trader.get_stats_by_asset(asset)
+                    HydraMetrics.set_asset_stats(
+                        asset=asset,
+                        pnl_percent=asset_stats.get('total_pnl_percent', 0) * 100,
+                        win_rate=asset_stats.get('win_rate', 0),
+                        trade_count=asset_stats.get('total_trades', 0)
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not get stats for {asset}: {e}")
+
+            # ========== Phase 1: Technical Indicators ==========
+            for asset in self.assets:
+                try:
+                    # Fetch candles for regime detection
+                    df = self.data_client.fetch_klines(symbol=asset, interval="5m", limit=50)
                     if not df.empty:
+                        # Get price for market data
                         price = df.iloc[-1]['close']
                         HydraMetrics.set_price(asset, price)
-                except Exception:
-                    pass
 
-            # Update Guardian/risk metrics
-            HydraMetrics.set_risk_metrics(
-                daily_dd=0,  # TODO: Get from Guardian
-                total_dd=0,  # TODO: Get from Guardian
-                kill_switch=False,  # TODO: Get from Guardian
-                exposure=len(self.paper_trader.open_trades) * 2  # Rough estimate
-            )
+                        # Convert DataFrame to candles list for regime detector
+                        candles = df.to_dict('records')
+                        regime_result = self.regime_detector.detect_regime(asset, candles)
+
+                        # Set regime and indicators
+                        metrics = regime_result.get('metrics', {})
+                        HydraMetrics.set_regime_info(
+                            asset=asset,
+                            regime=regime_result.get('regime', 'CHOPPY'),
+                            confidence=regime_result.get('confidence', 0.5),
+                            adx=metrics.get('adx', 0),
+                            atr=metrics.get('atr', 0),
+                            bb_width=metrics.get('bb_width', 0)
+                        )
+                except Exception as e:
+                    logger.debug(f"Could not get regime for {asset}: {e}")
+
+            # ========== Phase 1: Guardian Full State ==========
+            try:
+                guardian_status = self.guardian.get_status()
+                HydraMetrics.set_guardian_state(
+                    account_bal=guardian_status.get('account_balance', 10000),
+                    peak_bal=guardian_status.get('peak_balance', 10000),
+                    daily_pnl=guardian_status.get('daily_pnl', 0),
+                    daily_pnl_pct=guardian_status.get('daily_pnl_percent', 0),
+                    circuit_breaker=guardian_status.get('circuit_breaker_active', False),
+                    emergency_shutdown=guardian_status.get('emergency_shutdown_active', False),
+                    trading_allowed=guardian_status.get('trading_allowed', True),
+                    position_multiplier=guardian_status.get('position_size_multiplier', 1.0)
+                )
+
+                # Also update risk metrics from Guardian
+                HydraMetrics.set_risk_metrics(
+                    daily_dd=guardian_status.get('current_drawdown_percent', 0),
+                    total_dd=guardian_status.get('current_drawdown_percent', 0),
+                    kill_switch=guardian_status.get('emergency_shutdown_active', False),
+                    exposure=len(self.paper_trader.open_trades) * 2
+                )
+
+                # Update daily P&L from Guardian
+                HydraMetrics.pnl_daily.set(guardian_status.get('daily_pnl_percent', 0))
+
+            except Exception as e:
+                logger.debug(f"Could not get Guardian status: {e}")
+                # Fallback risk metrics
+                HydraMetrics.set_risk_metrics(
+                    daily_dd=0,
+                    total_dd=0,
+                    kill_switch=False,
+                    exposure=len(self.paper_trader.open_trades) * 2
+                )
 
             # Record cycle completion
             HydraMetrics.record_cycle(self.check_interval)
