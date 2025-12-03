@@ -51,7 +51,8 @@ class HydraState(rx.State):
     def _load_mother_ai_data(self):
         """Internal method to load Mother AI state file"""
         try:
-            mother_ai_state = Path("/root/crpbot/data/hydra/mother_ai_state.json")
+            from libs.hydra.config import MOTHER_AI_STATE_FILE
+            mother_ai_state = MOTHER_AI_STATE_FILE
 
             if not mother_ai_state.exists():
                 return False

@@ -18,7 +18,11 @@ Critical Thresholds:
 """
 
 import sys
-sys.path.insert(0, '/root/crpbot')
+from pathlib import Path
+# Add project root to path dynamically
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import os
 import time

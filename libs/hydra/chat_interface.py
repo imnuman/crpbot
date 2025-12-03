@@ -34,8 +34,9 @@ class HydraChat:
             gladiators: Dict of {"A": gladiator_a, "B": gladiator_b, ...}
         """
         self.engines = gladiators
-        self.chat_history_file = Path("/root/crpbot/data/hydra/chat_history.jsonl")
-        self.feedback_file = Path("/root/crpbot/data/hydra/user_feedback.jsonl")
+        from .config import CHAT_HISTORY_FILE, USER_FEEDBACK_FILE
+        self.chat_history_file = CHAT_HISTORY_FILE
+        self.feedback_file = USER_FEEDBACK_FILE
 
         # Ensure data directory exists
         self.chat_history_file.parent.mkdir(parents=True, exist_ok=True)
@@ -349,7 +350,8 @@ Should we BUY, SELL, or HOLD? Explain your reasoning."""
 
     def _save_recommendation(self, recommendation: Dict):
         """Save recommendation to file for feedback tracking."""
-        rec_file = Path("/root/crpbot/data/hydra/recommendations.jsonl")
+        from .config import RECOMMENDATIONS_FILE
+        rec_file = RECOMMENDATIONS_FILE
 
         try:
             with open(rec_file, 'a') as f:

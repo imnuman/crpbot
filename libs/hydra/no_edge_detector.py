@@ -91,11 +91,8 @@ class NoEdgeDetector:
     def __init__(self, data_dir: Optional[Path] = None):
         # Auto-detect data directory based on environment
         if data_dir is None:
-            import os
-            if os.path.exists("/root/crpbot"):
-                data_dir = Path("/root/crpbot/data/hydra")
-            else:
-                data_dir = Path.home() / "crpbot" / "data" / "hydra"
+            from .config import HYDRA_DATA_DIR
+            data_dir = HYDRA_DATA_DIR
 
         self.data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)

@@ -162,12 +162,10 @@ class FundingRatesFeed:
         if self._initialized:
             return
 
-        # Auto-detect data directory
+        # Use central config for path detection
         if data_dir is None:
-            if os.path.exists("/root/crpbot"):
-                data_dir = Path("/root/crpbot/data/hydra")
-            else:
-                data_dir = Path.home() / "crpbot" / "data" / "hydra"
+            from ..config import HYDRA_DATA_DIR
+            data_dir = HYDRA_DATA_DIR
 
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)

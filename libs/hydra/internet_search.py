@@ -26,7 +26,10 @@ class InternetSearch:
     Provides structured search capabilities for market intelligence.
     """
 
-    def __init__(self, cache_dir: Path = Path("/root/crpbot/data/hydra/search_cache")):
+    def __init__(self, cache_dir: Path = None):
+        if cache_dir is None:
+            from .config import SEARCH_CACHE_DIR
+            cache_dir = SEARCH_CACHE_DIR
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

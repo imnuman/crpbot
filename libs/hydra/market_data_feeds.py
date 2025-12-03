@@ -32,7 +32,10 @@ class FundingRatesMonitor:
     - Extreme rates: Overleveraged positions (reversal signal)
     """
 
-    def __init__(self, cache_dir: Path = Path("/root/crpbot/data/hydra/funding_cache")):
+    def __init__(self, cache_dir: Path = None):
+        if cache_dir is None:
+            from .config import FUNDING_CACHE_DIR
+            cache_dir = FUNDING_CACHE_DIR
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -142,7 +145,10 @@ class LiquidationsTracker:
     - Market panic/euphoria levels
     """
 
-    def __init__(self, cache_dir: Path = Path("/root/crpbot/data/hydra/liquidations_cache")):
+    def __init__(self, cache_dir: Path = None):
+        if cache_dir is None:
+            from .config import LIQUIDATIONS_CACHE_DIR
+            cache_dir = LIQUIDATIONS_CACHE_DIR
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

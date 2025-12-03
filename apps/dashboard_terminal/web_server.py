@@ -16,7 +16,8 @@ from typing import Dict, List, Any
 app = Flask(__name__)
 CORS(app)  # Enable CORS for API access
 
-DB_PATH = "/root/crpbot/data/hydra/hydra.db"
+from libs.hydra.config import HYDRA_DB_FILE
+DB_PATH = str(HYDRA_DB_FILE)
 
 def get_engine_stats() -> Dict[str, Any]:
     """Get performance stats for all engines."""

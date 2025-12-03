@@ -21,7 +21,11 @@ Critical Thresholds:
 """
 
 import sys
-sys.path.insert(0, '/root/crpbot')
+from pathlib import Path
+# Add project root to path dynamically
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import os
 import time
@@ -61,9 +65,10 @@ class HydraGuardian:
         self.telegram_token = os.getenv('TELEGRAM_TOKEN')
         self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
 
-        # File paths
-        self.paper_trades_file = Path('/root/crpbot/data/hydra/paper_trades.jsonl')
-        self.vote_history_file = Path('/root/crpbot/data/hydra/vote_history.jsonl')
+        # File paths - use config for dynamic path detection
+        from libs.hydra.config import PAPER_TRADES_FILE, TOURNAMENT_VOTES_FILE
+        self.paper_trades_file = PAPER_TRADES_FILE
+        self.vote_history_file = TOURNAMENT_VOTES_FILE
         self.pid_file = Path('/tmp/hydra.pid')
 
         # State tracking
@@ -280,12 +285,13 @@ class HydraGuardian:
                 '--paper'
             ]
 
+            from libs.hydra.config import PROJECT_ROOT
             with open(log_file, 'w') as f:
                 subprocess.Popen(
                     cmd,
                     stdout=f,
                     stderr=subprocess.STDOUT,
-                    cwd='/root/crpbot',
+                    cwd=str(PROJECT_ROOT),
                     start_new_session=True
                 )
 

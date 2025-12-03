@@ -67,7 +67,10 @@ def show_cursor():
 class HydraMonitor:
     """Terminal monitor for HYDRA 3.0 system."""
 
-    def __init__(self, db_path: str = "/root/crpbot/data/hydra/hydra.db"):
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            from libs.hydra.config import HYDRA_DB_FILE
+            db_path = str(HYDRA_DB_FILE)
         self.db_path = db_path
         self.refresh_interval = 5  # seconds
 

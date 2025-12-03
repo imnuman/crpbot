@@ -124,9 +124,9 @@ class MotherAI:
         # MOD 7: Fallback state - if Mother AI fails, freeze all engines
         self.ai_state = MotherAIState()
 
-        # Data persistence
-        self.state_file = Path("/root/crpbot/data/hydra/mother_ai_state.json")
-        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        # Data persistence - use config for path
+        from .config import MOTHER_AI_STATE_FILE
+        self.state_file = MOTHER_AI_STATE_FILE
 
         logger.success("Mother AI initialized with 4 gladiators (A, B, C, D)")
 

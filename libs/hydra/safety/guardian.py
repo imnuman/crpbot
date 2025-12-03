@@ -67,13 +67,16 @@ class Guardian:
     NEWS_BUFFER_MINUTES = 15
     LOCKOUT_DURATION_HOURS = 24
 
-    def __init__(self, data_dir: Path = Path("/root/crpbot/data/hydra")):
+    def __init__(self, data_dir: Path = None):
         """
         Initialize Guardian
 
         Args:
-            data_dir: Directory for storing safety logs
+            data_dir: Directory for storing safety logs (default: auto-detect)
         """
+        if data_dir is None:
+            from ..config import HYDRA_DATA_DIR
+            data_dir = HYDRA_DATA_DIR
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
 

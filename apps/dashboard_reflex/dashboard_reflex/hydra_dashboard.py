@@ -64,7 +64,8 @@ class HydraState(rx.State):
                 self.tournament_rankings = []
 
             # Load paper trades (legacy)
-            trades_file = Path("/root/crpbot/data/hydra/paper_trades.jsonl")
+            from libs.hydra.config import PAPER_TRADES_FILE
+            trades_file = PAPER_TRADES_FILE
             if trades_file.exists():
                 trades = []
                 with open(trades_file, 'r') as f:
