@@ -25,8 +25,10 @@ COPY scripts/ ./scripts/
 # Install dependencies (no editable install in Docker)
 RUN uv sync --frozen --no-dev --no-editable
 
-# Create data directories
-RUN mkdir -p /app/data/hydra /app/logs
+# Create data directories and symlink for hardcoded paths
+RUN mkdir -p /app/data/hydra /app/logs && \
+    mkdir -p /root && \
+    ln -s /app /root/crpbot
 
 # Set environment
 ENV PYTHONUNBUFFERED=1

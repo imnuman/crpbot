@@ -26,6 +26,9 @@ COPY scripts/ ./scripts/
 # Install dependencies (no editable install)
 RUN uv sync --frozen --no-dev --no-editable
 
+# Create symlink for hardcoded paths
+RUN mkdir -p /root && ln -s /app /root/crpbot
+
 # Set environment
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
