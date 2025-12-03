@@ -1,5 +1,15 @@
+# HYDRA 4.0 Complete Stack
+# Runtime + Dashboard + Monitoring (Prometheus, Grafana, Alertmanager)
+#
+# Deploy: docker compose up -d --build
+# Access:
+#   - Grafana:      http://178.156.136.185:3000
+#   - Prometheus:   http://178.156.136.185:9090
+#   - Dashboard:    http://178.156.136.185:7682
+#   - Metrics:      http://178.156.136.185:9100/metrics
+
 services:
-  # HYDRA Runtime - Main trading engine
+  # HYDRA Runtime - Main trading engine with Prometheus metrics
   hydra-runtime:
     build:
       context: .
@@ -8,6 +18,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "9100:9100"  # Prometheus metrics endpoint
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -21,7 +33,7 @@ services:
     networks:
       - hydra-network
 
-  # HYDRA Dashboard - Terminal UI via ttyd
+  # HYDRA Dashboard - Terminal UI via ttyd (deprecated - use Grafana)
   hydra-dashboard:
     build:
       context: .
@@ -41,6 +53,78 @@ services:
       - hydra-network
     tty: true
 
+  # Prometheus - Time-series database for metrics
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: hydra-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - hydra-runtime
+    networks:
+      - hydra-network
+
+  # Grafana - Dashboard and visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: hydra-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-hydra4admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://178.156.136.185:3000
+      - GF_ALERTING_ENABLED=true
+      - GF_UNIFIED_ALERTING_ENABLED=true
+      - GF_FEATURE_TOGGLES_ENABLE=ngalert
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - hydra-network
+
+  # Alertmanager - Alert routing and notifications
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: hydra-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://178.156.136.185:9093'
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - hydra-network
+
 networks:
   hydra-network:
     driver: bridge
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
