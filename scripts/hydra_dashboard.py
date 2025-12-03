@@ -370,13 +370,30 @@ def render_desktop(w, h):
 
         L.append(f"  [cyan]{sym:<10}[/] [{dc}]{d:<10}[/] {es} [{pc}]{cs}[/] {sls} {tps} [{rrc}]1:{rr:>5.1f}[/] [{confc}]{conf:>6.0f}%[/]")
 
-    # Signal reasoning
+    # Signal reasoning - clean format
     L.append("")
     for sym, sig in list(signals.items())[:3]:
-        age = (now - sig["timestamp"]).seconds // 60
+        age_mins = (now - sig["timestamp"]).total_seconds() / 60
+        if age_mins > 60:
+            age_str = f"{int(age_mins/60)}h ago"
+        else:
+            age_str = f"{int(age_mins)}m ago"
         eng = sig.get("engine", "A")
         _, ec = ENGINE_NAMES.get(eng, ("", "white"))
-        L.append(f"  [{ec}]● {sym}[/] Engine {eng} ({age}m ago): [dim]{sig['reason']}[/]")
+
+        # Parse reason - extract clean text from JSON if needed
+        reason = sig.get("reason", "")
+        if isinstance(reason, str) and reason.startswith("{"):
+            try:
+                import json
+                data = json.loads(reason)
+                reason = data.get("reasoning", reason)[:80]
+            except:
+                reason = reason[:80]
+        else:
+            reason = str(reason)[:80]
+
+        L.append(f"  [{ec}]● {sym}[/] Engine {eng} ({age_str}): [dim]{reason}[/]")
     L.append("")
 
     # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
