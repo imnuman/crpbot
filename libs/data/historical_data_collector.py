@@ -31,6 +31,9 @@ import pandas as pd
 import numpy as np
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+EST = ZoneInfo("America/New_York")
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -140,7 +143,7 @@ class HistoricalDataCollector:
         client = get_data_fetcher(config)
 
         # Calculate date range
-        end_time = datetime.now()
+        end_time = datetime.now(EST)
         start_time = end_time - timedelta(days=days_back)
 
         logger.info(

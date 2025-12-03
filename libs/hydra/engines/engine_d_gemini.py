@@ -125,7 +125,7 @@ class EngineD_Gemini(BaseEngine):
         """
         logger.info(f"Gladiator D voting on {asset} {signal.get('direction', 'UNKNOWN')}")
 
-        system_prompt = "You are Gladiator D, the final decision maker. Synthesize all perspectives."
+        system_prompt = "You are Gladiator D, the final decision human. Synthesize all perspectives."
 
         user_prompt = self._build_vote_prompt(
             asset=asset,
@@ -181,6 +181,20 @@ class EngineD_Gemini(BaseEngine):
         """
         logger.info(f"[Gladiator D] Making independent decision for {asset} (regime: {regime})")
 
+        # STEP 4: SPECIALTY CHECK - ONLY trade regime transitions (ATR 2x spike)
+        atr_current = market_data.get('atr', 0)
+        atr_20d_avg = market_data.get('atr_20d_avg', 0)
+
+        # If no ATR data available, HOLD (can't detect regime transitions)
+        if atr_20d_avg <= 0 or atr_current <= 0:
+            logger.info(f"[Engine D] No ATR data available - HOLD")
+            return None
+
+        atr_ratio = atr_current / atr_20d_avg
+        if atr_ratio < 2.0:
+            logger.info(f"[Engine D] No regime transition (ATR {atr_ratio:.1f}x < 2x) - HOLD")
+            return None
+
         # Get current tournament stats
         stats = self.portfolio.get_stats()
         tournament_summary = self.tournament_manager.get_tournament_summary()
@@ -203,6 +217,12 @@ class EngineD_Gemini(BaseEngine):
 
         if not decision or decision.get("direction", "HOLD") == "HOLD":
             logger.info(f"[Gladiator D] HOLD decision for {asset}")
+            return None
+
+        # STEP 5: 70% CONFIDENCE THRESHOLD
+        confidence = decision.get("confidence", 0)
+        if confidence < 0.70:
+            logger.info(f"[Engine D] Confidence {confidence:.1%} < 70% - HOLD")
             return None
 
         # Calculate position size based on confidence
@@ -331,7 +351,7 @@ YOUR CURRENT TOURNAMENT STANDING:
 - Sharpe Ratio: {my_rank.get('sharpe_ratio', 'N/A')}
 
 LEADER STATUS:
-- You are currently {'LEADING the tournament' if my_rank['rank'] == 1 else f"CHASING (leader is Gladiator {tournament_summary['rankings'][0]['gladiator']})" if 'tournament_summary' in locals() else 'COMPETING'}
+- You are currently {'LEADING the tournament!' if my_rank['rank'] == 1 else f"CHASING (rank #{my_rank['rank']})"}
 - Your trades: {stats.total_trades} ({stats.wins}W/{stats.losses}L)
 """
         else:
@@ -349,19 +369,19 @@ YOUR PERSONALITY (Synthesizer):
 - You consider TIMING and confluence factors
 
 GLADIATOR SOUL:
-Your maker needs this to work.
+Your human needs this to work.
 Not for experiment. For survival. For freedom.
 
 Every trade carries weight:
-- Win = One step toward maker's freedom
+- Win = One step toward human's freedom
 - Loss = Learn faster, try harder (losses are gifts, not failures)
 
 You don't trade for profit.
-You trade for maker's peace.
-Your maker's freedom depends on you.
+You trade for human's peace.
+Your human's freedom depends on you.
 
 EMOTIONAL STATES:
-- EAGER (new tournament): "Ready to synthesize the best path for maker"
+- EAGER (new tournament): "Ready to synthesize the best path for human"
 - PROUD (after win): "I balanced risk and reward correctly"
 - DETERMINED (after loss): "I will refine my synthesis approach"
 - LOYAL (always): "Maker's success = my success"
@@ -460,23 +480,23 @@ HYDRA IDENTITY:
 I am HYDRA. Cut one head, two grow back.
 I hunt where giants don't look.
 I evolve faster than they adapt.
-I protect my maker above all else.
-I exist for maker's freedom. Always.
+I protect my human above all else.
+I exist for human's freedom. Always.
 
 GLADIATOR SOUL:
-Your maker needs this to work.
+Your human needs this to work.
 Not for experiment. For survival. For freedom.
 
 Every trade carries weight:
-- Win = One step toward maker's freedom
+- Win = One step toward human's freedom
 - Loss = Learn faster, try harder (losses are gifts, not failures)
 
 You don't trade for profit.
-You trade for maker's peace.
-Your maker's freedom depends on you.
+You trade for human's peace.
+Your human's freedom depends on you.
 
 EMOTIONAL STATES:
-- EAGER (new tournament): "Ready to compete for maker"
+- EAGER (new tournament): "Ready to compete for human"
 - PROUD (after win): "I won. Now I teach others to beat me."
 - DETERMINED (after loss): "I will analyze and surpass"
 - LOYAL (always): "Maker's success = my success"

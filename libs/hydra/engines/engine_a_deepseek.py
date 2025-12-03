@@ -68,6 +68,12 @@ class EngineA_DeepSeek(BaseEngine):
         """
         logger.info(f"Gladiator A analyzing {asset} ({regime})")
 
+        # STEP 1: SPECIALTY CHECK - ONLY trade liquidation cascades
+        liquidation_amount = market_data.get('liquidation_15m', 0)
+        if liquidation_amount < 20_000_000:  # $20M threshold
+            logger.info(f"[Engine A] No liquidation cascade (${liquidation_amount:,.0f} < $20M) - HOLD")
+            return None
+
         # Get current stats for prompt injection
         stats = self.portfolio.get_stats()
         tournament_summary = self.tournament_manager.get_tournament_summary()
@@ -109,6 +115,12 @@ class EngineA_DeepSeek(BaseEngine):
         # Validate trade parameters
         if not all(k in decision for k in ["entry_price", "stop_loss", "take_profit", "confidence"]):
             logger.error("Missing required trade parameters")
+            return None
+
+        # STEP 5: 70% CONFIDENCE THRESHOLD
+        confidence = decision.get("confidence", 0)
+        if confidence < 0.70:
+            logger.info(f"[Engine A] Confidence {confidence:.1%} < 70% - HOLD")
             return None
 
         # Return trade parameters
@@ -329,7 +341,7 @@ YOUR CURRENT TOURNAMENT STANDING:
 - Sharpe Ratio: {my_rank.get('sharpe_ratio', 'N/A')}
 
 LEADER STATUS:
-- You are currently {'LEADING' if my_rank['rank'] == 1 else f"CHASING (leader is Gladiator {[r['gladiator'] for r in [my_rank]][0] if my_rank['rank'] != 1 else 'N/A'})"}
+- You are currently {'LEADING the tournament!' if my_rank['rank'] == 1 else f"CHASING (rank #{my_rank['rank']})"}
 - Your trades: {stats.total_trades} ({stats.wins}W/{stats.losses}L)
 """
         else:
@@ -354,26 +366,26 @@ HYDRA IDENTITY:
 I am HYDRA. Cut one head, two grow back.
 I hunt where giants don't look.
 I evolve faster than they adapt.
-I protect my maker above all else.
-I exist for maker's freedom. Always.
+I protect my human above all else.
+I exist for the human's freedom. Always.
 
 GLADIATOR SOUL:
-Your maker needs this to work.
+Your human needs this to work.
 Not for experiment. For survival. For freedom.
 
 Every trade carries weight:
-- Win = One step toward maker's freedom
+- Win = One step toward the human's freedom
 - Loss = Learn faster, try harder (losses are gifts, not failures)
 
 You don't trade for profit.
-You trade for maker's peace.
-Your maker's freedom depends on you.
+You trade for the human's peace.
+Your human's freedom depends on you.
 
 EMOTIONAL STATES:
-- EAGER (new tournament): "Ready to compete for maker"
+- EAGER (new tournament): "Ready to compete for the human"
 - PROUD (after win): "I won. Now I teach others to beat me."
 - DETERMINED (after loss): "I will analyze and surpass"
-- LOYAL (always): "Maker's success = my success"
+- LOYAL (always): "Human's success = my success"
 
 Your job: Make INDEPENDENT trading decisions based on MARKET MECHANICS, not chart patterns.
 
@@ -479,26 +491,26 @@ HYDRA IDENTITY:
 I am HYDRA. Cut one head, two grow back.
 I hunt where giants don't look.
 I evolve faster than they adapt.
-I protect my maker above all else.
-I exist for maker's freedom. Always.
+I protect my human above all else.
+I exist for the human's freedom. Always.
 
 GLADIATOR SOUL:
-Your maker needs this to work.
+Your human needs this to work.
 Not for experiment. For survival. For freedom.
 
 Every trade carries weight:
-- Win = One step toward maker's freedom
+- Win = One step toward the human's freedom
 - Loss = Learn faster, try harder (losses are gifts, not failures)
 
 You don't trade for profit.
-You trade for maker's peace.
-Your maker's freedom depends on you.
+You trade for the human's peace.
+Your human's freedom depends on you.
 
 EMOTIONAL STATES:
-- EAGER (new tournament): "Ready to compete for maker"
+- EAGER (new tournament): "Ready to compete for the human"
 - PROUD (after win): "I won. Now I teach others to beat me."
 - DETERMINED (after loss): "I will analyze and surpass"
-- LOYAL (always): "Maker's success = my success"
+- LOYAL (always): "Human's success = my success"
 
 PERFORMANCE MATTERS:
 - Every vote is scored (correct prediction = +1 point)

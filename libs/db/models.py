@@ -25,7 +25,7 @@ class Signal(Base):
     __tablename__ = "signals"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     symbol = Column(String(20), nullable=False, index=True)
     direction = Column(String(10), nullable=False)  # 'long' or 'short'
     confidence = Column(Float, nullable=False)

@@ -42,6 +42,15 @@ COMM_LOG: deque = deque(maxlen=100)
 PRICE_CACHE: Dict[str, dict] = {}
 PRICE_HISTORY: Dict[str, deque] = {}
 LAST_PRICE_UPDATE = datetime.min
+LAST_ENGINE_UPDATE = datetime.min
+LAST_SIGNAL_UPDATE = datetime.min
+ENGINE_CACHE: List = []
+SIGNAL_CACHE: Dict = {}
+SAFETY_CACHE: Dict = {}
+LAST_SAFETY_UPDATE = datetime.min
+PULSE_COUNTER = 0
+FEAR_GREED_CACHE: Dict = {}
+LAST_FG_UPDATE = datetime.min
 
 # Engine config
 ENGINE_NAMES = {
@@ -58,33 +67,7 @@ ENGINE_ROLES = {
     "D": "Regime Detector",
 }
 
-DEMO_ENGINE_DATA = {
-    "A": {"wr": 67, "pnl": 847.50, "trades": 23},
-    "B": {"wr": 61, "pnl": 423.20, "trades": 18},
-    "C": {"wr": 54, "pnl": 156.80, "trades": 15},
-    "D": {"wr": 48, "pnl": -89.30, "trades": 12},
-}
-
-DEMO_SIGNALS = {
-    "BTC-USD": {
-        "direction": "LONG", "confidence": 0.78, "engine": "A",
-        "entry": 97150.00, "sl": 95800.00, "tp": 99500.00,
-        "timestamp": datetime.now() - timedelta(minutes=12),
-        "reason": "Liquidation cascade at 96K, strong buying"
-    },
-    "ETH-USD": {
-        "direction": "SHORT", "confidence": 0.72, "engine": "B",
-        "entry": 3720.00, "sl": 3820.00, "tp": 3550.00,
-        "timestamp": datetime.now() - timedelta(minutes=45),
-        "reason": "Funding 0.08% extreme, reversal expected"
-    },
-    "SOL-USD": {
-        "direction": "LONG", "confidence": 0.65, "engine": "C",
-        "entry": 232.50, "sl": 225.00, "tp": 248.00,
-        "timestamp": datetime.now() - timedelta(minutes=5),
-        "reason": "Bid wall at 230, absorbing sells"
-    },
-}
+# No demo data - using 100% real data only
 
 SPARK = "▁▂▃▄▅▆▇█"
 BAR = "█"
@@ -105,6 +88,14 @@ def get_ntp() -> str:
         return "[green]●[/]NTP" if "yes" in r.stdout.lower() else "[yellow]○[/]"
     except:
         return "[dim]○[/]"
+
+
+def get_pulse() -> str:
+    """Returns an animated pulse indicator to show live refresh."""
+    global PULSE_COUNTER
+    PULSE_COUNTER += 1
+    pulses = ["[green]◉[/]", "[cyan]◎[/]", "[blue]◉[/]", "[cyan]◎[/]"]
+    return pulses[PULSE_COUNTER % len(pulses)]
 
 
 def spark(vals, w=8):
@@ -139,111 +130,285 @@ def log_comm(sender, receiver, msg_type, content, detail=""):
 
 
 def get_prices():
+    """Fetch REAL prices from Coinbase API."""
     global PRICE_CACHE, LAST_PRICE_UPDATE, PRICE_HISTORY
 
-    if (datetime.now() - LAST_PRICE_UPDATE).seconds < 5 and PRICE_CACHE:
+    # Refresh every 2 seconds
+    elapsed = (datetime.now() - LAST_PRICE_UPDATE).total_seconds()
+    if elapsed < 2 and PRICE_CACHE:
         return PRICE_CACHE
 
     syms = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "ADA-USD", "LINK-USD", "AVAX-USD"]
 
     try:
-        from libs.data.coinbase_client import CoinbaseClient
-        client = CoinbaseClient()
+        from libs.data.coinbase_client import get_coinbase_client
+        client = get_coinbase_client()
+
         for sym in syms:
             try:
-                candles = client.get_candles(sym, granularity="ONE_MINUTE", limit=30)
-                if candles:
-                    p = float(candles[0].get("close", 0))
-                    prev = float(candles[1].get("close", p)) if len(candles) > 1 else p
+                df = client.fetch_klines(sym, interval="1m", limit=30)
+                if df is not None and len(df) > 0:
+                    p = float(df.iloc[-1]["close"])
+                    prev = float(df.iloc[-2]["close"]) if len(df) > 1 else p
                     ch = ((p - prev) / prev * 100) if prev else 0
-                    PRICE_CACHE[sym] = {"price": p, "change": ch,
-                                        "high": max(float(c.get("high", 0)) for c in candles[:24]),
-                                        "low": min(float(c.get("low", 0)) for c in candles[:24])}
-                    PRICE_HISTORY[sym] = deque([float(c.get("close", 0)) for c in reversed(candles)], maxlen=30)
-            except:
-                pass
+                    PRICE_CACHE[sym] = {
+                        "price": p,
+                        "change": ch,
+                        "high": float(df["high"].max()),
+                        "low": float(df["low"].min()),
+                        "updated": datetime.now(),
+                        "source": "LIVE"
+                    }
+                    PRICE_HISTORY[sym] = deque(df["close"].tolist(), maxlen=30)
+            except Exception as e:
+                # Keep old price on error
+                if sym not in PRICE_CACHE:
+                    PRICE_CACHE[sym] = {"price": 0, "change": 0, "source": "ERROR", "updated": datetime.now()}
         LAST_PRICE_UPDATE = datetime.now()
-    except:
-        import random
-        demo = {"BTC-USD": 97234, "ETH-USD": 3687, "SOL-USD": 234, "XRP-USD": 2.34,
-                "DOGE-USD": 0.41, "ADA-USD": 1.12, "LINK-USD": 24.6, "AVAX-USD": 45.2}
-        for sym, base in demo.items():
-            if sym not in PRICE_CACHE:
-                ch = random.uniform(-2, 3)
-                PRICE_CACHE[sym] = {"price": base * (1 + ch/100), "change": ch,
-                                   "high": base * 1.03, "low": base * 0.97}
-                PRICE_HISTORY[sym] = deque([base * (1 + random.uniform(-0.02, 0.02)) for _ in range(15)], maxlen=30)
+    except Exception as e:
+        pass  # Keep existing cache on connection error
     return PRICE_CACHE
 
 
 def get_engines():
+    """Fetch REAL engine rankings - forces fresh data each time."""
+    global ENGINE_CACHE, LAST_ENGINE_UPDATE
+
+    elapsed = (datetime.now() - LAST_ENGINE_UPDATE).total_seconds()
+    if elapsed < 5 and ENGINE_CACHE:
+        return ENGINE_CACHE
+
     try:
-        from libs.hydra.engine_portfolio import get_tournament_manager
-        mgr = get_tournament_manager()
+        # Reset the singleton to force fresh data load
+        import libs.hydra.engine_portfolio as ep
+        ep._tournament_manager = None  # Force recreation
+
+        mgr = ep.get_tournament_manager()
         ranks = mgr.calculate_rankings()
-        if sum(s.total_trades for _, s in ranks) > 0:
-            return [(n, {"wr": s.win_rate*100, "pnl": s.total_pnl_usd, "trades": s.total_trades}) for n, s in ranks]
-    except:
-        pass
-    return list(DEMO_ENGINE_DATA.items())
+
+        # Check if we have real data
+        has_data = any(s.total_trades > 0 for _, s in ranks)
+
+        ENGINE_CACHE = [(n, {
+            "wr": s.win_rate * 100,
+            "pnl": s.total_pnl_usd,
+            "trades": s.total_trades,
+            "source": "HYDRA" if has_data else "NO_DATA"
+        }) for n, s in ranks]
+        LAST_ENGINE_UPDATE = datetime.now()
+        return ENGINE_CACHE
+    except Exception as e:
+        # Return error state
+        ENGINE_CACHE = [
+            ("A", {"wr": 0, "pnl": 0, "trades": 0, "source": "ERROR", "error": str(e)[:30]}),
+            ("B", {"wr": 0, "pnl": 0, "trades": 0, "source": "ERROR"}),
+            ("C", {"wr": 0, "pnl": 0, "trades": 0, "source": "ERROR"}),
+            ("D", {"wr": 0, "pnl": 0, "trades": 0, "source": "ERROR"}),
+        ]
+        LAST_ENGINE_UPDATE = datetime.now()
+        return ENGINE_CACHE
 
 
 def get_signals():
+    """Fetch REAL signals from database only."""
+    global SIGNAL_CACHE, LAST_SIGNAL_UPDATE
+
+    elapsed = (datetime.now() - LAST_SIGNAL_UPDATE).total_seconds()
+    if elapsed < 2 and SIGNAL_CACHE:
+        return SIGNAL_CACHE
+
     try:
-        from libs.db.models import get_session, Signal
-        sess = get_session()
-        recent = sess.query(Signal).filter(
-            Signal.timestamp > datetime.now() - timedelta(hours=4),
-            Signal.result.is_(None)
-        ).order_by(Signal.timestamp.desc()).limit(5).all()
-        sigs = {}
-        for s in recent:
-            sigs[s.symbol] = {"direction": s.direction.upper(), "confidence": s.confidence, "engine": "A",
-                             "entry": s.entry_price, "sl": s.sl_price, "tp": s.tp_price,
-                             "timestamp": s.timestamp, "reason": s.notes or "Signal"}
-        sess.close()
-        if sigs:
-            return sigs
+        from sqlalchemy import create_engine, text
+        from pathlib import Path
+
+        # Try local database first
+        db_path = Path(__file__).parent.parent / "tradingai.db"
+        if db_path.exists():
+            engine = create_engine(f"sqlite:///{db_path}")
+            with engine.connect() as conn:
+                # Use raw SQL to avoid schema mismatches
+                result = conn.execute(text("""
+                    SELECT symbol, direction, confidence, entry_price, sl_price, tp_price,
+                           timestamp, notes
+                    FROM signals
+                    WHERE timestamp > datetime('now', '-4 hours')
+                      AND result IS NULL
+                    ORDER BY timestamp DESC
+                    LIMIT 5
+                """))
+                sigs = {}
+                for row in result:
+                    sigs[row[0]] = {
+                        "direction": row[1].upper() if row[1] else "HOLD",
+                        "confidence": row[2] or 0,
+                        "engine": "V7",
+                        "entry": row[3] or 0,
+                        "sl": row[4] or 0,
+                        "tp": row[5] or 0,
+                        "timestamp": datetime.fromisoformat(row[6]) if row[6] else datetime.now(),
+                        "reason": row[7] or "Signal from V7",
+                        "source": "DATABASE"
+                    }
+                if sigs:
+                    SIGNAL_CACHE = sigs
+                    LAST_SIGNAL_UPDATE = datetime.now()
+                    return SIGNAL_CACHE
+    except Exception as e:
+        pass
+
+    # No signals found - show empty state
+    if not SIGNAL_CACHE:
+        SIGNAL_CACHE = {"NO_SIGNALS": {
+            "direction": "WAIT",
+            "confidence": 0,
+            "engine": "-",
+            "entry": 0, "sl": 0, "tp": 0,
+            "timestamp": datetime.now(),
+            "reason": "No active signals",
+            "source": "EMPTY"
+        }}
+    LAST_SIGNAL_UPDATE = datetime.now()
+    return SIGNAL_CACHE
+
+
+def get_safety():
+    """Fetch REAL safety status from Guardian/Mother AI."""
+    global SAFETY_CACHE, LAST_SAFETY_UPDATE
+
+    elapsed = (datetime.now() - LAST_SAFETY_UPDATE).total_seconds()
+    if elapsed < 2 and SAFETY_CACHE:
+        return SAFETY_CACHE
+
+    safety = {
+        "trading_active": None,
+        "consecutive_losses": 0,
+        "drawdown": 0.0,
+        "mother_ok": None,
+        "guardian_ok": None,
+        "emergency": False,
+        "source": "UNKNOWN"
+    }
+
+    # Try to fetch from Guardian
+    try:
+        from libs.hydra.guardian import get_guardian
+        guardian = get_guardian()
+        status = guardian.get_status()
+        safety["trading_active"] = status.get("trading_allowed", True)
+        safety["consecutive_losses"] = status.get("consecutive_losses", 0)
+        safety["drawdown"] = status.get("current_drawdown_percent", 0)
+        safety["emergency"] = status.get("emergency_shutdown_active", False)
+        safety["guardian_ok"] = not safety["emergency"]
+        safety["source"] = "GUARDIAN"
+    except Exception as e:
+        safety["guardian_ok"] = None
+        safety["guardian_error"] = str(e)[:30]
+
+    # Try to fetch from Mother AI
+    try:
+        from libs.hydra.mother_ai import get_mother_ai
+        mother = get_mother_ai()
+        health = mother.get_health_status()
+        safety["mother_ok"] = health.get("is_healthy", True) and not health.get("is_frozen", False)
+    except Exception as e:
+        safety["mother_ok"] = None
+        safety["mother_error"] = str(e)[:30]
+
+    SAFETY_CACHE = safety
+    LAST_SAFETY_UPDATE = datetime.now()
+    return SAFETY_CACHE
+
+
+def get_fear_greed():
+    """Fetch Fear & Greed Index."""
+    global FEAR_GREED_CACHE, LAST_FG_UPDATE
+
+    # Only refresh every 60 seconds (it doesn't change often)
+    elapsed = (datetime.now() - LAST_FG_UPDATE).total_seconds()
+    if elapsed < 60 and FEAR_GREED_CACHE:
+        return FEAR_GREED_CACHE
+
+    try:
+        from libs.data.fear_greed_client import FearGreedClient
+        fg = FearGreedClient()
+        data = fg.get_current_index()
+        if data:
+            FEAR_GREED_CACHE = {
+                "value": data.get("value", 0),
+                "classification": data.get("classification", "Unknown"),
+                "signal": data.get("signal", "hold"),
+                "source": "ALTERNATIVE.ME"
+            }
+            LAST_FG_UPDATE = datetime.now()
+            return FEAR_GREED_CACHE
+    except Exception as e:
+        pass
+
+    # Return cached or empty
+    if not FEAR_GREED_CACHE:
+        FEAR_GREED_CACHE = {"value": 0, "classification": "N/A", "signal": "unknown", "source": "ERROR"}
+    return FEAR_GREED_CACHE
+
+
+def get_real_comms():
+    """Try to fetch real communication logs from HYDRA system."""
+    try:
+        from libs.hydra.mother_ai import get_mother_ai
+        mother = get_mother_ai()
+        if hasattr(mother, 'get_recent_logs'):
+            return mother.get_recent_logs(limit=20)
     except:
         pass
-    return DEMO_SIGNALS
+
+    try:
+        # Try to read from log files
+        from pathlib import Path
+        import re
+        log_files = list(Path("/tmp").glob("hydra_*.log"))
+        if log_files:
+            log_file = sorted(log_files, key=lambda x: x.stat().st_mtime)[-1]
+            with open(log_file) as f:
+                lines = f.readlines()[-50:]
+                for line in lines:
+                    # Parse log lines
+                    if "Engine" in line or "MOTHER" in line or "Guardian" in line:
+                        log_comm("SYSTEM", "LOG", "INFO", line[:40], line[40:100])
+    except:
+        pass
+    return None
 
 
 def gen_comms():
-    """Generate realistic AI agent communications."""
-    import random
+    """Fetch real communications or show system status messages."""
 
-    if len(COMM_LOG) < 10:
-        # Initialize with meaningful messages
-        init_comms = [
-            ("MOTHER", "ALL", "CYCLE", "Starting analysis cycle #1247", "Scanning 8 symbols across 4 timeframes"),
-            ("A", "MOTHER", "SCAN", "Liquidation scan complete", f"Found ${random.randint(80,150)}M in liquidations"),
-            ("B", "MOTHER", "RATE", "Funding rate analysis", f"BTC: {random.uniform(0.01, 0.08):.3f}% - Neutral zone"),
-            ("C", "MOTHER", "DEPTH", "Orderbook depth scan", "ETH bid wall detected at $3,650"),
-            ("D", "MOTHER", "REGIME", "Regime detection", "Market in TRENDING mode (4H)"),
-            ("MOTHER", "A", "QUERY", "Request confirmation", "Validate BTC liquidation cascade"),
-            ("A", "B", "COLLAB", "Cross-validation", "Requesting funding correlation check"),
-            ("B", "A", "REPLY", "Funding confirms", "Long bias supported by negative funding"),
-            ("GUARD", "ALL", "RISK", "Risk assessment", "Portfolio exposure: 23% - Within limits"),
-            ("MOTHER", "A", "APPROVE", "Signal approved", "BTC LONG @ 78% confidence"),
-        ]
-        for s, r, t, c, d in init_comms:
-            log_comm(s, r, t, c, d)
+    # Try to get real comms first
+    real_comms = get_real_comms()
+    if real_comms:
+        for comm in real_comms:
+            log_comm(comm.get("sender", "SYS"), comm.get("receiver", "ALL"),
+                     comm.get("type", "LOG"), comm.get("message", "")[:40],
+                     comm.get("detail", "")[:60])
+        return
 
-    # Generate new activity periodically
-    if random.random() < 0.4:
-        activities = [
-            ("A", "MOTHER", "SIGNAL", "New liquidation detected", f"${random.randint(50,200)}M cascade forming"),
-            ("B", "MOTHER", "RATE", "Funding update", f"ETH funding: {random.uniform(-0.05, 0.1):.4f}%"),
-            ("C", "MOTHER", "DEPTH", "Orderbook shift", f"SOL bid depth +{random.randint(5,25)}% in 5min"),
-            ("D", "MOTHER", "TREND", "Regime shift detected", f"Switching to {'TRENDING' if random.random() > 0.5 else 'RANGING'}"),
-            ("A", "C", "TEACH", "Knowledge transfer", "Sharing liquidation patterns from last hour"),
-            ("GUARD", "MOTHER", "RISK", "Risk update", f"Current drawdown: {random.uniform(0.5, 3.5):.1f}%"),
-            ("MOTHER", "D", "QUERY", "Regime confirmation", "Validate trend continuation signal"),
-            ("B", "D", "COLLAB", "Cross-check", "Comparing funding vs regime signals"),
-        ]
-        s, r, t, c, d = random.choice(activities)
-        log_comm(s, r, t, c, d)
+    # Show real system status messages based on actual data
+    prices = PRICE_CACHE
+    safety = SAFETY_CACHE
+
+    if len(COMM_LOG) < 5:
+        # Initialize with system status
+        log_comm("SYSTEM", "ALL", "INIT", "Dashboard started", f"Monitoring {len(prices)} symbols")
+
+    # Add real data status messages
+    if prices:
+        btc = prices.get("BTC-USD", {})
+        if btc.get("source") == "COINBASE":
+            log_comm("DATA", "DASH", "PRICE", f"BTC: ${btc.get('price', 0):,.0f}",
+                     f"Change: {btc.get('change', 0):+.2f}%")
+
+    if safety.get("source") == "GUARDIAN":
+        log_comm("GUARD", "DASH", "STATUS",
+                 f"DD: {safety.get('drawdown', 0):.1f}%",
+                 f"Losses: {safety.get('consecutive_losses', 0)}")
 
 
 # ==================== PHONE LAYOUT ====================
@@ -256,7 +421,8 @@ def render_phone(w, h):
     gen_comms()
 
     L = []
-    L.append(f"[bold cyan]HYDRA 4.0[/] {ntp}")
+    pulse = get_pulse()
+    L.append(f"[bold cyan]HYDRA 4.0[/] {pulse} {ntp}")
     L.append(f"[dim]{now.strftime('%H:%M:%S')}[/]")
     L.append("─" * (w - 4))
 
@@ -320,7 +486,11 @@ def render_desktop(w, h):
     L.append("[bold cyan]  ██╔══██║  ╚██╔╝  ██║  ██║██╔══██╗██╔══██║    [/]")
     L.append("[bold cyan]  ██║  ██║   ██║   ██████╔╝██║  ██║██║  ██║    [/]")
     L.append("[bold cyan]  ╚═╝  ╚═╝   ╚═╝   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝    [/]")
-    L.append(f"  [dim]v4.0 │ {now.strftime('%Y-%m-%d %H:%M:%S')} │ {ntp} │ Uptime: {hrs}h {mins}m {secs}s[/]")
+    pulse = get_pulse()
+    # Show data freshness
+    price_age = (now - LAST_PRICE_UPDATE).total_seconds() if LAST_PRICE_UPDATE != datetime.min else 999
+    price_status = "[green]●[/]" if price_age < 5 else "[yellow]○[/]" if price_age < 30 else "[red]✗[/]"
+    L.append(f"  [dim]v4.0 │ {now.strftime('%Y-%m-%d %H:%M:%S')} │ {pulse} LIVE │ {ntp} │ Prices:{price_status} │ Uptime: {hrs}h {mins}m {secs}s[/]")
     L.append("")
 
     # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -409,11 +579,14 @@ def render_desktop(w, h):
     for sym in ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "ADA-USD"]:
         d = prices.get(sym, {"price": 0, "change": 0})
         p, c = d["price"], d["change"]
+        src = d.get("source", "?")
         ps = f"${p:>10,.2f}" if p >= 1 else f"${p:>10.4f}"
         cc = "green" if c >= 0 else "red"
         hist = list(PRICE_HISTORY.get(sym, []))
         sp = spark(hist, 8)
-        price_lines.append(f"  [cyan]{sym:<10}[/] {ps} [{cc}]{c:>+6.2f}%[/] [{cc}]{sp}[/]")
+        # Show source indicator
+        src_ind = "[green]●[/]" if src == "LIVE" else "[yellow]○[/]" if src == "STALE" else "[red]✗[/]"
+        price_lines.append(f"  {src_ind}[cyan]{sym:<9}[/] {ps} [{cc}]{c:>+6.2f}%[/] [{cc}]{sp}[/]")
 
     sig_lines = []
     for sym, sig in list(signals.items())[:4]:
@@ -433,10 +606,60 @@ def render_desktop(w, h):
     L.append("")
 
     # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-    # SAFETY + POSITION SIZING
-    L.append(f"[bold red]SAFETY:[/] [green]✓ TRADING ACTIVE[/] │ Losses: {bar(1, 5, 6)} 1/5 │ DD: {bar(2.3, 10, 6)} 2.3% │ [green]✓ MOTHER OK[/] │ [green]✓ GUARDIAN OK[/]")
+    # SAFETY + POSITION SIZING (live data)
+    safety = get_safety()
+    losses = safety["consecutive_losses"]
+    dd = safety["drawdown"]
+
+    # Handle None states
+    if safety["trading_active"] is None:
+        trading_status = "[yellow]? UNKNOWN[/]"
+    elif safety["trading_active"]:
+        trading_status = "[green]✓ TRADING[/]"
+    else:
+        trading_status = "[red]⚠ PAUSED[/]"
+
+    if safety["mother_ok"] is None:
+        mother_status = "[yellow]? MOTHER[/]"
+    elif safety["mother_ok"]:
+        mother_status = "[green]✓ MOTHER[/]"
+    else:
+        mother_status = "[red]⚠ MOTHER[/]"
+
+    if safety["guardian_ok"] is None:
+        guardian_status = "[yellow]? GUARD[/]"
+    elif safety["guardian_ok"]:
+        guardian_status = "[green]✓ GUARD[/]"
+    else:
+        guardian_status = "[red]⚠ GUARD[/]"
+
+    # Fear & Greed Index
+    fg = get_fear_greed()
+    fg_val = fg.get("value", 0)
+    fg_class = fg.get("classification", "?")
+    fg_signal = fg.get("signal", "?")
+    if fg_val <= 25:
+        fg_color = "red"
+    elif fg_val <= 45:
+        fg_color = "yellow"
+    elif fg_val <= 55:
+        fg_color = "white"
+    elif fg_val <= 75:
+        fg_color = "green"
+    else:
+        fg_color = "bold green"
+
+    src = safety.get("source", "?")
+    L.append(f"[bold red]SAFETY:[/] {trading_status} │ Losses: {bar(losses, 5, 6)} {losses}/5 │ DD: {bar(dd, 10, 6)} {dd:.1f}% │ {mother_status} │ {guardian_status} │ [{fg_color}]F&G:{fg_val} {fg_class}[/] │ [dim]src:{src}[/]")
     L.append("")
-    L.append(f"[dim]Ctrl+C exit │ 2s refresh │ {ntp} │ [cyan]A[/]=DeepSeek [magenta]B[/]=Claude [yellow]C[/]=Grok [green]D[/]=Gemini │ Width: {w}[/]")
+
+    # Last update timestamps
+    price_age = (now - LAST_PRICE_UPDATE).total_seconds() if LAST_PRICE_UPDATE != datetime.min else 999
+    engine_age = (now - LAST_ENGINE_UPDATE).total_seconds() if LAST_ENGINE_UPDATE != datetime.min else 999
+    price_ind = "[green]●[/]" if price_age < 5 else "[yellow]●[/]" if price_age < 10 else "[red]●[/]"
+    engine_ind = "[green]●[/]" if engine_age < 5 else "[yellow]●[/]" if engine_age < 10 else "[red]●[/]"
+
+    L.append(f"[dim]Ctrl+C exit │ 2s refresh │ {ntp} │ Prices {price_ind}{price_age:.0f}s │ Engines {engine_ind}{engine_age:.0f}s │ [cyan]A[/]=DeepSeek [magenta]B[/]=Claude [yellow]C[/]=Grok [green]D[/]=Gemini │ w:{w}[/]")
 
     return Panel("\n".join(L), box=box.DOUBLE, style="on black", border_style="cyan", padding=(0, 0))
 
@@ -451,7 +674,8 @@ def render_tablet(w, h):
     gen_comms()
 
     L = []
-    L.append(f"[bold cyan]HYDRA 4.0[/] │ {now.strftime('%H:%M:%S')} │ {ntp}")
+    pulse = get_pulse()
+    L.append(f"[bold cyan]HYDRA 4.0[/] {pulse} │ {now.strftime('%H:%M:%S')} │ {ntp}")
     L.append("─" * (w - 4))
 
     # Prices
@@ -489,7 +713,9 @@ def render_tablet(w, h):
         L.append(f" {sym[:6]} [{dc}]{d[:4]}[/] E:${sig['entry']:,.0f} SL:${sig['sl']:,.0f}")
 
     L.append("")
-    L.append(f"[green]✓ Active[/] │ DD: {bar(2.3, 10, 6)} 2.3%")
+    safety = get_safety()
+    status = "[green]✓ Active[/]" if safety["trading_active"] else "[red]⚠ Paused[/]"
+    L.append(f"{status} │ DD: {bar(safety['drawdown'], 10, 6)} {safety['drawdown']:.1f}%")
 
     return Panel("\n".join(L), box=box.ROUNDED, style="on black", border_style="cyan", padding=(0, 1))
 
@@ -508,10 +734,12 @@ def main():
     print("\033[40m\033[2J\033[H", end="", flush=True)
 
     try:
-        with Live(render(), console=console, refresh_per_second=2,
+        # Refresh 4 times per second for smooth updates
+        with Live(render(), console=console, refresh_per_second=4,
                   screen=True, transient=False) as live:
             while True:
-                time.sleep(2)
+                # Short sleep, let Rich handle actual refresh rate
+                time.sleep(0.5)
                 live.update(render())
     except KeyboardInterrupt:
         print("\033[0m")

@@ -59,15 +59,22 @@ class KillCycle:
     1. Get current rankings
     2. Identify #4 (worst P&L)
     3. Archive #4's strategy to edge graveyard
-    4. DELETE #4's current strategy completely
+    4. DELETE #4's current strategy completely (LIVE mode only)
     5. Extract lessons from #1 (winner)
     6. Force #4 to learn from #1
     7. #4 must invent NEW strategy from scratch
     8. Log kill event for analysis
+
+    STEP 9: Paper/Live Mode Switch
+    - Paper mode: Archive trades but DON'T delete portfolio (soft kill)
+    - Live mode: Full kill with portfolio deletion (hard kill)
     """
 
     KILL_INTERVAL_HOURS = 24
     MIN_TRADES_TO_KILL = 5  # Need at least 5 trades before killing
+
+    # STEP 9: Paper/Live mode - default to paper for safety
+    PAPER_MODE = True  # True = soft kill (no deletion), False = hard kill (full deletion)
 
     def __init__(self, data_dir: Optional[Path] = None):
         # Auto-detect data directory based on environment
@@ -189,8 +196,14 @@ class KillCycle:
         winner_portfolio = get_portfolio_fn(winner_name)
         lessons = self._extract_winner_lessons(winner_name, winner_portfolio)
 
-        # Step 3: Reset loser's portfolio (DELETE strategy)
-        self._reset_portfolio(loser_portfolio)
+        # STEP 9: Paper/Live mode switch
+        if self.PAPER_MODE:
+            logger.warning(f"[KillCycle] PAPER MODE - Skipping portfolio deletion (soft kill)")
+            # In paper mode, we still transfer lessons but DON'T delete the portfolio
+        else:
+            # Step 3: Reset loser's portfolio (DELETE strategy) - LIVE MODE ONLY
+            logger.warning(f"[KillCycle] LIVE MODE - Executing full portfolio deletion (hard kill)")
+            self._reset_portfolio(loser_portfolio)
 
         # Step 4: Inject lessons into loser
         loser_engine = get_engine_fn(loser_name)
@@ -547,8 +560,26 @@ Prove you can adapt and survive the next kill cycle.
             "recent_victims": [
                 {"engine": k.killed_engine, "cycle": k.cycle_number}
                 for k in self.kill_history[-5:]
-            ]
+            ],
+            # STEP 9: Paper/Live mode status
+            "mode": "PAPER" if self.PAPER_MODE else "LIVE",
+            "hard_kill_enabled": not self.PAPER_MODE
         }
+
+    # STEP 9: Mode switching methods
+    def set_paper_mode(self):
+        """Switch to paper mode (soft kills - no portfolio deletion)."""
+        self.PAPER_MODE = True
+        logger.warning("[KillCycle] Switched to PAPER MODE - soft kills only")
+
+    def set_live_mode(self):
+        """Switch to live mode (hard kills - full portfolio deletion)."""
+        self.PAPER_MODE = False
+        logger.critical("[KillCycle] Switched to LIVE MODE - hard kills enabled!")
+
+    def is_paper_mode(self) -> bool:
+        """Check if kill cycle is in paper mode."""
+        return self.PAPER_MODE
 
     def get_graveyard_stats(self) -> Dict[str, Any]:
         """Get statistics from edge graveyard."""

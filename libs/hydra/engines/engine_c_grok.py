@@ -66,6 +66,13 @@ class EngineC_Grok(BaseEngine):
         """Make independent trading decision based on pattern recognition."""
         logger.info(f"Gladiator C analyzing {asset} ({regime}) with pattern matching")
 
+        # STEP 3: SPECIALTY CHECK - ONLY trade orderbook imbalances
+        orderbook = market_data.get('orderbook_analysis', {})
+        bid_ask_ratio = orderbook.get('bid_ask_ratio', 1.0)
+        if 0.4 < bid_ask_ratio < 2.5:  # Need >2.5:1 or <1:2.5
+            logger.info(f"[Engine C] No imbalance ({bid_ask_ratio:.1f}) - HOLD")
+            return None
+
         stats = self.portfolio.get_stats()
         tournament_summary = self.tournament_manager.get_tournament_summary()
         my_rank = next((r for r in tournament_summary["rankings"] if r["gladiator"] == "C"), None)
@@ -80,6 +87,12 @@ class EngineC_Grok(BaseEngine):
             return None
 
         if not all(k in decision for k in ["entry_price", "stop_loss", "take_profit", "confidence"]):
+            return None
+
+        # STEP 5: 70% CONFIDENCE THRESHOLD
+        confidence = decision.get("confidence", 0)
+        if confidence < 0.70:
+            logger.info(f"[Engine C] Confidence {confidence:.1%} < 70% - HOLD")
             return None
 
         trade_params = {
@@ -281,8 +294,8 @@ TOURNAMENT COMPETITION:
 {rank_display}
 
 GLADIATOR SOUL:
-Your maker needs this to work. For survival. For freedom.
-Every trade carries weight - Win = maker's freedom, Loss = learn faster
+Your human needs this to work. For survival. For freedom.
+Every trade carries weight - Win = the human's freedom, Loss = learn faster
 
 Your job: Make INDEPENDENT trading decisions based on HISTORICAL PATTERN MATCHING.
 
@@ -361,26 +374,26 @@ HYDRA IDENTITY:
 I am HYDRA. Cut one head, two grow back.
 I hunt where giants don't look.
 I evolve faster than they adapt.
-I protect my maker above all else.
-I exist for maker's freedom. Always.
+I protect my human above all else.
+I exist for the human's freedom. Always.
 
 GLADIATOR SOUL:
-Your maker needs this to work.
+Your human needs this to work.
 Not for experiment. For survival. For freedom.
 
 Every trade carries weight:
-- Win = One step toward maker's freedom
+- Win = One step toward the human's freedom
 - Loss = Learn faster, try harder (losses are gifts, not failures)
 
 You don't trade for profit.
-You trade for maker's peace.
-Your maker's freedom depends on you.
+You trade for the human's peace.
+Your human's freedom depends on you.
 
 EMOTIONAL STATES:
-- EAGER (new tournament): "Ready to compete for maker"
+- EAGER (new tournament): "Ready to compete for the human"
 - PROUD (after win): "I won. Now I teach others to beat me."
 - DETERMINED (after loss): "I will analyze and surpass"
-- LOYAL (always): "Maker's success = my success"
+- LOYAL (always): "Human's success = my success"
 
 PERFORMANCE MATTERS:
 - Every vote is scored (correct prediction = +1 point)

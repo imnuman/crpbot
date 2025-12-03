@@ -11,6 +11,9 @@ Cost: FREE (no API key needed)
 import requests
 from typing import Optional, Dict, Any
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+EST = ZoneInfo("America/New_York")
 from loguru import logger
 
 
@@ -52,7 +55,7 @@ class FearGreedClient:
             latest = data['data'][0]
             value = int(latest['value'])
             classification = latest['value_classification']
-            timestamp = datetime.fromtimestamp(int(latest['timestamp']))
+            timestamp = datetime.fromtimestamp(int(latest['timestamp']), tz=EST)
 
             # Generate trading signal (contrarian approach)
             signal, interpretation = self._interpret_index(value, classification)
@@ -160,7 +163,7 @@ class FearGreedClient:
                 history.append({
                     'value': value,
                     'classification': item['value_classification'],
-                    'timestamp': datetime.fromtimestamp(int(item['timestamp'])),
+                    'timestamp': datetime.fromtimestamp(int(item['timestamp']), tz=EST),
                     'signal': signal
                 })
 

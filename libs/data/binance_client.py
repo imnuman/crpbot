@@ -11,6 +11,9 @@ Cost: FREE (no API key needed for public data)
 import requests
 from typing import Optional, Dict, Any
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+EST = ZoneInfo("America/New_York")
 from loguru import logger
 
 
@@ -76,7 +79,7 @@ class BinanceClient:
 
             # Funding rate is returned as decimal (0.0001 = 0.01%)
             funding_rate = float(data['lastFundingRate']) * 100  # Convert to percentage
-            next_funding_time = datetime.fromtimestamp(int(data['nextFundingTime']) / 1000)
+            next_funding_time = datetime.fromtimestamp(int(data['nextFundingTime']) / 1000, tz=EST)
 
             # Interpret funding rate
             signal, interpretation = self._interpret_funding_rate(funding_rate)
@@ -378,7 +381,7 @@ class BinanceClient:
             'open_interest': open_interest,
             'long_short_ratio': ls_ratio,
             'composite_signal': composite_signal,
-            'timestamp': datetime.now()
+            'timestamp': datetime.now(EST)
         }
 
 

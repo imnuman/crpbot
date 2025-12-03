@@ -256,27 +256,27 @@ class AutoLearningSystem:
         finally:
             session.close()
 
-            if not trades:
-                return {
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0,
-                    "win_rate": 0.0,
-                    "total_pnl": 0.0,
-                }
-
-            closed_trades = [t for t in trades if t.result is not None]
-            winning_trades = [t for t in closed_trades if t.result == "win"]
-            losing_trades = [t for t in closed_trades if t.result == "loss"]
-
-            # Calculate PnL (simplified - would need actual position sizes)
-            total_pnl = 0.0  # TODO: Calculate from entry/exit prices and positions
-
+        if not trades:
             return {
-                "total_trades": len(closed_trades),
-                "winning_trades": len(winning_trades),
-                "losing_trades": len(losing_trades),
-                "win_rate": len(winning_trades) / len(closed_trades) if closed_trades else 0.0,
-                "total_pnl": total_pnl,
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "win_rate": 0.0,
+                "total_pnl": 0.0,
             }
+
+        closed_trades = [t for t in trades if t.result is not None]
+        winning_trades = [t for t in closed_trades if t.result == "win"]
+        losing_trades = [t for t in closed_trades if t.result == "loss"]
+
+        # Calculate PnL (simplified - would need actual position sizes)
+        total_pnl = 0.0  # TODO: Calculate from entry/exit prices and positions
+
+        return {
+            "total_trades": len(closed_trades),
+            "winning_trades": len(winning_trades),
+            "losing_trades": len(losing_trades),
+            "win_rate": len(winning_trades) / len(closed_trades) if closed_trades else 0.0,
+            "total_pnl": total_pnl,
+        }
 

@@ -47,11 +47,11 @@ from libs.hydra.paper_trader import get_paper_trader
 from libs.hydra.database import init_hydra_db, HydraSession
 from libs.hydra.tournament_tracker import TournamentTracker
 
-# Gladiators
-from libs.hydra.engines.gladiator_a_deepseek import EngineA_DeepSeek
-from libs.hydra.engines.gladiator_b_claude import EngineB_Claude
-from libs.hydra.engines.gladiator_c_grok import EngineC_Grok
-from libs.hydra.engines.gladiator_d_gemini import EngineD_Gemini
+# Engines (4 AI competitors)
+from libs.hydra.engines.engine_a_deepseek import EngineA_DeepSeek
+from libs.hydra.engines.engine_b_claude import EngineB_Claude
+from libs.hydra.engines.engine_c_grok import EngineC_Grok
+from libs.hydra.engines.engine_d_gemini import EngineD_Gemini
 
 # Data Provider
 from libs.data.coinbase_client import get_coinbase_client
