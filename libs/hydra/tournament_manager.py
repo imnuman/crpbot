@@ -118,6 +118,11 @@ class TournamentManager:
 
         self.tournament_history: List[Dict] = []
 
+        # Engine weights (synced from WeightAdjuster)
+        self.engine_weights: Dict[str, float] = {
+            "A": 0.25, "B": 0.25, "C": 0.25, "D": 0.25
+        }
+
         # Load existing state from disk
         self._load_state()
 
@@ -167,6 +172,12 @@ class TournamentManager:
             # Restore history (limited to last 100 entries)
             self.tournament_history = data.get('tournament_history', [])[-100:]
 
+            # Restore engine weights
+            saved_weights = data.get('engine_weights', {})
+            for engine, weight in saved_weights.items():
+                if engine in self.engine_weights:
+                    self.engine_weights[engine] = weight
+
             logger.info(
                 f"Loaded tournament state: {len(self.populations)} populations, "
                 f"{sum(len(p) for p in self.populations.values())} total strategies"
@@ -213,6 +224,7 @@ class TournamentManager:
                 'last_elimination': last_elimination_data,
                 'last_breeding': last_breeding_data,
                 'tournament_history': history_data,
+                'engine_weights': self.engine_weights,
                 'saved_at': datetime.now(timezone.utc).isoformat()
             }
 
@@ -223,6 +235,34 @@ class TournamentManager:
 
         except Exception as e:
             logger.error(f"Error saving tournament state: {e}")
+
+    # ==================== WEIGHT MANAGEMENT ====================
+
+    def update_weight(self, engine: str, weight: float) -> None:
+        """
+        Update weight for a specific engine.
+
+        Called by WeightAdjuster to sync weights to tournament manager.
+
+        Args:
+            engine: Engine name (A, B, C, or D)
+            weight: New weight value (0.0 to 1.0)
+        """
+        if engine not in self.engine_weights:
+            logger.warning(f"Unknown engine: {engine}")
+            return
+
+        old_weight = self.engine_weights[engine]
+        self.engine_weights[engine] = max(0.05, min(0.50, weight))  # Bound to 5-50%
+
+        if abs(old_weight - weight) > 0.01:  # Only log significant changes
+            logger.info(f"Engine {engine} weight updated: {old_weight:.2%} → {weight:.2%}")
+
+        self._save_state()
+
+    def get_weights(self) -> Dict[str, float]:
+        """Get current engine weights."""
+        return self.engine_weights.copy()
 
     # ==================== POPULATION MANAGEMENT ====================
 
