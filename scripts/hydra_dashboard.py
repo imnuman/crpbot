@@ -775,13 +775,15 @@ def main():
     print("\033[40m\033[2J\033[H", end="", flush=True)
 
     try:
-        # Refresh 2 times per second - balanced for smoothness without flicker
-        # Using transient=True and vertical_overflow="ellipsis" for stability
-        with Live(render(), console=console, refresh_per_second=2,
-                  screen=True, transient=True, vertical_overflow="ellipsis") as live:
+        # ANTI-GLITCH: Very slow refresh for ttyd stability
+        # - refresh_per_second=1: Only 1 frame per second max
+        # - screen=False: Don't use alternate screen buffer (causes flicker in ttyd)
+        # - transient=False: Keep content stable
+        with Live(render(), console=console, refresh_per_second=1,
+                  screen=False, transient=False) as live:
             while True:
-                # 1 second sleep - prices refresh every 2s anyway, so no need to go faster
-                time.sleep(1.0)
+                # 3 second sleep - data refreshes every 2s anyway, 3s is plenty
+                time.sleep(3.0)
                 live.update(render())
     except KeyboardInterrupt:
         print("\033[0m")
