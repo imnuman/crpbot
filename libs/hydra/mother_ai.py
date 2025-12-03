@@ -30,6 +30,7 @@ from .regime_detector import RegimeDetector
 from .market_data_feeds import get_market_data_aggregator
 from .orderbook_feed import get_orderbook_analyzer
 from .internet_search import get_internet_search
+from .cycles.kill_cycle import get_kill_cycle
 
 from .engines.engine_a_deepseek import EngineA_DeepSeek
 from .engines.engine_b_claude import EngineB_Claude
@@ -82,6 +83,9 @@ class MotherAI:
         self.market_data = get_market_data_aggregator()
         self.orderbook = get_orderbook_analyzer()
         self.search = get_internet_search()
+
+        # Evolution cycles
+        self.kill_cycle = get_kill_cycle()
 
         # Tournament state
         self.tournament_start_time = datetime.now(timezone.utc)
@@ -354,10 +358,25 @@ class MotherAI:
     def _check_tournament_events(self):
         """
         Check and execute tournament events:
-        1. Weight adjustment (every 24 hours)
-        2. Breeding (every 4 days)
+        1. Kill cycle (every 24 hours) - eliminate weakest engine
+        2. Weight adjustment (every 24 hours) - adjust influence weights
+        3. Breeding (every 4 days) - winner teaches losers
         """
         now = datetime.now(timezone.utc)
+
+        # Check for kill cycle (every 24 hours)
+        rankings = self.tournament_manager.calculate_rankings()
+        kill_event = self.kill_cycle.execute_kill(
+            rankings=rankings,
+            get_portfolio_fn=self.tournament_manager.get_portfolio,
+            get_engine_fn=lambda name: self.gladiators[name]
+        )
+
+        if kill_event:
+            logger.warning(
+                f"💀 Kill cycle executed: Engine {kill_event.killed_engine} eliminated, "
+                f"learned from Engine {kill_event.winner_engine}"
+            )
 
         # Check for weight adjustment (every 24 hours)
         time_since_adjustment = now - self.last_weight_adjustment
