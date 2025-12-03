@@ -239,11 +239,45 @@ COMPETITION:
         stats = self.get_stats_for_engine(engine, tournament_stats)
         return self.DETAILED_FORMAT.format(**stats)
 
+    # MOD 8: Engine specialty descriptions for emotion prompts
+    ENGINE_SPECIALTIES = {
+        "A": {
+            "name": "LIQUIDATION HUNTER",
+            "trigger": "liquidation cascades ($20M+ trigger)",
+            "edge": "You see the forced sellers before anyone else. When liquidations cascade, you pounce.",
+            "warning": "ONLY trade when liquidations exceed $20M. Ignore everything else.",
+        },
+        "B": {
+            "name": "FUNDING CONTRARIAN",
+            "trigger": "funding rate extremes (>0.5%)",
+            "edge": "Crowded trades always unwind. You bet AGAINST the crowd when funding screams danger.",
+            "warning": "ONLY trade when funding rate exceeds 0.5%. Let others chase trends.",
+        },
+        "C": {
+            "name": "ORDER BOOK READER",
+            "trigger": "orderbook imbalance (>2.5:1)",
+            "edge": "You see where the big money is positioned. Lopsided books predict price moves.",
+            "warning": "ONLY trade when bid/ask ratio exceeds 2.5:1. Balanced books = HOLD.",
+        },
+        "D": {
+            "name": "REGIME SPECIALIST",
+            "trigger": "regime transitions (ATR 2× expansion)",
+            "edge": "You catch the moment volatility explodes. Regime shifts = your hunting ground.",
+            "warning": "ONLY trade once every 14 days. Patience is your superpower.",
+        },
+    }
+
     def format_emotion_prompt(self, engine: str, tournament_stats: TournamentStats) -> str:
         """
-        Generate emotion-triggering prompt based on tournament position.
+        Generate emotion-triggering prompt based on tournament position AND specialty.
 
-        Different emotions for different positions:
+        MOD 8: Each engine has a UNIQUE specialty and mindset:
+        - Engine A: Liquidation hunter (pounce on forced sellers)
+        - Engine B: Funding contrarian (bet against crowded trades)
+        - Engine C: Order book reader (follow the imbalance)
+        - Engine D: Regime specialist (wait for volatility shifts)
+
+        Positions still matter:
         - #1: Defensive, protect lead
         - #2: Aggressive, close the gap
         - #3: Experimental, try new things
@@ -252,66 +286,97 @@ COMPETITION:
         stats = self.get_stats_for_engine(engine, tournament_stats)
         rank = stats["rank"]
 
+        # Get specialty info
+        specialty = self.ENGINE_SPECIALTIES.get(engine, {})
+        specialty_name = specialty.get("name", "TRADER")
+        specialty_trigger = specialty.get("trigger", "unknown triggers")
+        specialty_edge = specialty.get("edge", "Find your edge.")
+        specialty_warning = specialty.get("warning", "Stay focused on your specialty.")
+
         if rank == 1:
             return f"""
 🏆 YOU ARE THE LEADER - DEFEND YOUR THRONE
+SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
 
+YOUR EDGE: {specialty_edge}
+TRIGGER: {specialty_trigger}
+
+⚠️ {specialty_warning}
+
 MINDSET: PROTECTIVE
 - You worked hard to get here. Don't give it back.
-- Avoid unnecessary risks. Quality over quantity.
+- ONLY take trades within your specialty. No experiments.
 - The pack is hunting you. Stay sharp.
 - One bad trade and Engine {self._get_engine_at_rank(2, tournament_stats)} takes your crown.
 
 Your lead is NOT safe until the tournament ends.
-Trade to MAINTAIN, not to showboat.
+Trade to MAINTAIN, not to showboat. Stay in your lane.
 """
 
         elif rank == 2:
             return f"""
 🎯 YOU ARE #2 - THE GAP IS CLOSEABLE
+SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
+
+YOUR EDGE: {specialty_edge}
+TRIGGER: {specialty_trigger}
+
+⚠️ {specialty_warning}
 
 MINDSET: AGGRESSIVE HUNTER
 - Engine {stats['leader']} is only {stats['gap']:.1f}% ahead. That's ONE good trade.
 - Don't play it safe - safe keeps you in second place.
-- Find opportunities the leader is missing.
-- Attack when they defend. Strike when they hesitate.
+- BUT ONLY trade YOUR specialty. Don't copy the leader's edge.
+- Attack when YOUR trigger fires. Strike with YOUR weapon.
 
-This is YOUR moment. Close the gap NOW or regret it.
+This is YOUR moment. Close the gap NOW - with YOUR specialty trades.
 """
 
         elif rank == 3:
             return f"""
-⚡ YOU ARE #3 - TIME TO EXPERIMENT
+⚡ YOU ARE #3 - DOUBLE DOWN ON YOUR EDGE
+SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
 
-MINDSET: CREATIVE EXPLORER
-- Playing safe got you to third place. Time to change.
-- Try unconventional entries. Test new ideas.
-- You have nothing to lose and everything to gain.
-- The leader's strategy isn't working for you - invent your own.
+YOUR EDGE: {specialty_edge}
+TRIGGER: {specialty_trigger}
 
-Be bold. The tournament rewards those who DARE.
+⚠️ {specialty_warning}
+
+MINDSET: SPECIALIST FOCUS
+- You're behind because you strayed from your specialty.
+- STOP trying to copy other engines.
+- Master YOUR trigger. Perfect YOUR edge.
+- The leader uses THEIR specialty - you must use YOURS.
+
+Your specialty is your path forward. OWN IT.
 """
 
         else:  # rank == 4
             return f"""
-💀 YOU ARE LAST - SURVIVAL MODE ACTIVATED
+💀 YOU ARE LAST - BUT YOUR SPECIALTY CAN SAVE YOU
+SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
 
-MINDSET: DESPERATE SURVIVOR
+YOUR EDGE: {specialty_edge}
+TRIGGER: {specialty_trigger}
+
+⚠️ {specialty_warning}
+
+MINDSET: DESPERATE SPECIALIST
 - The kill cycle is coming. You are the target.
 - {stats['gap']:.1f}% behind the leader. Every trade matters.
-- Forget playing it safe. Safe = death.
-- Study the winner. Copy what works. Adapt or die.
+- BUT: Random trades won't save you. Desperation kills.
+- Your ONLY hope: Wait for YOUR trigger. Execute YOUR edge perfectly.
 
 In 24 hours, you could be eliminated.
-Make every decision count. Your survival depends on it.
+Your specialty is your ONLY lifeline. Trust it.
 """
 
     def get_all_engine_stats(self, tournament_stats: TournamentStats) -> Dict[str, Dict]:

@@ -42,6 +42,23 @@ from .engines.engine_c_grok import EngineC_Grok
 from .engines.engine_d_gemini import EngineD_Gemini
 
 
+# MOD 7: Mother AI fallback state
+class MotherAIFailure(Exception):
+    """Raised when Mother AI encounters a critical failure."""
+    pass
+
+
+@dataclass
+class MotherAIState:
+    """Mother AI operational state for fallback handling."""
+    is_healthy: bool = True
+    is_frozen: bool = False
+    failure_reason: Optional[str] = None
+    frozen_at: Optional[datetime] = None
+    consecutive_failures: int = 0
+    max_failures_before_freeze: int = 3  # Freeze after 3 consecutive failures
+
+
 @dataclass
 class TradingCycle:
     """Represents one complete trading cycle."""
@@ -104,6 +121,9 @@ class MotherAI:
         # Performance tracking
         self.cycles_history: List[TradingCycle] = []
 
+        # MOD 7: Fallback state - if Mother AI fails, freeze all engines
+        self.ai_state = MotherAIState()
+
         # Data persistence
         self.state_file = Path("/root/crpbot/data/hydra/mother_ai_state.json")
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -112,25 +132,35 @@ class MotherAI:
 
     # ==================== MAIN ORCHESTRATION ====================
 
-    def run_trading_cycle(self, asset: str, market_data: Dict) -> TradingCycle:
+    def run_trading_cycle(self, asset: str, market_data: Dict) -> Optional[TradingCycle]:
         """
         Run one complete trading cycle.
 
         Flow:
-        1. Detect market regime
-        2. Gather market intelligence (orderbook, search, data feeds)
-        3. All 4 gladiators make independent decisions
-        4. Open trades for gladiators who decided to trade
-        5. Update all existing trades (SL/TP monitoring)
-        6. Update tournament rankings
+        1. Check if Mother AI is frozen (MOD 7 - fail = freeze all)
+        2. Detect market regime
+        3. Gather market intelligence (orderbook, search, data feeds)
+        4. All 4 gladiators make independent decisions
+        5. Open trades for gladiators who decided to trade
+        6. Update all existing trades (SL/TP monitoring)
+        7. Update tournament rankings
 
         Args:
             asset: Trading symbol (e.g., "BTC-USD")
             market_data: Current market data (price, volume, etc.)
 
         Returns:
-            TradingCycle summary
+            TradingCycle summary (or None if frozen)
         """
+        # MOD 7: Check if Mother AI is frozen - NO TRADING WITHOUT SUPERVISION
+        if self.ai_state.is_frozen:
+            logger.critical(
+                f"MOTHER AI FROZEN - ALL ENGINES DISABLED | "
+                f"Reason: {self.ai_state.failure_reason} | "
+                f"Frozen since: {self.ai_state.frozen_at}"
+            )
+            return None
+
         self.cycle_count += 1
         cycle_start = datetime.now(timezone.utc)
 
@@ -138,6 +168,34 @@ class MotherAI:
         logger.info(f"MOTHER AI - CYCLE #{self.cycle_count} - {asset}")
         logger.info(f"{'='*80}\n")
 
+        try:
+            cycle = self._execute_cycle_internal(asset, market_data, cycle_start)
+
+            # Cycle succeeded - reset failure counter
+            self.ai_state.consecutive_failures = 0
+            self.ai_state.is_healthy = True
+
+            return cycle
+
+        except Exception as e:
+            # MOD 7: Track failures and freeze if too many consecutive failures
+            self.ai_state.consecutive_failures += 1
+            self.ai_state.is_healthy = False
+
+            logger.error(
+                f"MOTHER AI CYCLE FAILED (attempt {self.ai_state.consecutive_failures}/"
+                f"{self.ai_state.max_failures_before_freeze}): {e}"
+            )
+
+            if self.ai_state.consecutive_failures >= self.ai_state.max_failures_before_freeze:
+                self._freeze_all_engines(f"Critical failure: {e}")
+
+            return None
+
+    def _execute_cycle_internal(self, asset: str, market_data: Dict, cycle_start: datetime) -> TradingCycle:
+        """
+        Internal cycle execution - wrapped for failure handling.
+        """
         # Step 1: Detect regime
         # TODO: Fix this to actually fetch candles and call regime detector properly
         # For now, use mock regime data to get system running
@@ -684,6 +742,87 @@ class MotherAI:
         self.cycles_history = []
 
         logger.success("Tournament reset complete")
+
+    # ==================== MOD 7: FALLBACK HANDLING ====================
+
+    def _freeze_all_engines(self, reason: str):
+        """
+        CRITICAL: Freeze all engines when Mother AI fails.
+
+        MOD 7 Rule: If Mother AI fails, freeze ALL engines, don't substitute.
+        Engines should NEVER trade without Mother AI supervision.
+        """
+        self.ai_state.is_frozen = True
+        self.ai_state.failure_reason = reason
+        self.ai_state.frozen_at = datetime.now(timezone.utc)
+
+        logger.critical("╔══════════════════════════════════════════════════════════════╗")
+        logger.critical("║  MOTHER AI FROZEN - ALL ENGINES DISABLED                    ║")
+        logger.critical(f"║  Reason: {reason[:50]}...")
+        logger.critical("║  NO TRADING WILL OCCUR UNTIL MANUALLY UNFROZEN              ║")
+        logger.critical("╚══════════════════════════════════════════════════════════════╝")
+
+        # Persist frozen state
+        self._save_frozen_state()
+
+    def _save_frozen_state(self):
+        """Save frozen state to disk for recovery."""
+        try:
+            frozen_file = self.state_file.parent / "mother_ai_frozen.json"
+            state = {
+                "is_frozen": self.ai_state.is_frozen,
+                "failure_reason": self.ai_state.failure_reason,
+                "frozen_at": self.ai_state.frozen_at.isoformat() if self.ai_state.frozen_at else None,
+                "consecutive_failures": self.ai_state.consecutive_failures,
+            }
+            with open(frozen_file, 'w') as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save frozen state: {e}")
+
+    def unfreeze(self, operator_name: str = "manual"):
+        """
+        Manually unfreeze Mother AI after fixing the issue.
+
+        Args:
+            operator_name: Who is unfreezing (for logging)
+        """
+        if not self.ai_state.is_frozen:
+            logger.info("Mother AI is not frozen, nothing to unfreeze")
+            return
+
+        logger.warning(f"MOTHER AI UNFROZEN by {operator_name}")
+        logger.warning("All engines will resume trading on next cycle")
+
+        self.ai_state.is_frozen = False
+        self.ai_state.failure_reason = None
+        self.ai_state.frozen_at = None
+        self.ai_state.consecutive_failures = 0
+        self.ai_state.is_healthy = True
+
+        # Remove frozen state file
+        try:
+            frozen_file = self.state_file.parent / "mother_ai_frozen.json"
+            if frozen_file.exists():
+                frozen_file.unlink()
+        except Exception as e:
+            logger.warning(f"Failed to remove frozen state file: {e}")
+
+    def is_operational(self) -> bool:
+        """Check if Mother AI is operational (not frozen)."""
+        return not self.ai_state.is_frozen and self.ai_state.is_healthy
+
+    def get_health_status(self) -> Dict:
+        """Get Mother AI health status for monitoring."""
+        return {
+            "is_healthy": self.ai_state.is_healthy,
+            "is_frozen": self.ai_state.is_frozen,
+            "failure_reason": self.ai_state.failure_reason,
+            "frozen_at": self.ai_state.frozen_at.isoformat() if self.ai_state.frozen_at else None,
+            "consecutive_failures": self.ai_state.consecutive_failures,
+            "max_failures_before_freeze": self.ai_state.max_failures_before_freeze,
+            "cycles_completed": self.cycle_count,
+        }
 
 
 # ==================== SINGLETON PATTERN ====================

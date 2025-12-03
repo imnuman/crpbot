@@ -1,7 +1,7 @@
 """
-HYDRA 3.0 - 72-Hour Historical Storage
+HYDRA 3.0 - 30-Day Historical Storage
 
-Stores rolling 72-hour history of all data feeds:
+Stores rolling 30-day history of all data feeds:
 - Order book snapshots
 - Funding rates
 - Liquidation data
@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 # Configuration
-RETENTION_HOURS = 72
-CLEANUP_INTERVAL_MINUTES = 30
-MAX_RECORDS_PER_TYPE = 10000  # Safety limit
+RETENTION_HOURS = 720  # 30 days (for walk-forward validation)
+CLEANUP_INTERVAL_MINUTES = 60  # Cleanup every hour
+MAX_RECORDS_PER_TYPE = 100000  # Increased for 30-day storage
 
 
 class DataType(Enum):
@@ -63,7 +63,7 @@ class HistoricalRecord:
 
 class HistoricalStorage:
     """
-    Rolling 72-hour historical data storage.
+    Rolling 30-day historical data storage.
 
     Features:
     - SQLite-based for efficiency
@@ -97,7 +97,7 @@ class HistoricalStorage:
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        self.db_path = self.data_dir / "historical_72h.db"
+        self.db_path = self.data_dir / "historical_30d.db"
         self._conn_local = threading.local()
 
         # Initialize database
@@ -466,7 +466,7 @@ class HistoricalStorage:
         stats = self.get_stats()
 
         lines = [
-            f"=== Historical Storage (72h) ===",
+            f"=== Historical Storage (30d) ===",
             f"Total Records: {stats['total_records']:,}",
             f"Database Size: {stats['db_size_mb']:.2f} MB",
             f"",

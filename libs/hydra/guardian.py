@@ -39,6 +39,11 @@ class Guardian:
     CHOPPY_REGIME_MAX_HOURS = 2
     CORRELATION_SPIKE_THRESHOLD = 0.8
 
+    # Circuit Breaker Settings (MOD 6)
+    CONSECUTIVE_LOSS_REDUCE = 3   # 3 losses → 50% position size
+    CONSECUTIVE_LOSS_PAUSE = 5    # 5 losses → 24hr pause
+    REDUCED_SIZE_MULTIPLIER = 0.5  # 50% of normal
+
     # Asset-specific modifiers
     EXOTIC_FOREX_SIZE_MODIFIER = 0.5  # 50% of normal
     MEME_PERP_SIZE_MODIFIER = 0.3     # 30% of normal
@@ -61,6 +66,10 @@ class Guardian:
         self.open_positions = []
         self.regime_choppy_since = None
         self.emergency_shutdown_until = None
+
+        # Circuit breaker tracking (MOD 6)
+        self.consecutive_losses = 0
+        self.circuit_breaker_active = False  # True = reduced mode
 
         self.state_file = state_file or "data/hydra/guardian_state.json"
         self._load_state()
@@ -117,6 +126,22 @@ class Guardian:
 
         # Reset daily P&L if new day
         self._reset_daily_pnl_if_needed()
+
+        # Circuit Breaker: 5 consecutive losses → 24hr pause
+        if self.consecutive_losses >= self.CONSECUTIVE_LOSS_PAUSE:
+            self.trigger_emergency_shutdown()
+            return {
+                "approved": False,
+                "rejection_reason": f"Circuit breaker: {self.consecutive_losses} consecutive losses - 24hr pause",
+                "adjusted_size": None
+            }
+
+        # Circuit Breaker: 3 consecutive losses → 50% position size
+        size_multiplier = 1.0
+        if self.consecutive_losses >= self.CONSECUTIVE_LOSS_REDUCE:
+            size_multiplier = self.REDUCED_SIZE_MULTIPLIER
+            self.circuit_breaker_active = True
+            logger.warning(f"Circuit breaker: {self.consecutive_losses} consecutive losses - reducing position size to 50%")
 
         # Rule 1: Daily loss limit (2%)
         daily_loss_percent = self.daily_pnl / self.starting_balance if self.starting_balance != 0 else 0
@@ -239,38 +264,61 @@ class Guardian:
                 "adjusted_size": adjusted_size
             }
 
-        # All checks passed
+        # All checks passed - apply circuit breaker multiplier if active
+        final_size = position_size_usd * size_multiplier
+        reason = "All Guardian checks passed"
+        if size_multiplier < 1.0:
+            reason = f"Approved (circuit breaker: {size_multiplier:.0%} size due to {self.consecutive_losses} losses)"
+
         return {
             "approved": True,
-            "rejection_reason": "All Guardian checks passed",
-            "adjusted_size": position_size_usd
+            "rejection_reason": reason,
+            "adjusted_size": final_size
         }
 
-    def update_account_state(self, pnl: float, position_closed: bool = False):
+    def update_account_state(self, pnl: float, position_closed: bool = False, won: bool = None):
         """
         Update account state after trade result.
 
         Args:
             pnl: Profit/loss from trade
             position_closed: True if a position was closed
+            won: True if trade was a winner (for circuit breaker tracking)
         """
         self.account_balance += pnl
         self.daily_pnl += pnl
+
+        # Track consecutive losses for circuit breaker
+        if won is not None:
+            if won:
+                # Win resets consecutive losses
+                self.consecutive_losses = 0
+                self.circuit_breaker_active = False
+                logger.info("Circuit breaker: Reset after winning trade")
+            else:
+                # Loss increments counter
+                self.consecutive_losses += 1
+                logger.warning(f"Circuit breaker: Consecutive losses now {self.consecutive_losses}")
 
         # Update peak balance for drawdown calculation
         if self.account_balance > self.peak_balance:
             self.peak_balance = self.account_balance
 
         # Recalculate drawdown
-        self.current_drawdown = (self.peak_balance - self.account_balance) / self.peak_balance
+        self.current_drawdown = (self.peak_balance - self.account_balance) / self.peak_balance if self.peak_balance != 0 else 0
 
         # Check emergency shutdown (3% daily loss)
-        daily_loss_percent = self.daily_pnl / self.starting_balance
+        daily_loss_percent = self.daily_pnl / self.starting_balance if self.starting_balance != 0 else 0
         if daily_loss_percent <= -self.EMERGENCY_LOSS:
             self.trigger_emergency_shutdown()
 
+        # Check circuit breaker for pause (5 consecutive losses)
+        if self.consecutive_losses >= self.CONSECUTIVE_LOSS_PAUSE:
+            logger.critical(f"Circuit breaker: {self.consecutive_losses} consecutive losses - triggering 24hr pause")
+            self.trigger_emergency_shutdown()
+
         # Log state
-        logger.info(f"Account updated: Balance=${self.account_balance:,.2f}, Daily P&L=${self.daily_pnl:,.2f}, DD={self.current_drawdown*100:.2f}%")
+        logger.info(f"Account updated: Balance=${self.account_balance:,.2f}, Daily P&L=${self.daily_pnl:,.2f}, DD={self.current_drawdown*100:.2f}%, Losses={self.consecutive_losses}")
 
         self._save_state()
 
@@ -310,6 +358,8 @@ class Guardian:
             "peak_balance": self.peak_balance,
             "current_drawdown": self.current_drawdown,
             "emergency_shutdown_until": self.emergency_shutdown_until.isoformat() if self.emergency_shutdown_until else None,
+            "consecutive_losses": self.consecutive_losses,
+            "circuit_breaker_active": self.circuit_breaker_active,
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
 
@@ -334,8 +384,12 @@ class Guardian:
                 if state.get("emergency_shutdown_until"):
                     self.emergency_shutdown_until = datetime.fromisoformat(state["emergency_shutdown_until"])
 
+                # Load circuit breaker state
+                self.consecutive_losses = state.get("consecutive_losses", 0)
+                self.circuit_breaker_active = state.get("circuit_breaker_active", False)
+
                 logger.info("Guardian state loaded from file")
-                logger.info(f"Balance: ${self.account_balance:,.2f}, Daily P&L: ${self.daily_pnl:,.2f}, DD: {self.current_drawdown*100:.2f}%")
+                logger.info(f"Balance: ${self.account_balance:,.2f}, Daily P&L: ${self.daily_pnl:,.2f}, DD: {self.current_drawdown*100:.2f}%, Losses: {self.consecutive_losses}")
         except Exception as e:
             logger.warning(f"Could not load Guardian state: {e} - starting fresh")
 
@@ -350,7 +404,7 @@ class Guardian:
             "account_balance": self.account_balance,
             "starting_balance": self.starting_balance,
             "daily_pnl": self.daily_pnl,
-            "daily_pnl_percent": (self.daily_pnl / self.starting_balance) * 100,
+            "daily_pnl_percent": (self.daily_pnl / self.starting_balance) * 100 if self.starting_balance != 0 else 0,
             "peak_balance": self.peak_balance,
             "current_drawdown": self.current_drawdown,
             "current_drawdown_percent": self.current_drawdown * 100,
@@ -358,7 +412,11 @@ class Guardian:
             "max_drawdown_limit": self.MAX_DRAWDOWN * 100,
             "emergency_shutdown_active": self.emergency_shutdown_until is not None,
             "emergency_shutdown_until": self.emergency_shutdown_until.isoformat() if self.emergency_shutdown_until else None,
-            "trading_allowed": self.emergency_shutdown_until is None or datetime.now(timezone.utc) >= self.emergency_shutdown_until
+            "trading_allowed": self.emergency_shutdown_until is None or datetime.now(timezone.utc) >= self.emergency_shutdown_until,
+            # Circuit breaker status
+            "consecutive_losses": self.consecutive_losses,
+            "circuit_breaker_active": self.circuit_breaker_active,
+            "position_size_multiplier": self.REDUCED_SIZE_MULTIPLIER if self.circuit_breaker_active else 1.0,
         }
 
 

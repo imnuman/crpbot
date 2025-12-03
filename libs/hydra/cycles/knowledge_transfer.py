@@ -75,13 +75,27 @@ class KnowledgeTransfer:
     2. Broadcast to all losers (ranks 2-4)
     3. Each loser decides response strategy
     4. Store session for analysis
+
+    MOD 10 - Anti-homogenization:
+    - Engines CANNOT adopt insights that overlap with their specialty
+    - Each engine must maintain its unique edge
+    - COUNTER and INVENT strategies preferred for diversity
     """
 
     # Response strategy weights (for random selection)
+    # MOD 10: Reduced IMPROVE weight to prevent homogenization
     RESPONSE_STRATEGIES = {
-        "IMPROVE": 0.50,   # 50% chance - adopt winner's approach
-        "COUNTER": 0.30,   # 30% chance - build counter-strategy
-        "INVENT": 0.20     # 20% chance - create new approach
+        "IMPROVE": 0.30,   # 30% chance - adopt winner's approach (reduced from 50%)
+        "COUNTER": 0.40,   # 40% chance - build counter-strategy (increased from 30%)
+        "INVENT": 0.30     # 30% chance - create new approach (increased from 20%)
+    }
+
+    # MOD 10: Engine specialties for anti-homogenization
+    ENGINE_SPECIALTIES = {
+        "A": "liquidation_cascade",
+        "B": "funding_extreme",
+        "C": "orderbook_imbalance",
+        "D": "regime_transition",
     }
 
     def __init__(self, data_dir: Optional[Path] = None):
@@ -368,13 +382,40 @@ class KnowledgeTransfer:
 
         return response
 
-    def _select_response_strategy(self, learner_rank: int) -> str:
+    def _select_response_strategy(
+        self,
+        learner_rank: int,
+        learner_name: str = None,
+        teacher_name: str = None
+    ) -> str:
         """
         Select response strategy based on rank and weighted probabilities.
+
+        MOD 10 - Anti-homogenization rules:
+        - If teacher and learner have DIFFERENT specialties: Normal selection
+        - If teacher has specialty learner shouldn't copy: Force COUNTER or INVENT
+        - Engines must maintain their unique edge
 
         Lower ranks are more likely to IMPROVE (adopt winner's approach).
         Higher ranks are more likely to COUNTER or INVENT.
         """
+        # MOD 10: Check anti-homogenization
+        block_improve = False
+        if learner_name and teacher_name:
+            learner_specialty = self.ENGINE_SPECIALTIES.get(learner_name)
+            teacher_specialty = self.ENGINE_SPECIALTIES.get(teacher_name)
+
+            if learner_specialty and teacher_specialty:
+                # If different specialties, learner should NOT adopt teacher's approach
+                # This prevents engines from becoming clones
+                if learner_specialty != teacher_specialty:
+                    block_improve = True
+                    logger.debug(
+                        f"[KnowledgeTransfer] Anti-homogenization: Engine {learner_name} "
+                        f"({learner_specialty}) blocked from IMPROVE with Engine {teacher_name} "
+                        f"({teacher_specialty})"
+                    )
+
         # Adjust weights based on rank
         weights = self.RESPONSE_STRATEGIES.copy()
 
@@ -391,6 +432,17 @@ class KnowledgeTransfer:
             weights["COUNTER"] = 0.50
             weights["INVENT"] = 0.20
 
+        # MOD 10: If IMPROVE is blocked, redistribute to COUNTER and INVENT
+        if block_improve:
+            improve_weight = weights["IMPROVE"]
+            weights["IMPROVE"] = 0.0
+            weights["COUNTER"] += improve_weight * 0.6  # 60% goes to COUNTER
+            weights["INVENT"] += improve_weight * 0.4   # 40% goes to INVENT
+            logger.info(
+                f"[KnowledgeTransfer] Anti-homogenization active: "
+                f"COUNTER={weights['COUNTER']:.0%}, INVENT={weights['INVENT']:.0%}"
+            )
+
         # Weighted random selection
         r = random.random()
         cumulative = 0
@@ -399,7 +451,7 @@ class KnowledgeTransfer:
             if r <= cumulative:
                 return strategy
 
-        return "IMPROVE"  # Default
+        return "COUNTER"  # Default (changed from IMPROVE for anti-homogenization)
 
     def _create_adaptation_plan(
         self,

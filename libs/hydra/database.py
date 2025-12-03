@@ -209,6 +209,77 @@ class ExplainabilityLog(Base):
     trade = relationship("HydraTrade")
 
 
+# ==================== ENGINE HISTORY (STEP 33) ====================
+
+class EngineHistory(Base):
+    """Daily snapshots of engine performance for tracking improvement."""
+    __tablename__ = "engine_history"
+
+    id = Column(Integer, primary_key=True)
+    engine_id = Column(String(10), nullable=False, index=True)  # A, B, C, D
+    date = Column(String(10), nullable=False, index=True)  # YYYY-MM-DD
+    rank = Column(Integer)
+    weight = Column(Float)
+    total_trades = Column(Integer)
+    wins = Column(Integer)
+    losses = Column(Integer)
+    win_rate = Column(Float)
+    total_pnl_usd = Column(Float)
+    total_pnl_percent = Column(Float)
+    sharpe_ratio = Column(Float)
+    max_drawdown = Column(Float)
+    specialty = Column(String(50))
+    specialty_trades = Column(Integer)
+    specialty_wins = Column(Integer)
+    specialty_accuracy = Column(Float)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ==================== EDGE GRAVEYARD (STEP 34) ====================
+
+class EdgeGraveyard(Base):
+    """Dead edges archived for potential resurrection."""
+    __tablename__ = "edge_graveyard"
+
+    id = Column(Integer, primary_key=True)
+    edge_id = Column(String(50), unique=True, nullable=False, index=True)
+    engine_id = Column(String(10), nullable=False, index=True)
+    edge_type = Column(String(50), nullable=False)
+    description = Column(Text)
+    death_cause = Column(String(100), nullable=False)
+    death_date = Column(DateTime, nullable=False)
+    final_pnl_percent = Column(Float)
+    total_trades = Column(Integer)
+    win_rate = Column(Float)
+    metadata_json = Column(Text)  # JSON storage
+    resurrection_attempts = Column(Integer, default=0)
+    last_resurrection_attempt = Column(DateTime)
+    resurrect_eligible = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ==================== TOURNAMENT SESSIONS (STEP 36) ====================
+
+class TournamentSession(Base):
+    """Tournament session records."""
+    __tablename__ = "tournament_sessions"
+
+    id = Column(Integer, primary_key=True)
+    tournament_id = Column(String(50), unique=True, nullable=False, index=True)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime)
+    status = Column(String(20), default="active")  # active, completed
+    cycles_completed = Column(Integer, default=0)
+    total_trades = Column(Integer, default=0)
+    winner_engine = Column(String(10))
+    winner_pnl_usd = Column(Float)
+    winner_win_rate = Column(Float)
+    rankings_json = Column(Text)  # JSON storage
+    breeding_events = Column(Integer, default=0)
+    kill_events = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 # ==================== LESSONS LEARNED ====================
 
 class LessonLearned(Base):
