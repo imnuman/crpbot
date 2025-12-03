@@ -9,6 +9,10 @@ __all__ = [
     "get_tournament_manager",
     "KillCycle",
     "get_kill_cycle",
+    "EdgeGraveyard",
+    "get_edge_graveyard",
+    "bury_failed_edge",
+    "DeathCause",
 ]
 
 
@@ -30,5 +34,10 @@ def __getattr__(name):
     if name in ("KillCycle", "get_kill_cycle"):
         from .cycles.kill_cycle import KillCycle, get_kill_cycle
         return KillCycle if name == "KillCycle" else get_kill_cycle
+
+    if name in ("EdgeGraveyard", "get_edge_graveyard", "bury_failed_edge", "DeathCause"):
+        from .edge_graveyard import EdgeGraveyard, get_edge_graveyard, bury_failed_edge, DeathCause
+        return {"EdgeGraveyard": EdgeGraveyard, "get_edge_graveyard": get_edge_graveyard,
+                "bury_failed_edge": bury_failed_edge, "DeathCause": DeathCause}[name]
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
