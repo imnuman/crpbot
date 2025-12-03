@@ -39,6 +39,20 @@ from .liquidations import (
     LiquidationSnapshot,
 )
 
+from .historical_storage import (
+    HistoricalStorage,
+    get_historical_storage,
+    DataType,
+    HistoricalRecord,
+    store_order_book,
+    store_funding_rate,
+    store_liquidation,
+    store_price,
+    store_engine_signal,
+    get_price_history,
+    get_funding_history,
+)
+
 __all__ = [
     # Internet Search
     "InternetSearch",
@@ -63,4 +77,16 @@ __all__ = [
     "LiquidationEvent",
     "LiquidationStats",
     "LiquidationSnapshot",
+    # Historical Storage
+    "HistoricalStorage",
+    "get_historical_storage",
+    "DataType",
+    "HistoricalRecord",
+    "store_order_book",
+    "store_funding_rate",
+    "store_liquidation",
+    "store_price",
+    "store_engine_signal",
+    "get_price_history",
+    "get_funding_history",
 ]
