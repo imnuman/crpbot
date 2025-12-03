@@ -1,11 +1,10 @@
 # HYDRA 4.0 Complete Stack
-# Runtime + Dashboard + Monitoring (Prometheus, Grafana, Alertmanager)
+# Runtime + Monitoring (Prometheus, Grafana, Alertmanager)
 #
 # Deploy: docker compose up -d --build
 # Access:
 #   - Grafana:      http://178.156.136.185:3000
 #   - Prometheus:   http://178.156.136.185:9090
-#   - Dashboard:    http://178.156.136.185:7682
 #   - Metrics:      http://178.156.136.185:9100/metrics
 
 services:
@@ -32,26 +31,6 @@ services:
       --interval 300
     networks:
       - hydra-network
-
-  # HYDRA Dashboard - Terminal UI via ttyd (deprecated - use Grafana)
-  hydra-dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile.dashboard
-    container_name: hydra-dashboard
-    restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      - "7682:7682"
-    volumes:
-      - ./data:/app/data:ro
-      - ./tradingai.db:/app/tradingai.db:ro
-    depends_on:
-      - hydra-runtime
-    networks:
-      - hydra-network
-    tty: true
 
   # Prometheus - Time-series database for metrics
   prometheus:
