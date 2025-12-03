@@ -3,7 +3,7 @@ HYDRA 3.0 - Validators
 
 Strategy validation systems:
 - Walk-Forward Validator: Rolling window out-of-sample testing
-- Monte Carlo Validator: Randomized simulation (Step 18)
+- Monte Carlo Validator: Fast bootstrap simulation (< 1 sec)
 """
 
 from .walk_forward import (
@@ -16,7 +16,14 @@ from .walk_forward import (
     OverfitMetrics
 )
 
+from .monte_carlo import (
+    MonteCarloValidator,
+    get_monte_carlo_validator,
+    MonteCarloResult
+)
+
 __all__ = [
+    # Walk-Forward
     "WalkForwardValidator",
     "get_walk_forward_validator",
     "WalkForwardResult",
@@ -24,4 +31,8 @@ __all__ = [
     "TradeRecord",
     "WindowMetrics",
     "OverfitMetrics",
+    # Monte Carlo
+    "MonteCarloValidator",
+    "get_monte_carlo_validator",
+    "MonteCarloResult",
 ]
