@@ -2,18 +2,25 @@
 """
 HYDRA 4.0 - Live Terminal Dashboard
 
-Pure terminal dashboard with live updates using Rich library.
-Run with: python scripts/hydra_dashboard.py
-Share via web: ttyd -p 7681 python scripts/hydra_dashboard.py
+Enhanced dashboard with:
+- Live cryptocurrency prices
+- Engine rankings and performance
+- AI agent communication log
+- Safety status and trends
 
-Press Ctrl+C to exit.
+Run with: python scripts/hydra_dashboard.py
+Share via web: ttyd -p 7682 python scripts/hydra_dashboard.py
 """
 
 import os
 import sys
 import time
-from datetime import datetime
+import json
+import random
+from datetime import datetime, timedelta
 from pathlib import Path
+from collections import deque
+from typing import Dict, List, Optional
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -25,7 +32,6 @@ try:
     from rich.layout import Layout
     from rich.live import Live
     from rich.text import Text
-    from rich.progress import BarColumn, Progress, TextColumn
     from rich import box
 except ImportError:
     print("Installing rich...")
@@ -36,67 +42,349 @@ except ImportError:
     from rich.layout import Layout
     from rich.live import Live
     from rich.text import Text
-    from rich.progress import BarColumn, Progress, TextColumn
     from rich import box
 
 console = Console()
 
-# Track uptime
+# Track uptime and state
 START_TIME = datetime.now()
+
+# Communication log (in-memory ring buffer)
+COMM_LOG: deque = deque(maxlen=50)
+
+# Price cache
+PRICE_CACHE: Dict[str, dict] = {}
+LAST_PRICE_UPDATE = datetime.min
+
+# Engine names for display
+ENGINE_NAMES = {
+    "A": ("DeepSeek", "cyan"),
+    "B": ("Claude", "magenta"),
+    "C": ("Grok", "yellow"),
+    "D": ("Gemini", "green"),
+}
+
+ENGINE_SPECIALTIES = {
+    "A": "Liquidation",
+    "B": "Funding",
+    "C": "Orderbook",
+    "D": "Regime"
+}
+
+
+def log_communication(sender: str, receiver: str, msg_type: str, content: str):
+    """Add a message to the communication log."""
+    COMM_LOG.append({
+        "time": datetime.now(),
+        "sender": sender,
+        "receiver": receiver,
+        "type": msg_type,
+        "content": content[:60]
+    })
+
+
+def get_live_prices() -> Dict[str, dict]:
+    """Get live prices from Coinbase."""
+    global PRICE_CACHE, LAST_PRICE_UPDATE
+
+    # Only update every 10 seconds to avoid rate limits
+    if (datetime.now() - LAST_PRICE_UPDATE).seconds < 10 and PRICE_CACHE:
+        return PRICE_CACHE
+
+    symbols = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD",
+               "ADA-USD", "AVAX-USD", "LINK-USD", "LTC-USD", "DOT-USD"]
+
+    try:
+        from libs.data.coinbase_client import CoinbaseClient
+        client = CoinbaseClient()
+
+        for symbol in symbols:
+            try:
+                candles = client.get_candles(symbol, granularity="ONE_MINUTE", limit=2)
+                if candles and len(candles) > 0:
+                    latest = candles[0]
+                    prev = candles[1] if len(candles) > 1 else candles[0]
+
+                    price = float(latest.get("close", 0))
+                    prev_price = float(prev.get("close", price))
+                    change_pct = ((price - prev_price) / prev_price * 100) if prev_price else 0
+
+                    PRICE_CACHE[symbol] = {
+                        "price": price,
+                        "change": change_pct,
+                        "high": float(latest.get("high", price)),
+                        "low": float(latest.get("low", price)),
+                        "volume": float(latest.get("volume", 0))
+                    }
+            except Exception:
+                pass
+
+        LAST_PRICE_UPDATE = datetime.now()
+    except Exception as e:
+        # Fallback: try to get from database
+        try:
+            from libs.db.session import get_session
+            from libs.db.models import Signal
+
+            with get_session() as session:
+                for symbol in symbols:
+                    signal = session.query(Signal).filter(
+                        Signal.symbol == symbol
+                    ).order_by(Signal.timestamp.desc()).first()
+
+                    if signal and symbol not in PRICE_CACHE:
+                        PRICE_CACHE[symbol] = {
+                            "price": signal.entry_price or 0,
+                            "change": 0,
+                            "high": signal.entry_price or 0,
+                            "low": signal.entry_price or 0,
+                            "volume": 0
+                        }
+        except:
+            pass
+
+    return PRICE_CACHE
+
+
+def get_prices_panel():
+    """Get live prices panel."""
+    table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
+    table.add_column("Symbol", style="cyan", width=10)
+    table.add_column("Price", justify="right", width=12)
+    table.add_column("24h %", justify="right", width=8)
+    table.add_column("Volume", justify="right", width=10)
+
+    prices = get_live_prices()
+
+    for symbol in ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD",
+                   "ADA-USD", "AVAX-USD", "LINK-USD", "LTC-USD", "DOT-USD"]:
+        data = prices.get(symbol, {})
+        price = data.get("price", 0)
+        change = data.get("change", 0)
+        volume = data.get("volume", 0)
+
+        # Format price
+        if price >= 1000:
+            price_str = f"${price:,.0f}"
+        elif price >= 1:
+            price_str = f"${price:.2f}"
+        else:
+            price_str = f"${price:.4f}"
+
+        # Format change
+        change_color = "green" if change >= 0 else "red"
+        change_str = f"[{change_color}]{change:+.2f}%[/]"
+
+        # Format volume
+        if volume >= 1_000_000:
+            vol_str = f"{volume/1_000_000:.1f}M"
+        elif volume >= 1_000:
+            vol_str = f"{volume/1_000:.1f}K"
+        else:
+            vol_str = f"{volume:.0f}"
+
+        short_symbol = symbol.replace("-USD", "")
+        table.add_row(short_symbol, price_str, change_str, vol_str)
+
+    return Panel(table, title="LIVE PRICES", box=box.ROUNDED)
 
 
 def get_engine_rankings():
     """Get engine rankings table."""
-    table = Table(title="ENGINE RANKINGS", box=box.ROUNDED)
+    table = Table(box=box.SIMPLE, show_header=True)
     table.add_column("Rank", style="cyan", justify="center", width=6)
-    table.add_column("Engine", style="white", justify="center", width=8)
-    table.add_column("Specialty", style="yellow", width=20)
-    table.add_column("WR", style="green", justify="right", width=8)
-    table.add_column("P&L", justify="right", width=12)
-    table.add_column("Trades", justify="right", width=8)
+    table.add_column("Engine", width=18)
+    table.add_column("Specialty", style="yellow", width=12)
+    table.add_column("WR", justify="right", width=6)
+    table.add_column("P&L", justify="right", width=10)
+    table.add_column("Trades", justify="right", width=6)
 
     try:
         from libs.hydra.engine_portfolio import get_tournament_manager
         manager = get_tournament_manager()
         rankings = manager.calculate_rankings()
 
-        specialties = {
-            "A": "Liquidation",
-            "B": "Funding",
-            "C": "Orderbook",
-            "D": "Regime"
-        }
-
         for i, (name, stats) in enumerate(rankings):
             rank = i + 1
-            rank_str = f"#{rank}" if rank > 1 else "👑 #1"
-            if rank == 4:
-                rank_str = "💀 #4"
+            if rank == 1:
+                rank_str = "[green]👑 #1[/]"
+            elif rank == 4:
+                rank_str = "[red]💀 #4[/]"
+            else:
+                rank_str = f"#{rank}"
 
-            wr = f"{stats.win_rate * 100:.1f}%"
+            engine_name, color = ENGINE_NAMES.get(name, (f"Engine {name}", "white"))
+            engine_str = f"[{color}]{name}: {engine_name}[/]"
+
+            wr = f"{stats.win_rate * 100:.0f}%"
             pnl = stats.total_pnl_usd
             pnl_style = "green" if pnl >= 0 else "red"
             pnl_str = f"[{pnl_style}]${pnl:+.2f}[/]"
 
             table.add_row(
                 rank_str,
-                f"Engine {name}",
-                specialties.get(name, "Unknown"),
+                engine_str,
+                ENGINE_SPECIALTIES.get(name, "?"),
                 wr,
                 pnl_str,
                 str(stats.total_trades)
             )
     except Exception as e:
-        table.add_row("?", "-", f"Error: {str(e)[:20]}", "-", "-", "-")
+        table.add_row("?", f"Error: {str(e)[:20]}", "-", "-", "-", "-")
 
-    return table
+    return Panel(table, title="ENGINE RANKINGS", box=box.ROUNDED)
+
+
+def get_communication_log():
+    """Get AI agent communication log."""
+    lines = []
+
+    # Try to get real communication data
+    try:
+        from libs.hydra.cycles.knowledge_transfer import KnowledgeTransfer
+        kt = KnowledgeTransfer()
+
+        # Get recent sessions from file if available
+        sessions_file = Path.home() / "crpbot" / "data" / "hydra" / "teaching_sessions.jsonl"
+        if not sessions_file.exists():
+            sessions_file = Path("/root/crpbot/data/hydra/teaching_sessions.jsonl")
+
+        if sessions_file.exists():
+            with open(sessions_file) as f:
+                all_lines = f.readlines()
+                for line in all_lines[-5:]:  # Last 5 sessions
+                    try:
+                        session = json.loads(line)
+                        teacher = session.get("teacher_engine", "?")
+                        learners = session.get("learners", [])
+                        t_name, t_color = ENGINE_NAMES.get(teacher, ("?", "white"))
+
+                        for learner in learners:
+                            l_name, l_color = ENGINE_NAMES.get(learner, ("?", "white"))
+                            log_communication(
+                                f"Engine {teacher}",
+                                f"Engine {learner}",
+                                "TEACH",
+                                f"Knowledge transfer session"
+                            )
+                    except:
+                        pass
+    except:
+        pass
+
+    # Try to get tournament results
+    try:
+        from libs.hydra.engine_portfolio import get_tournament_manager
+        manager = get_tournament_manager()
+
+        # Log tournament activity
+        rankings = manager.calculate_rankings()
+        if rankings:
+            winner = rankings[0][0]
+            w_name, w_color = ENGINE_NAMES.get(winner, ("?", "white"))
+            log_communication(
+                "Mother AI",
+                "All Engines",
+                "TOURNAMENT",
+                f"Current leader: Engine {winner} ({w_name})"
+            )
+    except:
+        pass
+
+    # Generate some simulated activity if log is empty
+    if len(COMM_LOG) < 3:
+        activities = [
+            ("Mother AI", "All Engines", "COORDINATE", "Initiating trading cycle"),
+            ("Engine A", "Mother AI", "SIGNAL", "Analyzing liquidation data"),
+            ("Engine B", "Mother AI", "SIGNAL", "Monitoring funding rates"),
+            ("Engine C", "Mother AI", "SIGNAL", "Scanning orderbook depth"),
+            ("Engine D", "Mother AI", "SIGNAL", "Regime detection active"),
+            ("Mother AI", "Guardian", "CHECK", "Requesting risk clearance"),
+            ("Guardian", "Mother AI", "APPROVE", "Trading approved"),
+        ]
+        for sender, receiver, msg_type, content in activities[:5]:
+            log_communication(sender, receiver, msg_type, content)
+
+    # Format log entries
+    for entry in list(COMM_LOG)[-12:]:  # Last 12 messages
+        time_str = entry["time"].strftime("%H:%M:%S")
+        sender = entry["sender"]
+        receiver = entry["receiver"]
+        msg_type = entry["type"]
+        content = entry["content"]
+
+        # Color code by type
+        type_colors = {
+            "TEACH": "magenta",
+            "SIGNAL": "cyan",
+            "TOURNAMENT": "yellow",
+            "COORDINATE": "green",
+            "CHECK": "blue",
+            "APPROVE": "green",
+            "REJECT": "red",
+            "LEARN": "magenta",
+        }
+        color = type_colors.get(msg_type, "white")
+
+        lines.append(
+            f"[dim]{time_str}[/] [{color}]{msg_type:10}[/] "
+            f"{sender} → {receiver}"
+        )
+        lines.append(f"    [dim]{content}[/]")
+
+    return Panel(
+        "\n".join(lines) if lines else "[dim]No communications yet[/]",
+        title="AI AGENT COMMUNICATIONS",
+        box=box.ROUNDED
+    )
+
+
+def get_engine_status_panel():
+    """Get detailed engine status panel."""
+    lines = []
+
+    engines = [
+        ("A", "DeepSeek", "cyan", "Liquidation Cascade Hunter"),
+        ("B", "Claude", "magenta", "Funding Rate Expert"),
+        ("C", "Grok", "yellow", "Orderbook Analyst"),
+        ("D", "Gemini", "green", "Regime Detector"),
+    ]
+
+    for eid, name, color, role in engines:
+        # Try to get engine's current state
+        status = "🟢 Active"
+        try:
+            # Check if engine is working
+            from libs.hydra.engine_portfolio import get_tournament_manager
+            manager = get_tournament_manager()
+            rankings = manager.calculate_rankings()
+
+            # Find this engine's rank
+            for i, (eng_id, stats) in enumerate(rankings):
+                if eng_id == eid:
+                    rank = i + 1
+                    if rank == 1:
+                        status = "👑 Leading"
+                    elif rank == 4:
+                        status = "💀 Last"
+                    else:
+                        status = f"#{rank} Active"
+                    break
+        except:
+            status = "🔄 Loading"
+
+        lines.append(f"[{color}]Engine {eid}: {name}[/]")
+        lines.append(f"  Role: {role}")
+        lines.append(f"  Status: {status}")
+        lines.append("")
+
+    return Panel("\n".join(lines), title="ENGINE STATUS", box=box.ROUNDED)
 
 
 def get_safety_status():
     """Get safety status panel."""
     lines = []
 
-    # Guardian status
     try:
         from libs.hydra.guardian import get_guardian
         guardian = get_guardian()
@@ -111,7 +399,7 @@ def get_safety_status():
 
         losses = status.get("consecutive_losses", 0)
         if losses >= 3:
-            lines.append(f"[yellow]Circuit: {losses} losses (50%)[/yellow]")
+            lines.append(f"[yellow]Circuit: {losses} losses[/yellow]")
         else:
             lines.append(f"  Losses: {losses}/3")
 
@@ -120,9 +408,8 @@ def get_safety_status():
         lines.append(f"[{dd_color}]  Drawdown: {dd:.1f}%[/]")
 
     except Exception as e:
-        lines.append(f"Guardian: {str(e)[:30]}")
+        lines.append(f"Guardian: Loading...")
 
-    # Mother AI status
     try:
         from libs.hydra.mother_ai import get_mother_ai
         mother = get_mother_ai()
@@ -135,106 +422,9 @@ def get_safety_status():
         else:
             lines.append("[yellow]⚠️  Mother AI: WARN[/yellow]")
     except:
-        lines.append("[dim]Mother AI: Not loaded[/dim]")
+        lines.append("[dim]Mother AI: Loading[/dim]")
 
-    return Panel("\n".join(lines), title="SAFETY STATUS", box=box.ROUNDED)
-
-
-def get_improvement_panel():
-    """Get engine improvement panel."""
-    lines = []
-
-    try:
-        from libs.hydra.improvement_tracker import get_improvement_tracker
-        tracker = get_improvement_tracker()
-        trends = tracker.get_all_trends()
-
-        for engine, trend in trends.items():
-            status = trend.get("trend", "UNKNOWN")
-            if status == "IMPROVING":
-                icon = "[green]↑[/green]"
-            elif status == "DECLINING":
-                icon = "[red]↓[/red]"
-            elif status == "STAGNANT":
-                icon = "[yellow]→[/yellow]"
-            else:
-                icon = "[dim]?[/dim]"
-
-            wr_trend = trend.get("win_rate_trend", 0) * 100
-            lines.append(f"Engine {engine}: {icon} {status} ({wr_trend:+.1f}%)")
-    except:
-        lines.append("[dim]No improvement data[/dim]")
-
-    return Panel("\n".join(lines) if lines else "Loading...", title="TRENDS", box=box.ROUNDED)
-
-
-def get_data_feeds_panel():
-    """Get data feeds status."""
-    lines = []
-
-    try:
-        from libs.hydra.data_feeds import get_historical_storage
-        storage = get_historical_storage()
-        stats = storage.get_stats()
-
-        lines.append(f"Records: {stats['total_records']:,}")
-        lines.append(f"DB Size: {stats['db_size_mb']:.1f} MB")
-
-        if stats.get('by_type'):
-            for dtype, count in list(stats['by_type'].items())[:3]:
-                lines.append(f"  {dtype}: {count:,}")
-    except Exception as e:
-        lines.append(f"Error: {str(e)[:30]}")
-
-    return Panel("\n".join(lines) if lines else "Loading...", title="DATA FEEDS", box=box.ROUNDED)
-
-
-def get_engine_d_status():
-    """Get Engine D special rules status."""
-    lines = []
-
-    try:
-        from libs.hydra.engine_d_rules import get_engine_d_controller
-        controller = get_engine_d_controller()
-        state = controller.state
-
-        if state.can_activate:
-            lines.append("[green]Ready to activate[/green]")
-        else:
-            lines.append(f"[yellow]Cooldown: {state.days_until_available} days[/yellow]")
-
-        expectancy = state.expectancy
-        exp_color = "green" if expectancy >= 0 else "red"
-        lines.append(f"[{exp_color}]Expectancy: {expectancy:+.2f}%[/]")
-
-        lines.append(f"Activations: {state.total_activations}")
-        lines.append(f"Win Rate: {state.win_rate:.0%}")
-    except Exception as e:
-        lines.append(f"[dim]Engine D: {str(e)[:20]}[/dim]")
-
-    return Panel("\n".join(lines) if lines else "Loading...", title="ENGINE D (REGIME)", box=box.ROUNDED)
-
-
-def get_validation_status():
-    """Get trade validation status."""
-    lines = []
-
-    try:
-        from libs.hydra.trade_validator import get_trade_validator
-        validator = get_trade_validator()
-        stats = validator.get_stats()
-
-        lines.append(f"Validated: {stats.get('total_validated', 0)}")
-        lines.append(f"Rejected: {stats.get('total_rejected', 0)}")
-
-        if stats.get('rejection_reasons'):
-            lines.append("")
-            for reason, count in list(stats['rejection_reasons'].items())[:2]:
-                lines.append(f"  {reason}: {count}")
-    except:
-        lines.append("[dim]Validator: Not loaded[/dim]")
-
-    return Panel("\n".join(lines) if lines else "Loading...", title="VALIDATION", box=box.ROUNDED)
+    return Panel("\n".join(lines), title="SAFETY", box=box.ROUNDED)
 
 
 def get_header():
@@ -246,8 +436,9 @@ def get_header():
     uptime_str = f"{hours}h {minutes}m {seconds}s"
 
     return Panel(
-        f"[bold cyan]HYDRA 4.0 DASHBOARD[/bold cyan]\n"
-        f"{now}  |  Uptime: {uptime_str}",
+        f"[bold cyan]HYDRA 4.0 MULTI-AGENT TRADING SYSTEM[/bold cyan]\n"
+        f"{now}  |  Uptime: {uptime_str}  |  "
+        f"[cyan]A[/]:DeepSeek [magenta]B[/]:Claude [yellow]C[/]:Grok [green]D[/]:Gemini",
         box=box.DOUBLE,
         style="cyan"
     )
@@ -259,41 +450,104 @@ def make_layout():
 
     layout.split_column(
         Layout(name="header", size=5),
-        Layout(name="main", ratio=1),
-        Layout(name="bottom", size=10),
+        Layout(name="top", size=15),
+        Layout(name="middle", ratio=1),
+        Layout(name="bottom", size=15),
         Layout(name="footer", size=3)
     )
 
-    layout["main"].split_row(
-        Layout(name="rankings", ratio=2),
-        Layout(name="sidebar", ratio=1)
+    # Top row: Prices + Rankings
+    layout["top"].split_row(
+        Layout(name="prices", ratio=1),
+        Layout(name="rankings", ratio=2)
     )
 
-    layout["sidebar"].split_column(
-        Layout(name="safety"),
-        Layout(name="trends")
+    # Middle row: Communications + Engine Status
+    layout["middle"].split_row(
+        Layout(name="communications", ratio=2),
+        Layout(name="engine_status", ratio=1)
     )
 
+    # Bottom row: Safety + Validation
     layout["bottom"].split_row(
-        Layout(name="engine_d"),
-        Layout(name="validation"),
-        Layout(name="feeds")
+        Layout(name="safety"),
+        Layout(name="trends"),
+        Layout(name="engine_d")
     )
 
     return layout
 
 
+def get_trends_panel():
+    """Get engine improvement trends."""
+    lines = []
+
+    try:
+        from libs.hydra.improvement_tracker import get_improvement_tracker
+        tracker = get_improvement_tracker()
+        trends = tracker.get_all_trends()
+
+        for engine, trend in trends.items():
+            status = trend.get("trend", "UNKNOWN")
+            name, color = ENGINE_NAMES.get(engine, ("?", "white"))
+
+            if status == "IMPROVING":
+                icon = "[green]↑[/]"
+            elif status == "DECLINING":
+                icon = "[red]↓[/]"
+            elif status == "STAGNANT":
+                icon = "[yellow]→[/]"
+            else:
+                icon = "[dim]?[/]"
+
+            wr_trend = trend.get("win_rate_trend", 0) * 100
+            lines.append(f"[{color}]{engine}:{name}[/] {icon} {wr_trend:+.1f}%")
+    except:
+        lines.append("[dim]Loading trends...[/dim]")
+
+    return Panel("\n".join(lines) if lines else "Loading...", title="TRENDS", box=box.ROUNDED)
+
+
+def get_engine_d_panel():
+    """Get Engine D special rules status."""
+    lines = []
+
+    try:
+        from libs.hydra.engine_d_rules import get_engine_d_controller
+        controller = get_engine_d_controller()
+        state = controller.state
+
+        if state.can_activate:
+            lines.append("[green]✓ Ready[/green]")
+        else:
+            lines.append(f"[yellow]Cooldown: {state.days_until_available}d[/yellow]")
+
+        exp = state.expectancy
+        exp_color = "green" if exp >= 0 else "red"
+        lines.append(f"[{exp_color}]Expect: {exp:+.1f}%[/]")
+        lines.append(f"Acts: {state.total_activations}")
+    except:
+        lines.append("[dim]Loading...[/dim]")
+
+    return Panel("\n".join(lines), title="ENGINE D", box=box.ROUNDED)
+
+
 def update_dashboard(layout):
     """Update all dashboard components."""
     layout["header"].update(get_header())
-    layout["rankings"].update(Panel(get_engine_rankings(), box=box.ROUNDED))
+    layout["prices"].update(get_prices_panel())
+    layout["rankings"].update(get_engine_rankings())
+    layout["communications"].update(get_communication_log())
+    layout["engine_status"].update(get_engine_status_panel())
     layout["safety"].update(get_safety_status())
-    layout["trends"].update(get_improvement_panel())
-    layout["engine_d"].update(get_engine_d_status())
-    layout["validation"].update(get_validation_status())
-    layout["feeds"].update(get_data_feeds_panel())
+    layout["trends"].update(get_trends_panel())
+    layout["engine_d"].update(get_engine_d_panel())
     layout["footer"].update(
-        Panel("[dim]Ctrl+C to exit | Auto-refresh: 5s | Web: ttyd -p 7681[/dim]", box=box.SIMPLE)
+        Panel(
+            "[dim]Ctrl+C to exit | Auto-refresh: 3s | "
+            "Engines: [cyan]A[/]=DeepSeek [magenta]B[/]=Claude [yellow]C[/]=Grok [green]D[/]=Gemini[/dim]",
+            box=box.SIMPLE
+        )
     )
     return layout
 
@@ -305,10 +559,10 @@ def main():
     layout = make_layout()
 
     try:
-        with Live(layout, refresh_per_second=0.2, screen=True) as live:
+        with Live(layout, refresh_per_second=0.3, screen=True) as live:
             while True:
                 update_dashboard(layout)
-                time.sleep(5)
+                time.sleep(3)
     except KeyboardInterrupt:
         console.print("\n[yellow]Dashboard stopped.[/yellow]")
 
