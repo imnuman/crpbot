@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # HYDRA Runtime - Main trading engine
+  hydra-runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hydra-runtime
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - hydra-db:/app/tradingai.db
+    command: >
+      uv run python apps/runtime/hydra_runtime.py
+      --paper
+      --assets BTC-USD ETH-USD SOL-USD XRP-USD DOGE-USD ADA-USD LINK-USD AVAX-USD
+      --iterations -1
+      --interval 300
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    networks:
+      - hydra-network
+
+  # HYDRA Dashboard - Web UI
+  hydra-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: hydra-dashboard
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data:ro
+      - hydra-db:/app/tradingai.db:ro
+    depends_on:
+      - hydra-runtime
+    networks:
+      - hydra-network
+
+  # HYDRA Guardian - Watchdog
+  hydra-guardian:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hydra-guardian
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: >
+      uv run python apps/runtime/hydra_guardian.py
+      --check-interval 300
+    depends_on:
+      - hydra-runtime
+    networks:
+      - hydra-network
+
+volumes:
+  hydra-db:
+
+networks:
+  hydra-network:
+    driver: bridge
