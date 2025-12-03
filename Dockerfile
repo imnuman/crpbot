@@ -13,14 +13,16 @@ RUN apt-get update && apt-get install -y \
 # Install uv for fast dependency management
 RUN pip install uv
 
-# Copy dependency files first for caching
-COPY pyproject.toml uv.lock ./
+# Copy only essential files first (needed for build)
+COPY pyproject.toml uv.lock README.md ./
 
-# Install dependencies
-RUN uv sync --frozen --no-dev
+# Copy source code
+COPY apps/ ./apps/
+COPY libs/ ./libs/
+COPY scripts/ ./scripts/
 
-# Copy application code
-COPY . .
+# Install dependencies (no editable install in Docker)
+RUN uv sync --frozen --no-dev --no-editable
 
 # Create data directories
 RUN mkdir -p /app/data/hydra /app/logs
@@ -28,6 +30,7 @@ RUN mkdir -p /app/data/hydra /app/logs
 # Set environment
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
 
 # Default command (can be overridden)
 CMD ["uv", "run", "python", "apps/runtime/hydra_runtime.py", "--paper", "--assets", "BTC-USD", "ETH-USD", "SOL-USD", "--iterations", "-1", "--interval", "300"]
