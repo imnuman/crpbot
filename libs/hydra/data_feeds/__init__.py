@@ -5,7 +5,7 @@ Real-time data sources for market intelligence:
 - Internet Search (Serper) - News and sentiment
 - Order Book (Coinbase) - Depth, imbalance, whale detection
 - Funding Rates (Binance) - Perpetual futures sentiment
-- Liquidations (upcoming)
+- Liquidations (Binance/Coinglass) - Forced position closures
 """
 
 from .internet_search import (
@@ -31,6 +31,14 @@ from .funding_rates import (
     FundingSnapshot,
 )
 
+from .liquidations import (
+    LiquidationsFeed,
+    get_liquidations_feed,
+    LiquidationEvent,
+    LiquidationStats,
+    LiquidationSnapshot,
+)
+
 __all__ = [
     # Internet Search
     "InternetSearch",
@@ -49,4 +57,10 @@ __all__ = [
     "get_funding_rates_feed",
     "FundingRate",
     "FundingSnapshot",
+    # Liquidations
+    "LiquidationsFeed",
+    "get_liquidations_feed",
+    "LiquidationEvent",
+    "LiquidationStats",
+    "LiquidationSnapshot",
 ]
