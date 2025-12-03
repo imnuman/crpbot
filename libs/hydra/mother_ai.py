@@ -32,6 +32,7 @@ from .orderbook_feed import get_orderbook_analyzer
 from .internet_search import get_internet_search
 from .cycles.kill_cycle import get_kill_cycle
 from .cycles.breeding_cycle import get_breeding_cycle
+from .cycles.knowledge_transfer import get_knowledge_transfer
 
 from .engines.engine_a_deepseek import EngineA_DeepSeek
 from .engines.engine_b_claude import EngineB_Claude
@@ -88,6 +89,7 @@ class MotherAI:
         # Evolution cycles
         self.kill_cycle = get_kill_cycle()
         self.breeding_cycle = get_breeding_cycle()
+        self.knowledge_transfer = get_knowledge_transfer()
 
         # Tournament state
         self.tournament_start_time = datetime.now(timezone.utc)
@@ -360,14 +362,31 @@ class MotherAI:
     def _check_tournament_events(self):
         """
         Check and execute tournament events:
-        1. Kill cycle (every 24 hours) - eliminate weakest engine
-        2. Weight adjustment (every 24 hours) - adjust influence weights
-        3. Breeding (every 4 days) - winner teaches losers
+        1. Knowledge transfer (every cycle) - winner teaches losers
+        2. Kill cycle (every 24 hours) - eliminate weakest engine
+        3. Weight adjustment (every 24 hours) - adjust influence weights
+        4. Breeding (every 4 days) - combine winner DNA into offspring
         """
         now = datetime.now(timezone.utc)
 
-        # Check for kill cycle (every 24 hours)
+        # Get current rankings
         rankings = self.tournament_manager.calculate_rankings()
+
+        # Execute knowledge transfer (every cycle - winner teaches losers)
+        teaching_session = self.knowledge_transfer.execute_knowledge_transfer(
+            rankings=rankings,
+            get_portfolio_fn=self.tournament_manager.get_portfolio,
+            get_engine_fn=lambda name: self.gladiators[name]
+        )
+
+        if teaching_session:
+            strategies = [r.strategy_chosen for r in teaching_session.responses]
+            logger.info(
+                f"📚 Knowledge transfer: Engine {teaching_session.teacher_engine} taught "
+                f"{len(teaching_session.learners)} learners. Strategies: {strategies}"
+            )
+
+        # Check for kill cycle (every 24 hours)
         kill_event = self.kill_cycle.execute_kill(
             rankings=rankings,
             get_portfolio_fn=self.tournament_manager.get_portfolio,
