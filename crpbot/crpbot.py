@@ -13,7 +13,11 @@ import pytz
 
 # Import your existing models
 import sys
-sys.path.insert(0, '/root/crpbot')
+from pathlib import Path
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
+
 from libs.db.models import Signal
 from libs.config.config import Settings
 

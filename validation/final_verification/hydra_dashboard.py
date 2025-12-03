@@ -47,7 +47,7 @@ class HydraState(rx.State):
         """Load data from HYDRA's paper_trades.jsonl and hydra.db"""
         try:
             # Load paper trades
-            trades_file = Path("/root/crpbot/data/hydra/paper_trades.jsonl")
+            trades_file = Path(_project_root / "data" / "hydra" / "paper_trades.jsonl")
             if trades_file.exists():
                 trades = []
                 with open(trades_file, 'r') as f:

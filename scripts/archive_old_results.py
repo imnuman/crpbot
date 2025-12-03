@@ -7,7 +7,10 @@ so Guardian can monitor the NEW (4% SL) results separately.
 This prevents Guardian from killing V7 based on old metrics.
 """
 import sys
-sys.path.insert(0, '/root/crpbot')
+from pathlib import Path
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import sqlite3
 from datetime import datetime

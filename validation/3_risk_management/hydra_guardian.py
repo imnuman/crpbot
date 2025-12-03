@@ -21,7 +21,10 @@ Critical Thresholds:
 """
 
 import sys
-sys.path.insert(0, '/root/crpbot')
+from pathlib import Path
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import os
 import time
@@ -62,8 +65,8 @@ class HydraGuardian:
         self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
 
         # File paths
-        self.paper_trades_file = Path('/root/crpbot/data/hydra/paper_trades.jsonl')
-        self.vote_history_file = Path('/root/crpbot/data/hydra/vote_history.jsonl')
+        self.paper_trades_file = Path(_project_root / "data" / "hydra" / "paper_trades.jsonl")
+        self.vote_history_file = Path(_project_root / "data" / "hydra" / "vote_history.jsonl")
         self.pid_file = Path('/tmp/hydra.pid')
 
         # State tracking

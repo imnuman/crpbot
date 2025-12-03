@@ -5,7 +5,9 @@ Validates V7 Ultimate signal generation on 2 years of historical data.
 Uses technical indicators to verify signal quality.
 """
 import sys
-sys.path.insert(0, '/root/crpbot')
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import pandas as pd
 import numpy as np

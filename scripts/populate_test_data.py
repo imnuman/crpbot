@@ -6,8 +6,16 @@ Populate HYDRA database with test data for dashboard testing
 import sqlite3
 from datetime import datetime, timedelta
 import random
+import sys
+from pathlib import Path
 
-DB_PATH = "/root/crpbot/data/hydra/hydra.db"
+# Add project root to path
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
+
+from libs.hydra.config import HYDRA_DB_FILE
+DB_PATH = str(HYDRA_DB_FILE)
 
 def populate_test_data():
     """Add test data to hydra.db"""

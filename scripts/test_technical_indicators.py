@@ -4,7 +4,9 @@ Test Technical Indicators Library on Historical Data
 Tests the 50+ technical indicators on 2 years of collected data.
 """
 import sys
-sys.path.insert(0, '/root/crpbot')
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import pandas as pd
 import logging

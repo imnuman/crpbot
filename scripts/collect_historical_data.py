@@ -5,7 +5,9 @@ This script collects hourly candles for all 10 trading symbols
 and saves them in parquet format for fast backtesting.
 """
 import sys
-sys.path.insert(0, '/root/crpbot')
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import pandas as pd
 from datetime import datetime, timedelta

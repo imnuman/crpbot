@@ -9,7 +9,9 @@ WFE > 0.6 = Good generalization (strategy is robust)
 WFE < 0.6 = Overfitting (strategy is curve-fitted to IS data)
 """
 import sys
-sys.path.insert(0, '/root/crpbot')
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import pandas as pd
 import numpy as np

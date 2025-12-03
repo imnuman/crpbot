@@ -101,7 +101,7 @@ class LessonMemory:
 
     def __init__(self, storage_path: Optional[Path] = None):
         if storage_path is None:
-            storage_path = Path("/root/crpbot/data/hydra/lessons.jsonl")
+            storage_path = Path(_project_root / "data" / "hydra" / "lessons.jsonl")
 
         self.storage_path = storage_path
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)

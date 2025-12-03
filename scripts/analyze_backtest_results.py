@@ -4,7 +4,9 @@ Analyze Backtest Results and Generate Performance Report
 Comprehensive analysis of backtest performance with quantitative metrics.
 """
 import sys
-sys.path.insert(0, '/root/crpbot')
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import json
 import pandas as pd

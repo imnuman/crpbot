@@ -34,13 +34,16 @@ class CodeAnalyzer:
     without executing it.
     """
 
-    def __init__(self, project_root: str = "/root/crpbot"):
+    def __init__(self, project_root: str = None):
         """
         Initialize code analyzer
 
         Args:
-            project_root: Root directory of the project
+            project_root: Root directory of the project (auto-detected if None)
         """
+        if project_root is None:
+            from libs.hydra.config import PROJECT_ROOT
+            project_root = str(PROJECT_ROOT)
         self.project_root = Path(project_root)
         self.component_map = self._build_component_map()
 

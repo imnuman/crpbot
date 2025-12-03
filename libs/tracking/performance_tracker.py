@@ -5,10 +5,16 @@ Tracks trade outcomes, calculates P&L, measures theory performance
 
 from datetime import datetime
 from typing import Optional, Dict, List
+from pathlib import Path
+import sys
+
+# Add project root to path dynamically
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent.parent
+sys.path.insert(0, str(_project_root))
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-import sys
-sys.path.insert(0, '/root/crpbot')
 from libs.db.models import Signal
 from libs.config.config import Settings
 

@@ -4,7 +4,10 @@ Check V7 Paper Trading Performance
 Analyzes why the win rate is low and provides diagnostic insights.
 """
 import sys
-sys.path.insert(0, '/root/crpbot')
+from pathlib import Path
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 import sqlite3
 import pandas as pd
