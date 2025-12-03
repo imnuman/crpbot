@@ -179,8 +179,9 @@ def get_engines():
         return ENGINE_CACHE
 
     try:
-        # Read directly from paper_trades.jsonl
-        trades_file = Path("/root/crpbot/data/hydra/paper_trades.jsonl")
+        # Read directly from paper_trades.jsonl using config
+        from libs.hydra.config import PAPER_TRADES_FILE
+        trades_file = PAPER_TRADES_FILE
         stats = {eng: {"trades": 0, "wins": 0, "pnl": 0.0} for eng in ["A", "B", "C", "D"]}
 
         if trades_file.exists():

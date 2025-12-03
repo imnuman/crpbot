@@ -75,7 +75,10 @@ class EnginePortfolio:
     Tracks all trades, calculates performance, maintains stats.
     """
 
-    def __init__(self, engine: str, data_dir: Path = Path("/root/crpbot/data/hydra")):
+    def __init__(self, engine: str, data_dir: Path = None):
+        if data_dir is None:
+            from .config import HYDRA_DATA_DIR
+            data_dir = HYDRA_DATA_DIR
         self.engine = engine
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -312,7 +315,10 @@ class TournamentManager:
     - Facilitate winner teaches losers
     """
 
-    def __init__(self, data_dir: Path = Path("/root/crpbot/data/hydra")):
+    def __init__(self, data_dir: Path = None):
+        if data_dir is None:
+            from .config import HYDRA_DATA_DIR
+            data_dir = HYDRA_DATA_DIR
         self.data_dir = data_dir
 
         # Initialize portfolios for all 4 engines

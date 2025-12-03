@@ -33,6 +33,7 @@ RUN mkdir -p /root && ln -s /app /root/crpbot
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 ENV TERM=xterm-256color
+ENV HYDRA_DATA_DIR=/app/data/hydra
 
 # Expose ttyd port
 EXPOSE 7682

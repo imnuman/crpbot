@@ -128,7 +128,8 @@ class PaperTradingSystem:
 
     def __init__(self, storage_path: Optional[Path] = None):
         if storage_path is None:
-            storage_path = Path("/root/crpbot/data/hydra/paper_trades.jsonl")
+            from .config import PAPER_TRADES_FILE
+            storage_path = PAPER_TRADES_FILE
 
         self.storage_path = storage_path
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)

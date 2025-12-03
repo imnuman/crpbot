@@ -34,6 +34,7 @@ RUN mkdir -p /app/data/hydra /app/logs && \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
+ENV HYDRA_DATA_DIR=/app/data/hydra
 
 # Default command (can be overridden)
 CMD ["uv", "run", "python", "apps/runtime/hydra_runtime.py", "--paper", "--assets", "BTC-USD", "ETH-USD", "SOL-USD", "--iterations", "-1", "--interval", "300"]
