@@ -21,7 +21,7 @@ services:
     networks:
       - hydra-network
 
-  # HYDRA Dashboard - Web UI
+  # HYDRA Dashboard - Terminal UI via ttyd
   hydra-dashboard:
     build:
       context: .
@@ -31,7 +31,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8080:8080"
+      - "7682:7682"
     volumes:
       - ./data:/app/data:ro
       - ./tradingai.db:/app/tradingai.db:ro
@@ -39,6 +39,7 @@ services:
       - hydra-runtime
     networks:
       - hydra-network
+    tty: true
 
 networks:
   hydra-network:
