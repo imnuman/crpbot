@@ -31,6 +31,7 @@ from .market_data_feeds import get_market_data_aggregator
 from .orderbook_feed import get_orderbook_analyzer
 from .internet_search import get_internet_search
 from .cycles.kill_cycle import get_kill_cycle
+from .cycles.breeding_cycle import get_breeding_cycle
 
 from .engines.engine_a_deepseek import EngineA_DeepSeek
 from .engines.engine_b_claude import EngineB_Claude
@@ -86,6 +87,7 @@ class MotherAI:
 
         # Evolution cycles
         self.kill_cycle = get_kill_cycle()
+        self.breeding_cycle = get_breeding_cycle()
 
         # Tournament state
         self.tournament_start_time = datetime.now(timezone.utc)
@@ -385,11 +387,19 @@ class MotherAI:
             self._adjust_weights()
             self.last_weight_adjustment = now
 
-        # Check for breeding (every 4 days)
-        time_since_breeding = now - self.last_breeding
-        if time_since_breeding >= timedelta(days=4):
-            logger.info("🧬 4-day mark reached - Executing breeding mechanism")
-            self._execute_breeding()
+        # Check for breeding cycle (every 4 days)
+        breeding_event = self.breeding_cycle.execute_breeding(
+            rankings=rankings,
+            get_portfolio_fn=self.tournament_manager.get_portfolio,
+            get_engine_fn=lambda name: self.gladiators[name]
+        )
+
+        if breeding_event:
+            logger.info(
+                f"🧬 Breeding cycle executed: Offspring {breeding_event.offspring_id} "
+                f"from Engine {breeding_event.parent1_engine} x {breeding_event.parent2_engine} "
+                f"→ Engine {breeding_event.offspring_assigned_to}"
+            )
             self.last_breeding = now
 
     def _adjust_weights(self):
