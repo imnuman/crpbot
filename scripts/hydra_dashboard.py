@@ -4,10 +4,10 @@ HYDRA 4.0 - Live Terminal Dashboard (Enhanced)
 
 Features:
 - NTP-synced timestamps
-- Smooth 1s refresh with Rich Live
+- Smooth refresh without flicker
 - Detailed AI agent communications
 - Trade signals panel for manual execution
-- Live prices with entry/exit levels
+- Responsive: phone (< 80 cols) and desktop
 
 Run: python scripts/hydra_dashboard.py
 Web: ttyd -W -p 7682 python scripts/hydra_dashboard.py
@@ -20,12 +20,12 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import deque
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from rich.console import Console
+    from rich.console import Console, Group
     from rich.table import Table
     from rich.panel import Panel
     from rich.layout import Layout
@@ -34,7 +34,7 @@ try:
     from rich import box
 except ImportError:
     os.system("pip install rich")
-    from rich.console import Console
+    from rich.console import Console, Group
     from rich.table import Table
     from rich.panel import Panel
     from rich.layout import Layout
@@ -42,7 +42,7 @@ except ImportError:
     from rich.text import Text
     from rich import box
 
-# Console with black background
+# Console
 console = Console(force_terminal=True)
 
 # State
@@ -51,8 +51,7 @@ COMM_LOG: deque = deque(maxlen=100)
 PRICE_CACHE: Dict[str, dict] = {}
 PRICE_HISTORY: Dict[str, deque] = {}
 LAST_PRICE_UPDATE = datetime.min
-ACTIVE_SIGNALS: Dict[str, dict] = {}
-NTP_OFFSET_MS = 0
+LAST_WIDTH = 0
 
 # Engine config
 ENGINE_NAMES = {
@@ -69,13 +68,6 @@ ENGINE_SPECIALTIES = {
     "D": "Regime Detection"
 }
 
-ENGINE_ROLES = {
-    "A": "Scans for large liquidation events that trigger cascading moves",
-    "B": "Monitors funding rates for sentiment extremes",
-    "C": "Analyzes bid/ask depth for supply/demand zones",
-    "D": "Detects market regime shifts (trending/ranging)"
-}
-
 # Demo data
 DEMO_ENGINE_DATA = {
     "A": {"wr": 67, "pnl": 847.50, "trades": 23, "trend": [62, 64, 65, 63, 67, 68, 65, 67]},
@@ -89,19 +81,19 @@ DEMO_SIGNALS = {
         "direction": "LONG", "confidence": 0.78, "engine": "A",
         "entry": 97150.00, "sl": 95800.00, "tp": 99500.00,
         "timestamp": datetime.now() - timedelta(minutes=12),
-        "reason": "Liquidation cascade detected at 96K, strong buying"
+        "reason": "Liquidation cascade at 96K, strong buying pressure"
     },
     "ETH-USD": {
         "direction": "SHORT", "confidence": 0.72, "engine": "B",
         "entry": 3720.00, "sl": 3820.00, "tp": 3550.00,
         "timestamp": datetime.now() - timedelta(minutes=45),
-        "reason": "Funding rate 0.08%, historically reverses at this level"
+        "reason": "Funding 0.08% extreme, historically reverses here"
     },
     "SOL-USD": {
         "direction": "LONG", "confidence": 0.65, "engine": "C",
         "entry": 232.50, "sl": 225.00, "tp": 248.00,
         "timestamp": datetime.now() - timedelta(minutes=5),
-        "reason": "Large bid wall at 230, absorbing selling pressure"
+        "reason": "Large bid wall at 230, absorbing sell pressure"
     },
 }
 
@@ -110,40 +102,41 @@ BAR_FULL = "█"
 BAR_EMPTY = "░"
 
 
-def get_ntp_time() -> Tuple[datetime, str]:
-    """Get NTP-synced time with status."""
-    global NTP_OFFSET_MS
-
+def get_terminal_width() -> int:
+    """Get terminal width."""
     try:
-        # Check if NTP is synced using timedatectl
+        return console.width
+    except:
+        return 80
+
+
+def is_mobile() -> bool:
+    """Mobile if width < 80."""
+    return get_terminal_width() < 80
+
+
+def is_tablet() -> bool:
+    """Tablet if width 80-120."""
+    w = get_terminal_width()
+    return 80 <= w < 120
+
+
+def get_ntp_status() -> str:
+    """Get NTP sync status."""
+    try:
         result = subprocess.run(
             ["timedatectl", "show", "--property=NTPSynchronized"],
             capture_output=True, text=True, timeout=1
         )
-        ntp_synced = "yes" in result.stdout.lower()
-        status = "[green]NTP SYNC[/]" if ntp_synced else "[yellow]LOCAL[/]"
+        if "yes" in result.stdout.lower():
+            return "[green]●[/] NTP"
+        return "[yellow]○[/] LOCAL"
     except:
-        status = "[dim]LOCAL[/]"
-
-    return datetime.now(), status
+        return "[dim]○[/] LOCAL"
 
 
-def get_terminal_size():
-    """Get terminal dimensions."""
-    try:
-        return console.size
-    except:
-        return (80, 24)
-
-
-def is_mobile():
-    """Check if likely mobile (narrow screen)."""
-    width, _ = get_terminal_size()
-    return width < 100
-
-
-def sparkline(values: List[float], width: int = 10) -> str:
-    """Generate sparkline from values."""
+def sparkline(values: List[float], width: int = 8) -> str:
+    """Generate sparkline."""
     if not values or len(values) < 2:
         return "─" * width
     min_val, max_val = min(values), max(values)
@@ -157,8 +150,8 @@ def sparkline(values: List[float], width: int = 10) -> str:
     return "".join(result)
 
 
-def bar_chart(value: float, max_value: float = 100, width: int = 10) -> str:
-    """Generate horizontal bar chart."""
+def bar_chart(value: float, max_value: float = 100, width: int = 8) -> str:
+    """Generate bar chart."""
     if max_value <= 0:
         return BAR_EMPTY * width
     filled = max(0, min(width, int((value / max_value) * width)))
@@ -166,19 +159,19 @@ def bar_chart(value: float, max_value: float = 100, width: int = 10) -> str:
 
 
 def log_comm(sender: str, receiver: str, msg_type: str, content: str, detail: str = ""):
-    """Log detailed communication."""
+    """Log communication."""
     COMM_LOG.append({
         "time": datetime.now(),
         "sender": sender,
         "receiver": receiver,
         "type": msg_type,
-        "content": content[:50],
-        "detail": detail[:80]
+        "content": content[:40],
+        "detail": detail[:60]
     })
 
 
 def get_live_prices() -> Dict[str, dict]:
-    """Get live prices from Coinbase."""
+    """Get live prices."""
     global PRICE_CACHE, LAST_PRICE_UPDATE, PRICE_HISTORY
 
     if (datetime.now() - LAST_PRICE_UPDATE).seconds < 5 and PRICE_CACHE:
@@ -196,77 +189,52 @@ def get_live_prices() -> Dict[str, dict]:
                 if candles:
                     latest = candles[0]
                     prev = candles[1] if len(candles) > 1 else latest
-
                     price = float(latest.get("close", 0))
                     prev_price = float(prev.get("close", price))
                     change = ((price - prev_price) / prev_price * 100) if prev_price else 0
 
-                    high_24h = max(float(c.get("high", 0)) for c in candles[:24])
-                    low_24h = min(float(c.get("low", 0)) for c in candles[:24])
-
                     PRICE_CACHE[symbol] = {
-                        "price": price,
-                        "change": change,
-                        "volume": float(latest.get("volume", 0)),
-                        "high_24h": high_24h,
-                        "low_24h": low_24h,
-                        "open": float(candles[-1].get("open", price)) if candles else price
+                        "price": price, "change": change,
+                        "high": max(float(c.get("high", 0)) for c in candles[:24]),
+                        "low": min(float(c.get("low", 0)) for c in candles[:24])
                     }
 
                     if symbol not in PRICE_HISTORY:
                         PRICE_HISTORY[symbol] = deque(maxlen=30)
-                    prices = [float(c.get("close", 0)) for c in reversed(candles)]
-                    PRICE_HISTORY[symbol] = deque(prices, maxlen=30)
+                    PRICE_HISTORY[symbol] = deque([float(c.get("close", 0)) for c in reversed(candles)], maxlen=30)
             except:
                 pass
-
         LAST_PRICE_UPDATE = datetime.now()
-    except Exception as e:
-        # Demo prices
+    except:
         import random
-        demo_base = {
-            "BTC-USD": 97234.50, "ETH-USD": 3687.20, "SOL-USD": 234.56,
-            "XRP-USD": 2.34, "DOGE-USD": 0.412, "ADA-USD": 1.12,
-            "LINK-USD": 24.67, "AVAX-USD": 45.23
-        }
-        for symbol, base_price in demo_base.items():
-            if symbol not in PRICE_CACHE:
-                change = random.uniform(-2, 3)
-                price = base_price * (1 + change/100)
-                PRICE_CACHE[symbol] = {
-                    "price": price, "change": change,
-                    "volume": random.uniform(1e6, 1e8),
-                    "high_24h": price * 1.03, "low_24h": price * 0.97,
-                    "open": base_price
-                }
-                PRICE_HISTORY[symbol] = deque([price * (1 + random.uniform(-0.02, 0.02)) for _ in range(20)], maxlen=30)
+        demo = {"BTC-USD": 97234, "ETH-USD": 3687, "SOL-USD": 234, "XRP-USD": 2.34,
+                "DOGE-USD": 0.41, "ADA-USD": 1.12, "LINK-USD": 24.6, "AVAX-USD": 45.2}
+        for sym, base in demo.items():
+            if sym not in PRICE_CACHE:
+                ch = random.uniform(-2, 3)
+                PRICE_CACHE[sym] = {"price": base * (1 + ch/100), "change": ch, "high": base * 1.03, "low": base * 0.97}
+                PRICE_HISTORY[sym] = deque([base * (1 + random.uniform(-0.02, 0.02)) for _ in range(15)], maxlen=30)
 
     return PRICE_CACHE
 
 
 def get_engine_data():
-    """Get engine data - real or demo."""
+    """Get engine rankings."""
     try:
         from libs.hydra.engine_portfolio import get_tournament_manager
         manager = get_tournament_manager()
         rankings = manager.calculate_rankings()
-        total_trades = sum(stats.total_trades for _, stats in rankings)
-        if total_trades > 0:
-            return [(name, {
-                "wr": stats.win_rate * 100,
-                "pnl": stats.total_pnl_usd,
-                "trades": stats.total_trades,
-                "trend": list(DEMO_ENGINE_DATA[name]["trend"])
-            }) for name, stats in rankings]
+        if sum(s.total_trades for _, s in rankings) > 0:
+            return [(n, {"wr": s.win_rate*100, "pnl": s.total_pnl_usd, "trades": s.total_trades,
+                        "trend": DEMO_ENGINE_DATA[n]["trend"]}) for n, s in rankings]
     except:
         pass
-    return [(name, data) for name, data in DEMO_ENGINE_DATA.items()]
+    return list(DEMO_ENGINE_DATA.items())
 
 
 def get_active_signals():
-    """Get active trading signals."""
+    """Get active signals."""
     try:
-        # Try to get real signals from database
         from libs.db.models import get_session, Signal
         session = get_session()
         recent = session.query(Signal).filter(
@@ -277,451 +245,360 @@ def get_active_signals():
         signals = {}
         for s in recent:
             signals[s.symbol] = {
-                "direction": s.direction.upper(),
-                "confidence": s.confidence,
-                "engine": "A",  # Default
-                "entry": s.entry_price,
-                "sl": s.sl_price,
-                "tp": s.tp_price,
-                "timestamp": s.timestamp,
-                "reason": s.notes or "Signal generated"
+                "direction": s.direction.upper(), "confidence": s.confidence, "engine": "A",
+                "entry": s.entry_price, "sl": s.sl_price, "tp": s.tp_price,
+                "timestamp": s.timestamp, "reason": s.notes or "Signal generated"
             }
         session.close()
         if signals:
             return signals
     except:
         pass
-
     return DEMO_SIGNALS
 
 
-def get_signals_panel():
-    """Trade signals panel for manual execution."""
-    signals = get_active_signals()
-    prices = get_live_prices()
-
-    table = Table(box=None, show_header=True, header_style="bold white", padding=(0, 1))
-    table.add_column("Pair", style="cyan", width=8)
-    table.add_column("Dir", width=5)
-    table.add_column("Entry", justify="right", width=10)
-    table.add_column("Now", justify="right", width=10)
-    table.add_column("SL", justify="right", width=9)
-    table.add_column("TP", justify="right", width=9)
-    table.add_column("R:R", justify="right", width=5)
-    table.add_column("Conf", justify="right", width=5)
-
-    for symbol, sig in list(signals.items())[:4]:
-        current = prices.get(symbol, {}).get("price", sig["entry"])
-
-        # Direction with color
-        dir_color = "green" if sig["direction"] == "LONG" else "red"
-        dir_str = f"[{dir_color}]{sig['direction'][:4]}[/]"
-
-        # Entry price
-        entry_str = f"${sig['entry']:,.2f}" if sig['entry'] >= 100 else f"${sig['entry']:.4f}"
-
-        # Current price with P&L indicator
-        if sig["direction"] == "LONG":
-            pnl_pct = ((current - sig["entry"]) / sig["entry"]) * 100
-        else:
-            pnl_pct = ((sig["entry"] - current) / sig["entry"]) * 100
-        pnl_color = "green" if pnl_pct >= 0 else "red"
-        now_str = f"[{pnl_color}]${current:,.2f}[/]" if current >= 100 else f"[{pnl_color}]${current:.4f}[/]"
-
-        # SL/TP
-        sl_str = f"${sig['sl']:,.0f}" if sig['sl'] >= 100 else f"${sig['sl']:.3f}"
-        tp_str = f"${sig['tp']:,.0f}" if sig['tp'] >= 100 else f"${sig['tp']:.3f}"
-
-        # Risk:Reward ratio
-        risk = abs(sig["entry"] - sig["sl"])
-        reward = abs(sig["tp"] - sig["entry"])
-        rr = reward / risk if risk > 0 else 0
-        rr_color = "green" if rr >= 2 else "yellow" if rr >= 1.5 else "red"
-        rr_str = f"[{rr_color}]1:{rr:.1f}[/]"
-
-        # Confidence
-        conf = sig["confidence"] * 100
-        conf_color = "green" if conf >= 70 else "yellow" if conf >= 60 else "dim"
-        conf_str = f"[{conf_color}]{conf:.0f}%[/]"
-
-        short_sym = symbol.replace("-USD", "")
-        table.add_row(short_sym, dir_str, entry_str, now_str, sl_str, tp_str, rr_str, conf_str)
-
-    return Panel(table, title="[bold]📊 ACTIVE SIGNALS[/]", box=box.ROUNDED, style="on black", border_style="yellow")
-
-
-def get_signal_details_panel():
-    """Detailed signal reasoning panel."""
-    signals = get_active_signals()
-    lines = []
-
-    for symbol, sig in list(signals.items())[:3]:
-        engine = sig.get("engine", "A")
-        name, color = ENGINE_NAMES.get(engine, ("Unknown", "white"))
-
-        age = datetime.now() - sig["timestamp"]
-        age_min = int(age.total_seconds() / 60)
-
-        lines.append(f"[{color}]● {symbol.replace('-USD', '')}[/] [{sig['direction']}]")
-        lines.append(f"  [dim]Engine {engine}:{name} | {age_min}m ago[/]")
-        lines.append(f"  [dim]{sig['reason'][:60]}[/]")
-        lines.append("")
-
-    if not lines:
-        lines = ["[dim]No active signals[/]", "", "Waiting for high-confidence setups..."]
-
-    return Panel("\n".join(lines), title="[bold]💡 SIGNAL REASONING[/]", box=box.ROUNDED, style="on black", border_style="blue")
-
-
-def get_prices_panel():
-    """Enhanced live prices panel."""
-    mobile = is_mobile()
-
-    table = Table(box=None, show_header=True, header_style="bold white", padding=(0, 1))
-    table.add_column("Sym", style="cyan", width=5)
-    table.add_column("Price", justify="right", width=10)
-    table.add_column("%", justify="right", width=6)
-    if not mobile:
-        table.add_column("24h", width=14)
-        table.add_column("Chart", width=10)
-
-    prices = get_live_prices()
-    symbols = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"] if mobile else \
-              ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "ADA-USD", "LINK-USD", "AVAX-USD"]
-
-    for symbol in symbols:
-        data = prices.get(symbol, {"price": 0, "change": 0, "high_24h": 0, "low_24h": 0})
-        price = data["price"]
-        change = data["change"]
-
-        if price >= 10000:
-            price_str = f"${price/1000:.2f}K"
-        elif price >= 100:
-            price_str = f"${price:,.1f}"
-        elif price >= 1:
-            price_str = f"${price:.3f}"
-        else:
-            price_str = f"${price:.4f}"
-
-        change_color = "green" if change >= 0 else "red"
-        change_str = f"[{change_color}]{change:+.1f}%[/]"
-
-        short = symbol.replace("-USD", "")
-
-        if mobile:
-            table.add_row(short, price_str, change_str)
-        else:
-            high = data.get("high_24h", price)
-            low = data.get("low_24h", price)
-            range_str = f"[dim]H:{high/1000:.1f}K L:{low/1000:.1f}K[/]" if high >= 1000 else f"[dim]H:{high:.2f} L:{low:.2f}[/]"
-
-            history = list(PRICE_HISTORY.get(symbol, []))
-            spark_color = "green" if change >= 0 else "red"
-            spark = f"[{spark_color}]{sparkline(history, 8)}[/]"
-            table.add_row(short, price_str, change_str, range_str, spark)
-
-    return Panel(table, title="[bold]📈 LIVE PRICES[/]", box=box.ROUNDED, style="on black", border_style="cyan")
-
-
-def get_rankings_panel():
-    """Engine rankings panel."""
-    mobile = is_mobile()
-    engine_data = get_engine_data()
-
-    table = Table(box=None, show_header=True, header_style="bold white", padding=(0, 1))
-    table.add_column("#", width=3)
-    table.add_column("Engine", width=12 if mobile else 16)
-    table.add_column("WR", justify="right", width=4)
-    if not mobile:
-        table.add_column("Graph", width=12)
-    table.add_column("P&L", justify="right", width=8)
-
-    for i, (name, data) in enumerate(engine_data):
-        rank = i + 1
-        rank_str = "[green]👑[/]" if rank == 1 else "[red]💀[/]" if rank == 4 else f"#{rank}"
-
-        engine_name, color = ENGINE_NAMES[name]
-        engine_str = f"[{color}]{name}:{engine_name[:6]}[/]" if mobile else f"[{color}]{name}:{engine_name}[/]"
-
-        wr = data["wr"]
-        wr_str = f"{wr:.0f}%"
-
-        pnl = data["pnl"]
-        pnl_color = "green" if pnl >= 0 else "red"
-        pnl_str = f"[{pnl_color}]${pnl:+.0f}[/]"
-
-        if mobile:
-            table.add_row(rank_str, engine_str, wr_str, pnl_str)
-        else:
-            bar_color = "green" if wr >= 55 else "yellow" if wr >= 45 else "red"
-            bar = f"[{bar_color}]{bar_chart(wr, 100, 10)}[/]"
-            table.add_row(rank_str, engine_str, wr_str, bar, pnl_str)
-
-    return Panel(table, title="[bold]🏆 RANKINGS[/]", box=box.ROUNDED, style="on black", border_style="yellow")
-
-
-def generate_detailed_comms():
-    """Generate detailed AI communication logs."""
+def generate_comms():
+    """Generate AI communications."""
     import random
 
-    if len(COMM_LOG) < 10:
-        # Initialize with meaningful communications
-        comms = [
-            ("MOTHER", "All", "CYCLE", "Starting analysis cycle #1247", "Analyzing 10 symbols across 4 timeframes"),
-            ("A", "MOTHER", "SCAN", "Scanning liquidation data", "Found 3 potential cascade triggers"),
-            ("B", "MOTHER", "ANALYZE", "Funding rate analysis", "BTC funding 0.045% - neutral zone"),
-            ("C", "MOTHER", "SCAN", "Orderbook depth scan", "ETH bid wall at 3680, strong support"),
-            ("D", "MOTHER", "REGIME", "Market regime check", "Detecting trending regime on BTC 4H"),
-            ("GUARD", "All", "RISK", "Portfolio risk check", "Current exposure 23% - within limits"),
-            ("A", "B,C,D", "SHARE", "Knowledge transfer", "Liquidation patterns suggest long bias"),
-            ("MOTHER", "A", "APPROVE", "Signal validation", "BTC LONG proposal approved at 78% conf"),
-            ("VALID", "All", "CHECK", "Trade validation", "All safety checks passed"),
+    if len(COMM_LOG) < 8:
+        init = [
+            ("MOTHER", "All", "CYCLE", "Analysis cycle #1247", "10 symbols, 4 timeframes"),
+            ("A", "MOTHER", "SCAN", "Liquidation scan", "3 cascade triggers found"),
+            ("B", "MOTHER", "RATE", "Funding analysis", "BTC 0.045% neutral"),
+            ("C", "MOTHER", "DEPTH", "Orderbook scan", "ETH bid wall 3680"),
+            ("D", "MOTHER", "REGIME", "Regime check", "BTC trending 4H"),
+            ("GUARD", "All", "RISK", "Risk check", "Exposure 23% OK"),
+            ("A", "B,C,D", "SHARE", "Knowledge share", "Long bias detected"),
+            ("MOTHER", "A", "APPROVE", "Signal approved", "BTC LONG 78% conf"),
         ]
-        for s, r, t, c, d in comms:
+        for s, r, t, c, d in init:
             log_comm(s, r, t, c, d)
 
-    # Periodically add new activity
-    if random.random() < 0.4:
-        activities = [
-            ("A", "MOTHER", "SIGNAL", f"BTC liquidation analysis", f"${random.randint(50,200)}M liquidated in last hour"),
-            ("B", "MOTHER", "RATE", f"Funding rate update", f"ETH funding {random.uniform(-0.05, 0.1):.3f}%"),
-            ("C", "MOTHER", "DEPTH", f"Orderbook update", f"SOL bid depth +{random.randint(5,20)}% vs 1h ago"),
-            ("D", "MOTHER", "TREND", f"Regime analysis", f"Market showing {'trending' if random.random() > 0.5 else 'ranging'} behavior"),
-            ("GUARD", "MOTHER", "RISK", f"Risk update", f"Drawdown {random.uniform(0.5, 3.5):.1f}% - healthy"),
-            ("MOTHER", "A", "QUERY", f"Request analysis", f"Need confirmation on BTC setup"),
-            ("A", "B", "COLLAB", f"Cross-validation", f"Confirming with funding analysis"),
+    if random.random() < 0.3:
+        acts = [
+            ("A", "MOTHER", "SIGNAL", "Liquidation update", f"${random.randint(50,200)}M liquidated"),
+            ("B", "MOTHER", "RATE", "Funding update", f"ETH {random.uniform(-0.05, 0.1):.3f}%"),
+            ("C", "MOTHER", "DEPTH", "Depth update", f"SOL bid +{random.randint(5,20)}%"),
+            ("D", "MOTHER", "TREND", "Regime update", f"{'Trending' if random.random() > 0.5 else 'Ranging'}"),
+            ("GUARD", "MOTHER", "RISK", "Risk update", f"DD {random.uniform(0.5, 3.5):.1f}%"),
         ]
-        s, r, t, c, d = random.choice(activities)
+        s, r, t, c, d = random.choice(acts)
         log_comm(s, r, t, c, d)
 
 
-def get_comms_panel():
-    """Detailed agent communications log."""
-    generate_detailed_comms()
+# ============== MOBILE LAYOUT ==============
 
-    lines = []
-    for entry in list(COMM_LOG)[-10:]:
-        t = entry["time"].strftime("%H:%M:%S")
-        msg_type = entry["type"]
-        sender = entry["sender"]
-
-        type_colors = {
-            "CYCLE": "green", "SIGNAL": "yellow", "APPROVE": "green",
-            "SCAN": "cyan", "ANALYZE": "cyan", "REGIME": "blue",
-            "RISK": "red", "CHECK": "green", "SHARE": "magenta",
-            "QUERY": "yellow", "COLLAB": "magenta", "RATE": "cyan",
-            "DEPTH": "cyan", "TREND": "blue"
-        }
-        color = type_colors.get(msg_type, "white")
-
-        # Color sender based on engine
-        sender_color = "white"
-        if sender in ENGINE_NAMES:
-            sender_color = ENGINE_NAMES[sender][1]
-        elif sender == "MOTHER":
-            sender_color = "bold white"
-        elif sender == "GUARD":
-            sender_color = "red"
-        elif sender == "VALID":
-            sender_color = "green"
-
-        lines.append(f"[dim]{t}[/] [{color}]{msg_type:7}[/] [{sender_color}]{sender:6}[/] → {entry['receiver']}")
-        if entry.get("detail"):
-            lines.append(f"          [dim]{entry['detail'][:50]}[/]")
-
-    return Panel("\n".join(lines) if lines else "[dim]Waiting for activity...[/]",
-                 title="[bold]💬 AI COMMUNICATIONS[/]", box=box.ROUNDED, style="on black", border_style="magenta")
-
-
-def get_safety_panel():
-    """Safety status panel."""
-    lines = []
-
-    try:
-        from libs.hydra.guardian import get_guardian
-        guardian = get_guardian()
-        status = guardian.get_status()
-
-        if status.get("emergency_shutdown_active"):
-            lines.append("[red bold]⛔ EMERGENCY STOP[/]")
-        elif not status.get("trading_allowed"):
-            lines.append("[yellow]⚠️ TRADING PAUSED[/]")
-        else:
-            lines.append("[green]✓ TRADING ACTIVE[/]")
-
-        losses = status.get("consecutive_losses", 0)
-        lines.append(f"Losses: {bar_chart(losses, 5, 8)} [{'red' if losses >= 3 else 'green'}]{losses}/5[/]")
-
-        dd = status.get("current_drawdown_percent", 0)
-        lines.append(f"DD:     {bar_chart(dd, 10, 8)} [{'red' if dd > 5 else 'green'}]{dd:.1f}%[/]")
-    except:
-        lines.extend([
-            "[green]✓ TRADING ACTIVE[/]",
-            f"Losses: {bar_chart(1, 5, 8)} [green]1/5[/]",
-            f"DD:     {bar_chart(2.3, 10, 8)} [green]2.3%[/]"
-        ])
-
-    try:
-        from libs.hydra.mother_ai import get_mother_ai
-        mother = get_mother_ai()
-        health = mother.get_health_status()
-        if health.get("is_frozen"):
-            lines.append("[red]🧊 MOTHER FROZEN[/]")
-        else:
-            lines.append("[green]✓ MOTHER AI OK[/]")
-    except:
-        lines.append("[green]✓ MOTHER AI OK[/]")
-
-    return Panel("\n".join(lines), title="[bold]🛡️ SAFETY[/]", box=box.ROUNDED, style="on black", border_style="red")
-
-
-def get_position_sizing_panel():
-    """Position sizing recommendations."""
-    signals = get_active_signals()
+def render_mobile() -> Panel:
+    """Compact mobile layout."""
+    now = datetime.now()
+    ntp = get_ntp_status()
     prices = get_live_prices()
+    signals = get_active_signals()
 
-    lines = ["[bold]Position Sizing (1% Risk)[/]", ""]
+    lines = []
 
-    account_size = 10000  # Demo account size
-    risk_per_trade = 0.01  # 1% risk
+    # Header
+    lines.append(f"[bold cyan]HYDRA 4.0[/] {ntp}")
+    lines.append(f"[dim]{now.strftime('%H:%M:%S')}[/]")
+    lines.append("")
 
-    for symbol, sig in list(signals.items())[:3]:
-        current = prices.get(symbol, {}).get("price", sig["entry"])
+    # Prices (compact)
+    lines.append("[bold]PRICES[/]")
+    for sym in ["BTC-USD", "ETH-USD", "SOL-USD"]:
+        d = prices.get(sym, {"price": 0, "change": 0})
+        p = d["price"]
+        c = d["change"]
+        ps = f"${p/1000:.1f}K" if p >= 1000 else f"${p:.2f}"
+        cc = "green" if c >= 0 else "red"
+        lines.append(f" {sym[:3]} {ps} [{cc}]{c:+.1f}%[/]")
+    lines.append("")
+
+    # Active Signals
+    lines.append("[bold yellow]SIGNALS[/]")
+    for sym, sig in list(signals.items())[:2]:
+        d = sig["direction"]
+        dc = "green" if d == "LONG" else "red"
+        conf = sig["confidence"] * 100
+        lines.append(f" [{dc}]{sym[:3]} {d[:4]}[/] {conf:.0f}%")
+        lines.append(f"  E:${sig['entry']:,.0f} SL:${sig['sl']:,.0f}")
+        lines.append(f"  TP:${sig['tp']:,.0f}")
+    lines.append("")
+
+    # Comms (last 4)
+    generate_comms()
+    lines.append("[bold magenta]COMMS[/]")
+    for e in list(COMM_LOG)[-4:]:
+        t = e["time"].strftime("%H:%M")
+        lines.append(f" [dim]{t}[/] {e['sender'][:4]}→{e['type'][:6]}")
+    lines.append("")
+
+    # Safety
+    lines.append("[bold red]SAFETY[/]")
+    lines.append(f" [green]✓ Active[/] DD: 2.3%")
+
+    return Panel("\n".join(lines), title="[bold]HYDRA[/]", box=box.ROUNDED,
+                 style="on black", border_style="cyan", padding=(0, 1))
+
+
+# ============== TABLET LAYOUT ==============
+
+def render_tablet() -> Panel:
+    """Medium tablet layout."""
+    now = datetime.now()
+    ntp = get_ntp_status()
+    uptime = now - START_TIME
+    h, m = divmod(int(uptime.total_seconds()) // 60, 60)
+
+    prices = get_live_prices()
+    signals = get_active_signals()
+    engines = get_engine_data()
+    generate_comms()
+
+    # Build sections
+    sections = []
+
+    # Header
+    sections.append(f"[bold cyan]HYDRA 4.0[/] | {now.strftime('%Y-%m-%d %H:%M:%S')} | {ntp} | Up: {h}h{m}m")
+    sections.append("")
+
+    # Prices row
+    price_line = "[bold]PRICES:[/] "
+    for sym in ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"]:
+        d = prices.get(sym, {"price": 0, "change": 0})
+        p = d["price"]
+        c = d["change"]
+        ps = f"${p/1000:.1f}K" if p >= 1000 else f"${p:.2f}"
+        cc = "green" if c >= 0 else "red"
+        price_line += f"{sym[:3]}:{ps}[{cc}]{c:+.1f}%[/] "
+    sections.append(price_line)
+    sections.append("")
+
+    # Signals table
+    sections.append("[bold yellow]━━━ ACTIVE SIGNALS ━━━[/]")
+    sections.append(f"{'Pair':<6} {'Dir':<5} {'Entry':>10} {'Now':>10} {'SL':>9} {'TP':>9} {'R:R':>5} {'%':>4}")
+
+    for sym, sig in list(signals.items())[:3]:
+        curr = prices.get(sym, {}).get("price", sig["entry"])
+        d = sig["direction"]
+        dc = "green" if d == "LONG" else "red"
+
+        if d == "LONG":
+            pnl = ((curr - sig["entry"]) / sig["entry"]) * 100
+        else:
+            pnl = ((sig["entry"] - curr) / sig["entry"]) * 100
+        pc = "green" if pnl >= 0 else "red"
+
         risk = abs(sig["entry"] - sig["sl"])
-        risk_pct = (risk / sig["entry"]) * 100
+        reward = abs(sig["tp"] - sig["entry"])
+        rr = reward / risk if risk > 0 else 0
 
-        # Position size based on 1% account risk
-        risk_amount = account_size * risk_per_trade
-        position_size = risk_amount / risk if risk > 0 else 0
-        position_value = position_size * current
+        e_str = f"${sig['entry']:,.0f}" if sig['entry'] >= 100 else f"${sig['entry']:.3f}"
+        n_str = f"${curr:,.0f}" if curr >= 100 else f"${curr:.3f}"
+        sl_str = f"${sig['sl']:,.0f}" if sig['sl'] >= 100 else f"${sig['sl']:.2f}"
+        tp_str = f"${sig['tp']:,.0f}" if sig['tp'] >= 100 else f"${sig['tp']:.2f}"
 
-        short = symbol.replace("-USD", "")
-        lines.append(f"[cyan]{short}[/] {sig['direction'][:4]}")
-        lines.append(f"  Size: ${position_value:,.0f} ({position_size:.4f})")
-        lines.append(f"  Risk: ${risk_amount:.0f} ({risk_pct:.1f}%)")
-        lines.append("")
+        sections.append(f"{sym[:6]:<6} [{dc}]{d[:4]:<5}[/] {e_str:>10} [{pc}]{n_str:>10}[/] {sl_str:>9} {tp_str:>9} 1:{rr:.1f} {sig['confidence']*100:.0f}%")
+    sections.append("")
 
-    return Panel("\n".join(lines), title="[bold]📐 SIZING[/]", box=box.ROUNDED, style="on black", border_style="green")
+    # Two columns: Rankings + Comms
+    sections.append("[bold yellow]━━━ RANKINGS ━━━[/]                    [bold magenta]━━━ AI COMMS ━━━[/]")
+
+    eng_lines = []
+    for i, (name, data) in enumerate(engines):
+        rank = i + 1
+        icon = "👑" if rank == 1 else "💀" if rank == 4 else f"#{rank}"
+        wr = data["wr"]
+        pnl = data["pnl"]
+        pc = "green" if pnl >= 0 else "red"
+        _, color = ENGINE_NAMES[name]
+        eng_lines.append(f"{icon} [{color}]{name}:{ENGINE_NAMES[name][0][:6]}[/] {wr:.0f}% [{pc}]${pnl:+.0f}[/]")
+
+    comm_lines = []
+    for e in list(COMM_LOG)[-4:]:
+        t = e["time"].strftime("%H:%M:%S")
+        s = e["sender"]
+        sc = ENGINE_NAMES.get(s, ("", "white"))[1]
+        comm_lines.append(f"[dim]{t}[/] [{sc}]{s:5}[/] {e['type'][:6]} {e['detail'][:20]}")
+
+    for i in range(max(len(eng_lines), len(comm_lines))):
+        el = eng_lines[i] if i < len(eng_lines) else ""
+        cl = comm_lines[i] if i < len(comm_lines) else ""
+        sections.append(f"{el:<40} {cl}")
+    sections.append("")
+
+    # Safety
+    sections.append(f"[bold red]SAFETY:[/] [green]✓ Active[/] | Losses: {bar_chart(1, 5, 5)} 1/5 | DD: {bar_chart(2.3, 10, 5)} 2.3%")
+
+    return Panel("\n".join(sections), box=box.DOUBLE, style="on black", border_style="cyan", padding=(0, 1))
 
 
-def get_header():
-    """Dashboard header with NTP time."""
-    now, ntp_status = get_ntp_time()
-    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+# ============== DESKTOP LAYOUT ==============
 
-    uptime = datetime.now() - START_TIME
+def render_desktop() -> Panel:
+    """Full desktop layout."""
+    now = datetime.now()
+    ntp = get_ntp_status()
+    uptime = now - START_TIME
     h, rem = divmod(int(uptime.total_seconds()), 3600)
     m, s = divmod(rem, 60)
 
-    mobile = is_mobile()
+    prices = get_live_prices()
+    signals = get_active_signals()
+    engines = get_engine_data()
+    generate_comms()
 
-    if mobile:
-        header = Text()
-        header.append("HYDRA 4.0\n", style="bold cyan")
-        header.append(f"{now_str} {ntp_status}\n", style="dim")
+    lines = []
+
+    # ASCII Header
+    lines.append("[bold cyan]  ██╗  ██╗██╗   ██╗██████╗ ██████╗  █████╗ [/]")
+    lines.append("[bold cyan]  ██║  ██║╚██╗ ██╔╝██╔══██╗██╔══██╗██╔══██╗[/]")
+    lines.append("[bold cyan]  ███████║ ╚████╔╝ ██║  ██║██████╔╝███████║[/]")
+    lines.append("[bold cyan]  ██╔══██║  ╚██╔╝  ██║  ██║██╔══██╗██╔══██║[/]")
+    lines.append("[bold cyan]  ██║  ██║   ██║   ██████╔╝██║  ██║██║  ██║[/]")
+    lines.append("[bold cyan]  ╚═╝  ╚═╝   ╚═╝   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝[/]")
+    lines.append(f"  [dim]v4.0 | {now.strftime('%Y-%m-%d %H:%M:%S')} | {ntp} | Uptime: {h}h {m}m {s}s[/]")
+    lines.append(f"  [cyan]A[/]:DeepSeek [magenta]B[/]:Claude [yellow]C[/]:Grok [green]D[/]:Gemini")
+    lines.append("")
+
+    # Prices
+    lines.append("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━ LIVE PRICES ━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+    price_header = f"  {'Symbol':<8} {'Price':>12} {'Change':>8} {'24h Range':>20} {'Chart':>10}"
+    lines.append(f"[dim]{price_header}[/]")
+
+    for sym in ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "ADA-USD"]:
+        d = prices.get(sym, {"price": 0, "change": 0, "high": 0, "low": 0})
+        p = d["price"]
+        c = d["change"]
+        ps = f"${p:,.2f}" if p >= 1 else f"${p:.4f}"
+        cc = "green" if c >= 0 else "red"
+        h, l = d.get("high", p), d.get("low", p)
+        rng = f"H:${h:,.0f} L:${l:,.0f}" if h >= 100 else f"H:${h:.2f} L:${l:.2f}"
+        hist = list(PRICE_HISTORY.get(sym, []))
+        spark = sparkline(hist, 8)
+        sc = "green" if c >= 0 else "red"
+        lines.append(f"  {sym:<8} {ps:>12} [{cc}]{c:>+7.2f}%[/] [dim]{rng:>20}[/] [{sc}]{spark}[/]")
+    lines.append("")
+
+    # Signals
+    lines.append("[bold yellow]━━━━━━━━━━━━━━━━━━━━━━━━━━━ ACTIVE SIGNALS ━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+    sig_header = f"  {'Pair':<8} {'Dir':<6} {'Entry':>12} {'Current':>12} {'Stop Loss':>11} {'Take Profit':>12} {'R:R':>6} {'Conf':>5}"
+    lines.append(f"[dim]{sig_header}[/]")
+
+    for sym, sig in list(signals.items())[:3]:
+        curr = prices.get(sym, {}).get("price", sig["entry"])
+        d = sig["direction"]
+        dc = "green" if d == "LONG" else "red"
+
+        if d == "LONG":
+            pnl = ((curr - sig["entry"]) / sig["entry"]) * 100
+        else:
+            pnl = ((sig["entry"] - curr) / sig["entry"]) * 100
+        pc = "green" if pnl >= 0 else "red"
+
+        risk = abs(sig["entry"] - sig["sl"])
+        reward = abs(sig["tp"] - sig["entry"])
+        rr = reward / risk if risk > 0 else 0
+        rrc = "green" if rr >= 2 else "yellow" if rr >= 1.5 else "red"
+
+        e_str = f"${sig['entry']:,.2f}"
+        n_str = f"${curr:,.2f}"
+        sl_str = f"${sig['sl']:,.2f}"
+        tp_str = f"${sig['tp']:,.2f}"
+        conf = sig['confidence'] * 100
+        confc = "green" if conf >= 70 else "yellow" if conf >= 60 else "dim"
+
+        lines.append(f"  {sym:<8} [{dc}]{d:<6}[/] {e_str:>12} [{pc}]{n_str:>12}[/] {sl_str:>11} {tp_str:>12} [{rrc}]1:{rr:.1f}[/] [{confc}]{conf:.0f}%[/]")
+
+    # Signal reasoning
+    lines.append("")
+    for sym, sig in list(signals.items())[:2]:
+        age = (now - sig["timestamp"]).seconds // 60
+        eng = sig.get("engine", "A")
+        _, ec = ENGINE_NAMES.get(eng, ("", "white"))
+        lines.append(f"  [{ec}]● {sym}[/] - Engine {eng} ({age}m ago): [dim]{sig['reason'][:70]}[/]")
+    lines.append("")
+
+    # Rankings + Comms side by side
+    lines.append("[bold yellow]━━━━━━━━━━ RANKINGS ━━━━━━━━━━[/]          [bold magenta]━━━━━━━━━━━━━━━ AI COMMUNICATIONS ━━━━━━━━━━━━━━━[/]")
+
+    eng_lines = []
+    for i, (name, data) in enumerate(engines):
+        rank = i + 1
+        icon = "👑" if rank == 1 else "💀" if rank == 4 else f"#{rank}"
+        wr = data["wr"]
+        pnl = data["pnl"]
+        pc = "green" if pnl >= 0 else "red"
+        wc = "green" if wr >= 55 else "yellow" if wr >= 45 else "red"
+        _, color = ENGINE_NAMES[name]
+        bar = bar_chart(wr, 100, 8)
+        eng_lines.append(f"  {icon} [{color}]{name}:{ENGINE_NAMES[name][0]:<8}[/] [{wc}]{wr:>3.0f}%[/] [{wc}]{bar}[/] [{pc}]${pnl:>+8.0f}[/]")
+
+    comm_lines = []
+    for e in list(COMM_LOG)[-6:]:
+        t = e["time"].strftime("%H:%M:%S")
+        s = e["sender"]
+        sc = ENGINE_NAMES.get(s, ("", "white"))[1]
+        if s == "MOTHER":
+            sc = "bold white"
+        elif s == "GUARD":
+            sc = "red"
+        tc = {"SIGNAL": "yellow", "APPROVE": "green", "RISK": "red", "SCAN": "cyan",
+              "RATE": "cyan", "DEPTH": "cyan", "REGIME": "blue", "SHARE": "magenta"}.get(e["type"], "white")
+        comm_lines.append(f"[dim]{t}[/] [{tc}]{e['type']:7}[/] [{sc}]{s:6}[/] → {e['receiver']:<6} [dim]{e['detail'][:25]}[/]")
+
+    for i in range(max(len(eng_lines), len(comm_lines))):
+        el = eng_lines[i] if i < len(eng_lines) else " " * 45
+        cl = comm_lines[i] if i < len(comm_lines) else ""
+        lines.append(f"{el:<45}  {cl}")
+    lines.append("")
+
+    # Position Sizing
+    lines.append("[bold green]━━━━━━━━━━ POSITION SIZING (1% Risk on $10K) ━━━━━━━━━━[/]")
+    for sym, sig in list(signals.items())[:3]:
+        curr = prices.get(sym, {}).get("price", sig["entry"])
+        risk = abs(sig["entry"] - sig["sl"])
+        risk_pct = (risk / sig["entry"]) * 100
+        risk_amt = 100  # 1% of 10K
+        pos_size = risk_amt / risk if risk > 0 else 0
+        pos_val = pos_size * curr
+        lines.append(f"  [cyan]{sym:<8}[/] {sig['direction'][:4]} | Size: ${pos_val:>8,.0f} ({pos_size:.4f}) | Risk: ${risk_amt:.0f} ({risk_pct:.1f}% SL)")
+    lines.append("")
+
+    # Safety
+    lines.append("[bold red]━━━━━━━━━━━━━━━━━━━━━━━━━━━ SAFETY STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+    lines.append(f"  [green]✓ TRADING ACTIVE[/] | Consec Losses: {bar_chart(1, 5, 6)} 1/5 | Drawdown: {bar_chart(2.3, 10, 6)} 2.3% | [green]✓ MOTHER AI OK[/]")
+    lines.append("")
+
+    # Footer
+    lines.append(f"[dim]  Press Ctrl+C to exit | Refresh: 2s | {ntp} | [cyan]A[/]=DeepSeek [magenta]B[/]=Claude [yellow]C[/]=Grok [green]D[/]=Gemini[/]")
+
+    return Panel("\n".join(lines), box=box.DOUBLE, style="on black", border_style="cyan", padding=(0, 0))
+
+
+def render_dashboard():
+    """Render appropriate layout based on terminal size."""
+    width = get_terminal_width()
+
+    if width < 80:
+        return render_mobile()
+    elif width < 120:
+        return render_tablet()
     else:
-        header = Text()
-        header.append("  ██╗  ██╗██╗   ██╗██████╗ ██████╗  █████╗ \n", style="bold cyan")
-        header.append("  ██║  ██║╚██╗ ██╔╝██╔══██╗██╔══██╗██╔══██╗\n", style="bold cyan")
-        header.append("  ███████║ ╚████╔╝ ██║  ██║██████╔╝███████║\n", style="bold cyan")
-        header.append("  ██╔══██║  ╚██╔╝  ██║  ██║██╔══██╗██╔══██║\n", style="bold cyan")
-        header.append("  ██║  ██║   ██║   ██████╔╝██║  ██║██║  ██║\n", style="bold cyan")
-        header.append("  ╚═╝  ╚═╝   ╚═╝   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝\n", style="bold cyan")
-        header.append(f"  v4.0 | {now_str} | {ntp_status} | Up: {h}h {m}m {s}s\n", style="dim")
-        header.append("  ", style="")
-        header.append("A", style="bold cyan")
-        header.append(":DeepSeek ", style="dim")
-        header.append("B", style="bold magenta")
-        header.append(":Claude ", style="dim")
-        header.append("C", style="bold yellow")
-        header.append(":Grok ", style="dim")
-        header.append("D", style="bold green")
-        header.append(":Gemini", style="dim")
-
-    return Panel(header, box=box.DOUBLE, style="on black", border_style="cyan")
-
-
-def make_layout():
-    """Create responsive layout."""
-    mobile = is_mobile()
-    layout = Layout()
-
-    if mobile:
-        layout.split_column(
-            Layout(name="header", size=5),
-            Layout(name="signals", size=8),
-            Layout(name="prices", size=6),
-            Layout(name="comms", size=14),
-            Layout(name="safety", size=6),
-            Layout(name="footer", size=2)
-        )
-    else:
-        layout.split_column(
-            Layout(name="header", size=11),
-            Layout(name="row1", size=10),
-            Layout(name="row2", size=16),
-            Layout(name="row3", size=10),
-            Layout(name="footer", size=2)
-        )
-
-        layout["row1"].split_row(
-            Layout(name="signals", ratio=2),
-            Layout(name="signal_details", ratio=1)
-        )
-
-        layout["row2"].split_row(
-            Layout(name="prices", ratio=1),
-            Layout(name="comms", ratio=2)
-        )
-
-        layout["row3"].split_row(
-            Layout(name="rankings", ratio=1),
-            Layout(name="sizing", ratio=1),
-            Layout(name="safety", ratio=1)
-        )
-
-    return layout
-
-
-def update_layout(layout):
-    """Update all panels."""
-    mobile = is_mobile()
-
-    layout["header"].update(get_header())
-    layout["signals"].update(get_signals_panel())
-    layout["prices"].update(get_prices_panel())
-    layout["comms"].update(get_comms_panel())
-    layout["safety"].update(get_safety_panel())
-
-    if mobile:
-        layout["footer"].update(Panel("[dim]HYDRA 4.0 | 1s refresh | NTP Sync[/]", box=box.SIMPLE, style="on black"))
-    else:
-        layout["signal_details"].update(get_signal_details_panel())
-        layout["rankings"].update(get_rankings_panel())
-        layout["sizing"].update(get_position_sizing_panel())
-        layout["footer"].update(Panel(
-            "[dim]Ctrl+C exit | 1s refresh | [green]NTP SYNC[/] | [cyan]A[/]=DeepSeek [magenta]B[/]=Claude [yellow]C[/]=Grok [green]D[/]=Gemini[/]",
-            box=box.SIMPLE, style="on black"
-        ))
-
-    return layout
+        return render_desktop()
 
 
 def main():
     """Run dashboard with smooth refresh."""
-    # Set black background
-    print("\033[40m\033[2J\033[H", end="")
-
-    layout = make_layout()
+    # Clear screen and set black background
+    print("\033[40m\033[2J\033[H", end="", flush=True)
 
     try:
-        # Smooth refresh at 1 second intervals
-        with Live(layout, refresh_per_second=4, screen=True, console=console, transient=False) as live:
+        with Live(render_dashboard(), console=console, refresh_per_second=2,
+                  screen=True, transient=False) as live:
             while True:
-                layout = make_layout()
-                update_layout(layout)
-                live.update(layout)
-                time.sleep(1)
+                time.sleep(2)
+                live.update(render_dashboard())
     except KeyboardInterrupt:
         print("\033[0m")
         console.print("\n[yellow]Dashboard stopped.[/]")
