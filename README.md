@@ -1,104 +1,197 @@
-# Trading AI - FTMO Crypto Signal Generator
+# HYDRA 3.0 - Multi-Agent AI Trading System
 
-FTMO-focused crypto trading AI system with LSTM + Transformer models, confidence calibration, Telegram runtime, and auto-learning capabilities.
+A multi-agent cryptocurrency trading system with 4 competing AI engines (DeepSeek, Claude, Grok, Gemini) that generate, vote on, and evolve trading strategies through tournament-based competition.
 
-## 🚀 Quick Start
+## Architecture
 
-```bash
-# Initial setup
-make setup        # Install deps & pre-commit hooks
-
-# Development
-make fmt          # Format code
-make lint         # Run linting
-make test         # Run all tests
-make smoke        # Run 5-min smoke backtest
-
-# Training
-make train COIN=BTC EPOCHS=10    # Train LSTM for BTC
-make rl STEPS=1000               # Train RL model
-
-# Runtime
-make run-bot      # Start runtime loop
+```
+                    HYDRA 3.0 RUNTIME
+    ┌─────────────────────────────────────────────────┐
+    │                                                 │
+    │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+    │  │ Engine A │ │ Engine B │ │ Engine C │ │ Engine D │
+    │  │ DeepSeek │ │  Claude  │ │   Grok   │ │  Gemini  │
+    │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘
+    │       │            │            │            │
+    │       └────────────┴─────┬──────┴────────────┘
+    │                          │
+    │                          ▼
+    │  ┌─────────────────────────────────────────────┐
+    │  │         STRATEGY MEMORY (80/20)             │
+    │  │       80% Exploit / 20% Explore             │
+    │  └─────────────────────────────────────────────┘
+    │                          │
+    │                          ▼
+    │  ┌─────────────────────────────────────────────┐
+    │  │           CONSENSUS ENGINE                   │
+    │  │     Weight-aware voting + Tiebreaker        │
+    │  └─────────────────────────────────────────────┘
+    │                          │
+    │                          ▼
+    │  ┌─────────────────────────────────────────────┐
+    │  │         TOURNAMENT SYSTEM                    │
+    │  │     Rankings → Weights (40/30/20/10%)       │
+    │  └─────────────────────────────────────────────┘
+    │                          │
+    │                          ▼
+    │  ┌─────────────────────────────────────────────┐
+    │  │           GUARDIAN (9 Rules)                │
+    │  │   Daily 2% | Max DD 6% | Emergency 3%       │
+    │  └─────────────────────────────────────────────┘
+    │                          │
+    │                          ▼
+    │  ┌─────────────────────────────────────────────┐
+    │  │             PAPER TRADER                    │
+    │  │    Simulates trades, tracks P&L             │
+    │  └─────────────────────────────────────────────┘
+    │                                                 │
+    └─────────────────────────────────────────────────┘
 ```
 
-## 📋 Project Structure
+## Features
+
+### Multi-Agent Competition
+- **4 AI Engines**: DeepSeek, Claude, Grok, Gemini
+- **Tournament System**: Performance-based weight allocation (40/30/20/10%)
+- **Consensus Voting**: Weighted votes with confidence tiebreaker
+- **Strategy Evolution**: Genetic breeding of winning strategies
+
+### Strategy Memory
+- **80/20 Exploit/Explore**: Reuse winning strategies 80% of the time
+- **Performance Scoring**: `win_rate * sqrt(trades) * (1 + avg_rr/10)`
+- **Persistent Storage**: JSON database per engine/asset/regime
+
+### Risk Management (Guardian)
+| Rule | Limit | Action |
+|------|-------|--------|
+| Daily Loss | 2% | Stop trading |
+| Max Drawdown | 6% | Survival mode (50% size) |
+| Emergency | 3% daily | 24hr shutdown |
+| Risk/Trade | 1% max | Auto-adjust size |
+| Max Positions | 3 | Block new trades |
+
+### Monitoring Stack
+- **Grafana**: Dashboards at http://server:3000
+- **Prometheus**: Metrics at http://server:9090
+- **Loki**: Log aggregation for agent conversations
+- **Alertmanager**: Risk alerts and notifications
+
+## Quick Start
+
+```bash
+# Clone and setup
+git clone https://github.com/imnuman/crpbot.git
+cd crpbot
+make setup
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys (DeepSeek, Claude, Grok, Gemini, Coinbase)
+
+# Start HYDRA runtime (paper trading)
+docker compose up -d
+
+# Or run directly
+uv run python apps/runtime/hydra_runtime.py --paper --assets BTC-USD ETH-USD SOL-USD
+```
+
+## Configuration
+
+### Required API Keys
+```bash
+# .env file
+DEEPSEEK_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+XAI_API_KEY=xai-...
+GEMINI_API_KEY=AIza...
+COINBASE_API_KEY_NAME=organizations/.../apiKeys/...
+COINBASE_API_PRIVATE_KEY=-----BEGIN EC PRIVATE KEY-----...
+```
+
+### Data Source
+- **Primary**: Coinbase Advanced Trade API (OHLCV data)
+- **Market Context**: CoinGecko API (sentiment, market cap)
+
+## Project Structure
 
 ```
 crpbot/
 ├── apps/
-│   ├── trainer/          # LSTM/Transformer/RL training
-│   ├── runtime/          # VPS runtime: scanning + signals
-│   └── mt5_bridge/       # FTMO/MT5 connectors
+│   ├── runtime/
+│   │   └── hydra_runtime.py      # Main HYDRA orchestrator
+│   └── dashboard_web/            # Web dashboard
 ├── libs/
-│   ├── features/         # OHLCV, ATR, spread, session features
-│   ├── rl_env/           # PPO Gym env with execution model
-│   └── synth/            # GAN data utilities
-├── infra/
-│   ├── docker/           # Dockerfiles
-│   ├── devcontainer/     # VS Code/Cursor devcontainer
-│   ├── systemd/          # Service units for VPS
-│   └── scripts/          # Deployment & maintenance scripts
-├── data/                 # Data (DVC tracked)
-├── models/               # Model weights (DVC tracked)
-└── tests/                # Unit + smoke + e2e tests
+│   ├── hydra/
+│   │   ├── engines/              # 4 AI engine implementations
+│   │   ├── consensus.py          # Voting system
+│   │   ├── guardian.py           # Risk management
+│   │   ├── strategy_memory.py    # Strategy database
+│   │   ├── tournament_manager.py # Tournament system
+│   │   ├── paper_trader.py       # Trade simulation
+│   │   └── regime_detector.py    # Market regime classification
+│   ├── data/
+│   │   └── coinbase.py           # Market data client
+│   └── monitoring/
+│       └── metrics.py            # Prometheus metrics
+├── monitoring/
+│   ├── docker-compose.yml        # Grafana/Prometheus/Loki
+│   └── grafana/dashboards/       # Pre-built dashboards
+└── data/hydra/
+    └── strategy_database.json    # Persistent strategy memory
 ```
 
-## 🔧 Configuration
+## Monitoring
 
-1. Copy `.env.example` to `.env`
-2. Fill in your API keys and credentials
-3. Configure database URL (PostgreSQL or SQLite for dev)
+### Grafana Dashboards
+- **Command Center**: System status, P&L, win rate
+- **Engine Analytics**: Per-engine performance comparison
+- **Risk Dashboard**: Drawdown, position sizing, Guardian status
+- **Regime Analytics**: Market state classification
 
-See `.env.example` for all available options.
+### Log Queries (Loki)
+```
+{container="hydra-runtime"}                    # All logs
+{container="hydra-runtime"} |= "Gladiator A"   # DeepSeek only
+{container="hydra-runtime"} |= "votes"         # Vote decisions
+{container="hydra-runtime"} |= "CONSENSUS"     # Trade signals
+```
 
-## 📊 Model Training
+## Development
 
 ```bash
-# LSTM per coin
-python apps/trainer/main.py --task lstm --coin BTC --epochs 10
-
-# Transformer
-python apps/trainer/main.py --task transformer --epochs 8
-
-# RL PPO
-python apps/trainer/main.py --task ppo --steps 8_000_000 --exec ftmo
+make fmt          # Format code (ruff)
+make lint         # Lint (ruff + mypy)
+make test         # Run tests
 ```
 
-## 🧪 Testing
+## Signal Flow
 
-- **Unit tests**: `make test`
-- **Smoke tests**: `make smoke` (5-minute backtest)
-- **CI**: All tests run on push/PR via GitHub Actions
+1. **Market Data** - Fetch OHLCV from Coinbase
+2. **Regime Detection** - Classify as TRENDING/RANGING/CHOPPY
+3. **Strategy Selection** - 80% exploit memory / 20% explore new
+4. **Strategy Generation** - Each engine proposes a strategy
+5. **Voting Round** - All engines vote on all strategies
+6. **Consensus** - Weight-aware voting with confidence tiebreaker
+7. **Guardian Check** - Validate against 9 sacred rules
+8. **Paper Trade** - Execute simulated trade
+9. **Performance Update** - Record outcome, update rankings
+10. **Strategy Evolution** - Top strategies breed, losers die
 
-## 📝 Development Workflow
+## Position Sizing
 
-1. Create feature branch: `git checkout -b feat/feature-name`
-2. Make changes
-3. Pre-commit hooks run automatically (format, lint, type-check)
-4. Run tests: `make test`
-5. Push and create PR
-6. PR must pass CI checks before merge
+| Consensus | Engines Agree | Size Modifier |
+|-----------|---------------|---------------|
+| UNANIMOUS | 4/4 | 100% |
+| STRONG | 3/4 | 75% |
+| WEAK | 2/4 | 50% |
+| NO_TRADE | <2/4 | 0% |
 
-## 🚢 Deployment
+## License
 
-See `WORK_PLAN.md` for detailed deployment instructions and timeline.
+Private - Proprietary trading system
 
-## 📚 Documentation
+---
 
-- `WORK_PLAN.md` - Complete development plan and timeline
-- `docs/WORKFLOW_SYNC_SETUP.md` - **Workflow sync setup (Cursor IDE, Claude AI, GitHub)**
-- `docs/GITHUB_TOKEN_SETUP.md` - Guide for setting up GitHub tokens and secrets
-- `docs/PHASE1_TESTING.md` - Phase 1 testing checklist
-
-## ⚠️ Safety Features
-
-- **Kill-switch**: Instant halt via env var or Telegram command
-- **Rate limiting**: Max signals per hour per tier
-- **FTMO guardrails**: Daily/total loss limits enforced
-- **Model rollback**: Quick rollback to previous version if issues
-
-## 📄 License
-
-Private - Trading system for FTMO challenges
-
+**Status**: Production (Paper Trading)
+**Version**: HYDRA 3.0
+**Last Updated**: December 2024
