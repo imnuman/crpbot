@@ -47,6 +47,14 @@ class StrategyMemory:
     MIN_STRATEGIES_FOR_EXPLOIT = 10  # Need at least 10 to start exploiting
     EXPLOIT_RATIO = 0.8  # 80% exploit, 20% explore
 
+    # Edge Decay Detection thresholds
+    DECAY_LOOKBACK_TRADES = 10  # Check last N trades for decay
+    DECAY_WIN_RATE_THRESHOLD = 0.45  # Skip if recent WR < 45%
+
+    # Regime-Strategy Validation thresholds
+    MIN_REGIME_TRADES = 3  # Need at least 3 trades in regime to validate
+    REGIME_WIN_RATE_THRESHOLD = 0.50  # Skip if regime WR < 50%
+
     def __init__(self, data_dir: Optional[Path] = None):
         if data_dir is None:
             from .config import HYDRA_DATA_DIR
@@ -380,6 +388,262 @@ class StrategyMemory:
             engine: self.get_engine_summary(engine)
             for engine in ["A", "B", "C", "D"]
         }
+
+    # ==================== EDGE DECAY DETECTION ====================
+
+    def check_edge_decay(self, strategy: Dict) -> Dict:
+        """
+        Check if a strategy's edge has decayed (recent performance poor).
+
+        A strategy is considered "decayed" if its recent win rate is
+        significantly below its historical performance.
+
+        Args:
+            strategy: Strategy dict with trade history
+
+        Returns:
+            {
+                "is_decayed": bool,
+                "recent_win_rate": float,
+                "historical_win_rate": float,
+                "recent_trades": int,
+                "reason": str
+            }
+        """
+        result = {
+            "is_decayed": False,
+            "recent_win_rate": 0.0,
+            "historical_win_rate": strategy.get("win_rate", 0.5),
+            "recent_trades": 0,
+            "reason": ""
+        }
+
+        # Get trade history
+        trades = strategy.get("trades", 0)
+        recent_results = strategy.get("recent_results", [])
+
+        # If not enough trades for decay check, assume healthy
+        if trades < self.DECAY_LOOKBACK_TRADES:
+            result["reason"] = f"Insufficient trades ({trades} < {self.DECAY_LOOKBACK_TRADES})"
+            return result
+
+        # Calculate recent win rate from last N trades
+        recent_trades = recent_results[-self.DECAY_LOOKBACK_TRADES:]
+        result["recent_trades"] = len(recent_trades)
+
+        if not recent_trades:
+            # No recent trade log, use overall stats as approximation
+            # Estimate from wins/losses ratio
+            wins = strategy.get("wins", 0)
+            losses = strategy.get("losses", 0)
+            total = wins + losses
+            if total >= self.DECAY_LOOKBACK_TRADES:
+                # If we have enough total trades but no recent log,
+                # check if overall performance is declining
+                overall_wr = wins / total if total > 0 else 0.5
+                result["recent_win_rate"] = overall_wr
+                if overall_wr < self.DECAY_WIN_RATE_THRESHOLD:
+                    result["is_decayed"] = True
+                    result["reason"] = f"Overall WR {overall_wr:.1%} < {self.DECAY_WIN_RATE_THRESHOLD:.1%}"
+            return result
+
+        # Count wins in recent trades
+        recent_wins = sum(1 for t in recent_trades if t == "win")
+        recent_wr = recent_wins / len(recent_trades) if recent_trades else 0.5
+        result["recent_win_rate"] = recent_wr
+
+        # Check if recent performance is below threshold
+        if recent_wr < self.DECAY_WIN_RATE_THRESHOLD:
+            result["is_decayed"] = True
+            result["reason"] = f"Recent WR {recent_wr:.1%} < {self.DECAY_WIN_RATE_THRESHOLD:.1%} (last {len(recent_trades)} trades)"
+
+        return result
+
+    # ==================== REGIME-STRATEGY VALIDATION ====================
+
+    def validate_regime_fit(self, strategy: Dict, current_regime: str) -> Dict:
+        """
+        Check if a strategy performs well in the current regime.
+
+        Args:
+            strategy: Strategy dict
+            current_regime: Current market regime (TRENDING_UP, TRENDING_DOWN, etc.)
+
+        Returns:
+            {
+                "is_valid": bool,
+                "regime_win_rate": float,
+                "regime_trades": int,
+                "reason": str
+            }
+        """
+        result = {
+            "is_valid": True,  # Default to valid (optimistic)
+            "regime_win_rate": 0.0,
+            "regime_trades": 0,
+            "reason": ""
+        }
+
+        # Get per-regime performance stats
+        regime_stats = strategy.get("regime_performance", {})
+
+        # If no regime-specific data, strategy is untested in this regime
+        if current_regime not in regime_stats:
+            result["reason"] = f"No data for regime {current_regime} - allowing exploration"
+            return result
+
+        regime_data = regime_stats[current_regime]
+        trades = regime_data.get("trades", 0)
+        wins = regime_data.get("wins", 0)
+
+        result["regime_trades"] = trades
+
+        # If not enough trades in this regime, allow exploration
+        if trades < self.MIN_REGIME_TRADES:
+            result["reason"] = f"Insufficient trades in {current_regime} ({trades} < {self.MIN_REGIME_TRADES})"
+            return result
+
+        # Calculate win rate in this regime
+        regime_wr = wins / trades if trades > 0 else 0.5
+        result["regime_win_rate"] = regime_wr
+
+        # Check if performance in this regime is acceptable
+        if regime_wr < self.REGIME_WIN_RATE_THRESHOLD:
+            result["is_valid"] = False
+            result["reason"] = f"Poor performance in {current_regime}: {regime_wr:.1%} < {self.REGIME_WIN_RATE_THRESHOLD:.1%}"
+
+        return result
+
+    def record_trade_result(
+        self,
+        engine: str,
+        asset: str,
+        regime: str,
+        strategy_id: str,
+        outcome: str  # "win" or "loss"
+    ) -> bool:
+        """
+        Record a trade result and update strategy stats.
+
+        This updates:
+        - recent_results list (for decay detection)
+        - regime_performance dict (for regime validation)
+
+        Args:
+            engine: Engine name (A, B, C, D)
+            asset: Asset symbol
+            regime: Market regime when trade was taken
+            strategy_id: Strategy ID
+            outcome: "win" or "loss"
+
+        Returns:
+            True if recorded successfully
+        """
+        if engine not in self.strategies:
+            return False
+
+        key = self._get_key(asset, regime)
+        if key not in self.strategies[engine]:
+            return False
+
+        # Find the strategy
+        for strategy in self.strategies[engine][key]:
+            if strategy.get("strategy_id") == strategy_id:
+                # Update recent results (for edge decay detection)
+                if "recent_results" not in strategy:
+                    strategy["recent_results"] = []
+                strategy["recent_results"].append(outcome)
+                # Keep only last 20 results
+                strategy["recent_results"] = strategy["recent_results"][-20:]
+
+                # Update regime-specific performance
+                if "regime_performance" not in strategy:
+                    strategy["regime_performance"] = {}
+                if regime not in strategy["regime_performance"]:
+                    strategy["regime_performance"][regime] = {"trades": 0, "wins": 0}
+
+                strategy["regime_performance"][regime]["trades"] += 1
+                if outcome == "win":
+                    strategy["regime_performance"][regime]["wins"] += 1
+
+                self._save_database()
+                return True
+
+        return False
+
+    def select_strategy_with_validation(
+        self,
+        engine: str,
+        asset: str,
+        regime: str,
+        explore_probability: float = 0.2
+    ) -> Optional[Dict]:
+        """
+        Select a strategy with decay and regime validation.
+
+        This is an enhanced version of select_strategy that:
+        1. Checks for edge decay (skips decaying strategies)
+        2. Validates regime fit (skips strategies that don't work in current regime)
+
+        Args:
+            engine: Engine name
+            asset: Asset symbol
+            regime: Current market regime
+            explore_probability: Chance to explore (generate new)
+
+        Returns:
+            Strategy dict if valid one found, None if should explore
+        """
+        import random
+
+        if not self.should_exploit(engine, asset, regime):
+            logger.debug(f"[StrategyMemory] {engine}/{asset}/{regime}: Must explore (insufficient strategies)")
+            return None  # Must explore
+
+        if random.random() < explore_probability:
+            logger.debug(f"[StrategyMemory] {engine}/{asset}/{regime}: Exploring (random)")
+            return None  # Explore
+
+        # Get top strategies
+        strategies = self.get_top_strategies(engine, asset, regime, limit=20)
+        if not strategies:
+            return None
+
+        # Filter out decayed and regime-unfit strategies
+        valid_strategies = []
+        for s in strategies:
+            # Check decay
+            decay_check = self.check_edge_decay(s)
+            if decay_check["is_decayed"]:
+                logger.info(f"[StrategyMemory] Skipping {s.get('strategy_id')}: {decay_check['reason']}")
+                continue
+
+            # Check regime fit
+            regime_check = self.validate_regime_fit(s, regime)
+            if not regime_check["is_valid"]:
+                logger.info(f"[StrategyMemory] Skipping {s.get('strategy_id')}: {regime_check['reason']}")
+                continue
+
+            valid_strategies.append(s)
+
+        if not valid_strategies:
+            logger.info(f"[StrategyMemory] {engine}/{asset}/{regime}: All strategies filtered out - exploring")
+            return None  # All filtered out, must explore
+
+        # Weight by score and select
+        total_score = sum(s.get("score", 0.1) for s in valid_strategies)
+        if total_score == 0:
+            return random.choice(valid_strategies)
+
+        r = random.random() * total_score
+        cumulative = 0
+        for s in valid_strategies:
+            cumulative += s.get("score", 0.1)
+            if r <= cumulative:
+                logger.info(f"[StrategyMemory] Selected {s.get('strategy_id')} (score: {s.get('score', 0):.2f})")
+                return s
+
+        return valid_strategies[0]
 
 
 # ==================== SINGLETON PATTERN ====================
