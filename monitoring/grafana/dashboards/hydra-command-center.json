@@ -157,7 +157,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
-          "unit": "currencyUSD",
+          "unit": "locale",
           "decimals": 2
         }
       },
@@ -165,7 +165,7 @@
       "id": 11,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_asset_price_usd{asset=\"BTC-USD\"}", "legendFormat": "BTC", "refId": "A" }],
-      "title": "BTC-USD",
+      "title": "$ BTC-USD",
       "type": "stat"
     },
     {
@@ -174,7 +174,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
-          "unit": "currencyUSD",
+          "unit": "locale",
           "decimals": 2
         }
       },
@@ -182,7 +182,7 @@
       "id": 12,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_asset_price_usd{asset=\"ETH-USD\"}", "legendFormat": "ETH", "refId": "A" }],
-      "title": "ETH-USD",
+      "title": "$ ETH-USD",
       "type": "stat"
     },
     {
@@ -191,7 +191,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
-          "unit": "currencyUSD",
+          "unit": "locale",
           "decimals": 2
         }
       },
@@ -199,7 +199,7 @@
       "id": 13,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_asset_price_usd{asset=\"SOL-USD\"}", "legendFormat": "SOL", "refId": "A" }],
-      "title": "SOL-USD",
+      "title": "$ SOL-USD",
       "type": "stat"
     },
     {
