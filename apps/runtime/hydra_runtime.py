@@ -22,6 +22,7 @@ This orchestrator runs 24/7, manages strategy evolution, and trades with zero em
 import os
 import time
 import argparse
+import threading
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from loguru import logger
@@ -104,6 +105,11 @@ class HydraRuntime:
         # Start Prometheus metrics exporter
         self.metrics_exporter = MetricsExporter(port=9100)
         self.metrics_exporter.start()
+
+        # Start background price update thread (updates every 10 seconds)
+        self._price_update_running = True
+        self._price_thread = threading.Thread(target=self._background_price_updater, daemon=True)
+        self._price_thread.start()
 
         logger.success("HYDRA 3.0 initialized successfully")
 
@@ -907,6 +913,28 @@ class HydraRuntime:
                     HydraMetrics.set_price(asset, current_price)
         except Exception as e:
             logger.warning(f"Failed to update prices: {e}")
+
+    def _background_price_updater(self):
+        """Background thread that updates prices every 10 seconds for real-time dashboard."""
+        logger.info("Background price updater started (10s interval)")
+        while self._price_update_running:
+            try:
+                for asset in self.assets:
+                    try:
+                        df = self.data_client.get_historical_data(
+                            symbol=asset,
+                            interval="1m",
+                            limit=1
+                        )
+                        if df is not None and not df.empty:
+                            current_price = df.iloc[-1]["close"]
+                            HydraMetrics.set_price(asset, current_price)
+                    except Exception as e:
+                        # Don't spam logs for individual asset failures
+                        pass
+            except Exception as e:
+                logger.debug(f"Background price update error: {e}")
+            time.sleep(10)  # Update every 10 seconds
 
     def _update_prometheus_metrics(self):
         """Update Prometheus metrics with current state."""
