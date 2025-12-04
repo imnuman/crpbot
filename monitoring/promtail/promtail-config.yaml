@@ -26,17 +26,14 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: container
-      # Add job label - REQUIRED
-      - replacement: hydra
-        target_label: job
     pipeline_stages:
-      # Parse loguru format: timestamp | level | module:function:line - message
+      # Ensure we always have the job label
+      - static_labels:
+          job: hydra
+          source: runtime
+      # Parse loguru format
       - regex:
-          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \| (?P<level>\w+)\s+\| (?P<module>[^:]+):(?P<function>[^:]+):(?P<line>\d+) - (?P<message>.*)$'
-      # Extract engine from log messages (optional)
-      - regex:
-          expression: '(?P<engine>Gladiator [A-D])'
-          source: message
-      # Add labels - only level is guaranteed to exist
+          expression: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \| (?P<level>\w+)\s+\|'
+      # Add level label if found
       - labels:
           level:
