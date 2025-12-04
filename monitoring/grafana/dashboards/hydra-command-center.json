@@ -623,7 +623,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"hydra\"} |~ \"Gladiator|Engine|votes|strategy|consensus|trade|signal|BUY|SELL|HOLD\"",
+          "expr": "{job=\"hydra\", container=\"hydra-runtime\"} |~ \"Gladiator|votes:|consensus|BUY|SELL|HOLD\" | regexp `- (?P<msg>.*)$` | line_format \"{{ .msg }}\"",
           "refId": "A"
         }
       ],

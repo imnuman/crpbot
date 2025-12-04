@@ -31,9 +31,10 @@ scrape_configs:
       - static_labels:
           job: hydra
           source: runtime
-      # Parse loguru format
+      # Parse loguru format: timestamp | level | module:func:line - message
       - regex:
-          expression: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \| (?P<level>\w+)\s+\|'
-      # Add level label if found
+          expression: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \| (?P<level>\w+)\s+\| (?P<module>[^:]+):[^-]+ - (?P<msg>.*)$'
+      # Add labels
       - labels:
           level:
+          module:
