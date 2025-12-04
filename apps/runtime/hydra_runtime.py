@@ -463,17 +463,41 @@ class HydraRuntime:
                 }
             else:
                 # EXPLORE: Generate new strategy
-                logger.debug(f"Engine {engine_name}: EXPLORE - generating new strategy")
-                strategy = gladiator.generate_strategy(
-                    asset=asset,
-                    asset_type=asset_type,
-                    asset_profile=profile,
-                    regime=regime,
-                    regime_confidence=regime_confidence,
-                    market_data=engine_market_data,
-                    existing_strategies=[]  # No peeking at others
-                )
-                strategy["source"] = "generated"
+                # FIRST: Check specialty trigger to avoid wasting LLM API calls
+                is_triggered, trigger_reason = gladiator.check_specialty_trigger(engine_market_data)
+
+                if not is_triggered:
+                    # Specialty NOT triggered - skip LLM call entirely
+                    logger.info(f"Engine {engine_name}: Specialty NOT triggered ({trigger_reason}) - skipping LLM API call")
+                    strategy = {
+                        "strategy_id": f"GLADIATOR_{engine_name}_SPECIALTY_BLOCKED",
+                        "gladiator": engine_name,
+                        "strategy_name": "Specialty Not Triggered - HOLD",
+                        "structural_edge": "None - waiting for specialty trigger",
+                        "entry_rules": "N/A",
+                        "exit_rules": "N/A",
+                        "filters": [],
+                        "risk_per_trade": 0.0,
+                        "expected_wr": 0.0,
+                        "expected_rr": 0.0,
+                        "why_it_works": trigger_reason,
+                        "weaknesses": ["Engine specialty condition not met"],
+                        "confidence": 0.0,
+                        "source": "specialty_blocked"
+                    }
+                else:
+                    # Specialty triggered - proceed with LLM API call
+                    logger.debug(f"Engine {engine_name}: EXPLORE - generating new strategy ({trigger_reason})")
+                    strategy = gladiator.generate_strategy(
+                        asset=asset,
+                        asset_type=asset_type,
+                        asset_profile=profile,
+                        regime=regime,
+                        regime_confidence=regime_confidence,
+                        market_data=engine_market_data,
+                        existing_strategies=[]  # No peeking at others
+                    )
+                    strategy["source"] = "generated"
 
             strategies.append(strategy)
 
