@@ -47,6 +47,8 @@ from libs.hydra.lesson_memory import get_lesson_memory
 from libs.hydra.paper_trader import get_paper_trader
 from libs.hydra.database import init_hydra_db, HydraSession
 from libs.hydra.tournament_tracker import TournamentTracker
+from libs.hydra.cycles.stats_injector import get_stats_injector
+from libs.hydra.strategy_memory import get_strategy_memory
 
 # Engines (4 AI competitors)
 from libs.hydra.engines.engine_a_deepseek import EngineA_DeepSeek
@@ -155,6 +157,12 @@ class HydraRuntime:
 
         # Tournament Tracker (gladiator vote-level performance)
         self.vote_tracker = TournamentTracker()
+
+        # Stats Injector for emotion prompts
+        self.stats_injector = get_stats_injector()
+
+        # Strategy Memory for 80/20 exploit/explore
+        self.strategy_memory = get_strategy_memory()
 
         # Data provider
         self.data_client = get_coinbase_client()
@@ -411,51 +419,64 @@ class HydraRuntime:
         population_key = f"{asset}:{regime}"
 
         # =======================================================
-        # PHASE 1: PARALLEL STRATEGY GENERATION (no peeking!)
+        # PHASE 0: INJECT TOURNAMENT EMOTION CONTEXT
         # =======================================================
-        # Each engine generates independently - they don't see each other's work
+        # Each engine gets personalized tournament standing info
+        emotion_prompts = self._get_engine_emotion_prompts()
 
-        strategy_a = self.gladiator_a.generate_strategy(
-            asset=asset,
-            asset_type=asset_type,
-            asset_profile=profile,
-            regime=regime,
-            regime_confidence=regime_confidence,
-            market_data=market_data,
-            existing_strategies=[]  # EMPTY - no peeking at others
-        )
+        # Create engine-specific market_data with emotion context
+        market_data_a = {**market_data, "tournament_emotion_prompt": emotion_prompts.get("A", "")}
+        market_data_b = {**market_data, "tournament_emotion_prompt": emotion_prompts.get("B", "")}
+        market_data_c = {**market_data, "tournament_emotion_prompt": emotion_prompts.get("C", "")}
+        market_data_d = {**market_data, "tournament_emotion_prompt": emotion_prompts.get("D", "")}
 
-        strategy_b = self.gladiator_b.generate_strategy(
-            asset=asset,
-            asset_type=asset_type,
-            asset_profile=profile,
-            regime=regime,
-            regime_confidence=regime_confidence,
-            market_data=market_data,
-            existing_strategies=[]  # EMPTY - no peeking at others
-        )
+        # =======================================================
+        # PHASE 1: 80/20 EXPLOIT/EXPLORE STRATEGY SELECTION
+        # =======================================================
+        # Each engine: 80% use winning strategy from memory, 20% generate new
 
-        strategy_c = self.gladiator_c.generate_strategy(
-            asset=asset,
-            asset_type=asset_type,
-            asset_profile=profile,
-            regime=regime,
-            regime_confidence=regime_confidence,
-            market_data=market_data,
-            existing_strategies=[]  # EMPTY - no peeking at others
-        )
+        strategies = []
+        engines_data = [
+            ("A", self.gladiator_a, market_data_a),
+            ("B", self.gladiator_b, market_data_b),
+            ("C", self.gladiator_c, market_data_c),
+            ("D", self.gladiator_d, market_data_d),
+        ]
 
-        strategy_d = self.gladiator_d.generate_strategy(
-            asset=asset,
-            asset_type=asset_type,
-            asset_profile=profile,
-            regime=regime,
-            regime_confidence=regime_confidence,
-            market_data=market_data,
-            existing_strategies=[]  # EMPTY - no peeking at others
-        )
+        for engine_name, gladiator, engine_market_data in engines_data:
+            # Try to select from strategy memory (80% exploit)
+            selected = self.strategy_memory.select_strategy(
+                engine=engine_name,
+                asset=asset,
+                regime=regime,
+                explore_probability=0.2  # 20% chance to generate new
+            )
 
-        strategies = [strategy_a, strategy_b, strategy_c, strategy_d]
+            if selected:
+                # EXPLOIT: Use existing winning strategy
+                logger.debug(f"Engine {engine_name}: EXPLOIT - using strategy {selected['strategy_id']} (WR: {selected.get('win_rate', 0):.1%})")
+                strategy = {
+                    **selected,
+                    "source": "memory",
+                    "gladiator": engine_name
+                }
+            else:
+                # EXPLORE: Generate new strategy
+                logger.debug(f"Engine {engine_name}: EXPLORE - generating new strategy")
+                strategy = gladiator.generate_strategy(
+                    asset=asset,
+                    asset_type=asset_type,
+                    asset_profile=profile,
+                    regime=regime,
+                    regime_confidence=regime_confidence,
+                    market_data=engine_market_data,
+                    existing_strategies=[]  # No peeking at others
+                )
+                strategy["source"] = "generated"
+
+            strategies.append(strategy)
+
+        strategy_a, strategy_b, strategy_c, strategy_d = strategies
 
         # =======================================================
         # PHASE 2: REGISTER ALL STRATEGIES IN TOURNAMENT
@@ -535,14 +556,37 @@ class HydraRuntime:
                 )
 
         # =======================================================
-        # PHASE 4: DETERMINE WINNING STRATEGY
+        # PHASE 4: DETERMINE WINNING STRATEGY (with confidence tiebreaker)
         # =======================================================
-        # Find strategy with most votes
+        # Find strategy with most votes, use confidence as tiebreaker
         winning_strategy = strategy_d  # Default fallback
         winning_strategy_id = None
 
         if strategy_votes:
-            winning_strategy_id = max(strategy_votes, key=strategy_votes.get)
+            # Find max vote count
+            max_votes = max(strategy_votes.values())
+
+            # Get all strategies with max votes (potential ties)
+            tied_strategies = [sid for sid, count in strategy_votes.items() if count == max_votes]
+
+            if len(tied_strategies) == 1:
+                # No tie - clear winner
+                winning_strategy_id = tied_strategies[0]
+            else:
+                # TIE BREAKER: Use average confidence for each tied strategy
+                strategy_confidences = {}
+                for sid in tied_strategies:
+                    confidences = [
+                        v.get("confidence", 0.5)
+                        for v in votes
+                        if v.get("preferred_strategy") == sid
+                    ]
+                    strategy_confidences[sid] = sum(confidences) / len(confidences) if confidences else 0
+
+                # Pick strategy with highest average confidence
+                winning_strategy_id = max(strategy_confidences, key=strategy_confidences.get)
+                logger.info(f"Tie broken by confidence: {strategy_confidences}")
+
             for s in strategies:
                 if s.get("strategy_id") == winning_strategy_id:
                     winning_strategy = s
@@ -787,6 +831,33 @@ class HydraRuntime:
 
             self.last_breeding_check = current_time
 
+        # Sync TournamentTracker rankings to TournamentManager weights
+        self._sync_tournament_rankings()
+
+    def _sync_tournament_rankings(self):
+        """
+        Sync TournamentTracker (vote-level) rankings to TournamentManager (engine weights).
+
+        Creates single source of truth by updating engine_weights based on win rates.
+        Weight formula: 40% to #1, 30% to #2, 20% to #3, 10% to #4
+        """
+        leaderboard = self.vote_tracker.get_leaderboard(sort_by="win_rate")
+
+        if len(leaderboard) < 4:
+            return  # Not enough data yet
+
+        # Weight by rank: 40%, 30%, 20%, 10%
+        rank_weights = [0.40, 0.30, 0.20, 0.10]
+
+        for rank, entry in enumerate(leaderboard[:4]):
+            engine = entry.get("gladiator", "?")
+            new_weight = rank_weights[rank]
+
+            # Update TournamentManager
+            self.tournament.update_weight(engine, new_weight)
+
+        logger.debug(f"Tournament weights synced: {self.tournament.engine_weights}")
+
     # ==================== HELPERS ====================
 
     def _classify_asset(self, asset: str) -> str:
@@ -893,6 +964,88 @@ class HydraRuntime:
             "day_of_week": datetime.now(timezone.utc).strftime("%A")
         }
 
+    def _get_engine_emotion_prompts(self) -> Dict[str, str]:
+        """
+        Generate personalized emotion prompts for each engine based on tournament standings.
+
+        Returns:
+            Dict mapping engine name (A/B/C/D) to emotion prompt string
+        """
+        try:
+            # Get leaderboard from tournament tracker (sorted by win rate)
+            leaderboard = self.vote_tracker.get_leaderboard(sort_by="win_rate")
+
+            if not leaderboard:
+                # No rankings yet - return empty prompts
+                return {"A": "", "B": "", "C": "", "D": ""}
+
+            # Build rank lookup
+            rank_lookup = {}
+            for rank, entry in enumerate(leaderboard, 1):
+                gladiator = entry.get("gladiator", "?")
+                rank_lookup[gladiator] = {
+                    "rank": rank,
+                    "win_rate": entry.get("win_rate", 0.0),
+                    "total_points": entry.get("total_points", 0),
+                    "correct_votes": entry.get("correct_votes", 0),
+                    "total_votes": entry.get("total_votes", 0)
+                }
+
+            # Find leader
+            leader = leaderboard[0] if leaderboard else {}
+            leader_name = leader.get("gladiator", "?")
+            leader_wr = leader.get("win_rate", 0.0)
+
+            # Engine specialties (matches stats_injector.py)
+            specialties = {
+                "A": ("LIQUIDATION HUNTER", "liquidation cascades (>$20M)"),
+                "B": ("FUNDING CONTRARIAN", "funding rate extremes (>0.5%)"),
+                "C": ("ORDER BOOK READER", "orderbook imbalance (>2.5:1)"),
+                "D": ("REGIME SPECIALIST", "regime transitions (ATR 2× expansion)")
+            }
+
+            # Generate emotion prompts
+            emotion_prompts = {}
+            for engine in ["A", "B", "C", "D"]:
+                stats = rank_lookup.get(engine, {"rank": 4, "win_rate": 0.0})
+                rank = stats["rank"]
+                wr = stats["win_rate"]
+                gap = leader_wr - wr if rank > 1 else 0.0
+
+                specialty_name, specialty_trigger = specialties.get(engine, ("TRADER", "your specialty"))
+
+                if rank == 1:
+                    status = "LEADING"
+                    strategy = "MAINTAIN CONSISTENCY - Your current approach is working."
+                elif rank == 2:
+                    status = "CHASING"
+                    strategy = f"CLOSE THE GAP - Engine {leader_name} leads by {gap:.1f}%."
+                elif rank == 3:
+                    status = "TRAILING"
+                    strategy = "FOCUS ON YOUR SPECIALTY - Quality over quantity."
+                else:
+                    status = "LAST PLACE"
+                    strategy = f"DISCIPLINED RECOVERY - You're {gap:.1f}% behind. Avoid forcing trades."
+
+                prompt = f"""
+TOURNAMENT POSITION: #{rank}/4 ({status})
+SPECIALTY: {specialty_name}
+TRIGGER: {specialty_trigger}
+
+Stats: WR: {wr:.1f}% | Leader: Engine {leader_name} {leader_wr:.1f}% | Gap: {gap:.1f}%
+
+STRATEGY: {strategy}
+
+Only trade when your specialty trigger activates. Patience beats aggression.
+"""
+                emotion_prompts[engine] = prompt.strip()
+
+            return emotion_prompts
+
+        except Exception as e:
+            logger.warning(f"Failed to generate emotion prompts: {e}")
+            return {"A": "", "B": "", "C": "", "D": ""}
+
     # ==================== PAPER TRADING HELPERS ====================
 
     def _check_paper_trades(self):
@@ -969,6 +1122,18 @@ class HydraRuntime:
                 trade_result=trade_result,
                 market_context=market_context
             )
+
+        # Update Strategy Memory with trade outcome
+        self.strategy_memory.add_strategy(
+            engine=trade.gladiator,
+            asset=trade.asset,
+            regime=trade.regime,
+            strategy={"strategy_id": trade.strategy_id, "direction": trade.direction},
+            outcome=trade.outcome,
+            pnl_percent=trade.pnl_percent,
+            rr_actual=trade.rr_actual
+        )
+        logger.debug(f"Strategy memory updated: {trade.gladiator} - {trade.strategy_id} ({trade.outcome})")
 
     def _print_paper_trading_stats(self):
         """Print paper trading statistics."""

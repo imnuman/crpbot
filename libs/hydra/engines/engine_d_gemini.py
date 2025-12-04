@@ -35,12 +35,14 @@ class EngineD_Gemini(BaseEngine):
     GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     # Rate limiting configuration
-    MIN_CALL_INTERVAL = 3.0  # Minimum seconds between API calls
-    MAX_RETRIES = 5  # Maximum retry attempts for rate limits
-    BASE_RETRY_DELAY = 5  # Base delay for exponential backoff (seconds)
+    MIN_CALL_INTERVAL = 3.0  # Minimum seconds between API calls (base)
+    RATE_LIMITED_INTERVAL = 10.0  # Increased interval after hitting 429
+    MAX_RETRIES = 3  # Maximum retry attempts for rate limits (reduced from 5)
+    BASE_RETRY_DELAY = 3  # Base delay for exponential backoff (reduced: 3s, 6s, 12s = 21s max)
 
     # Class-level tracking for rate limiting
     _last_call_time: float = 0.0
+    _rate_limited: bool = False  # Flag to track if we recently hit rate limit
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
@@ -686,15 +688,17 @@ Output JSON:
         }
 
         # Rate limiting: ensure minimum interval between calls
+        # Use longer interval if we recently hit rate limits
+        min_interval = self.RATE_LIMITED_INTERVAL if EngineD_Gemini._rate_limited else self.MIN_CALL_INTERVAL
         now = time.time()
         time_since_last = now - EngineD_Gemini._last_call_time
-        if time_since_last < self.MIN_CALL_INTERVAL:
-            sleep_time = self.MIN_CALL_INTERVAL - time_since_last
-            logger.debug(f"Gemini rate limit: waiting {sleep_time:.1f}s before next call")
+        if time_since_last < min_interval:
+            sleep_time = min_interval - time_since_last
+            logger.debug(f"Gemini rate limit: waiting {sleep_time:.1f}s before next call (rate_limited={EngineD_Gemini._rate_limited})")
             time.sleep(sleep_time)
         EngineD_Gemini._last_call_time = time.time()
 
-        # FIX BUG #1: Exponential backoff retry logic (with increased limits)
+        # FIX BUG #1: Exponential backoff retry logic (with reduced limits)
         max_retries = self.MAX_RETRIES
         base_delay = self.BASE_RETRY_DELAY
 
@@ -706,6 +710,9 @@ Output JSON:
                     timeout=30
                 )
                 response.raise_for_status()
+
+                # Success - clear rate limited flag
+                EngineD_Gemini._rate_limited = False
 
                 data = response.json()
                 # Handle cases where response doesn't have expected structure
@@ -719,8 +726,10 @@ Output JSON:
             except requests.exceptions.HTTPError as e:
                 # Check if it's a rate limit error (429)
                 if response.status_code == 429 and attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)  # Exponential: 2s, 4s, 8s
-                    logger.warning(f"Gemini rate limit (429) - retry {attempt + 1}/{max_retries} after {delay}s")
+                    # Set rate limited flag - future calls will use longer interval
+                    EngineD_Gemini._rate_limited = True
+                    delay = base_delay * (2 ** attempt)  # Exponential: 3s, 6s, 12s
+                    logger.warning(f"Gemini rate limit (429) - retry {attempt + 1}/{max_retries} after {delay}s (increasing interval to {self.RATE_LIMITED_INTERVAL}s)")
                     time.sleep(delay)
                     continue  # Retry
                 else:
