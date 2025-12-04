@@ -4,866 +4,450 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🚨 CRITICAL: Training Infrastructure Rules
+## CRITICAL: Dual-Environment Setup
 
-**BEFORE ANY TRAINING OR FEATURE ENGINEERING**:
-```bash
-cat MASTER_TRAINING_WORKFLOW.md
-```
-
-### Key Rules
-1. **NEVER train locally** - ONLY on AWS g4dn.xlarge GPU instance
-2. **USE all premium APIs** - CoinGecko Premium (CG-VQhq64e59sGxchtK8mRgdxXW) is paid for
-3. **ALWAYS verify feature alignment** - Training features = Runtime features = Model input_size
-4. **ALWAYS terminate AWS instances after training** - Prevent unexpected charges
-
----
-
-## 🤝 Dual-Environment Setup: QC Claude vs Builder Claude
-
-This project operates across **two environments** with distinct roles:
-
-### Identify Your Environment
+This project operates across **two environments** - identify yours first:
 
 ```bash
-# Check your working directory
 pwd
-
-# If output is: /home/numan/crpbot
-#   → You are QC Claude (Local Machine)
-
-# If output is: /root/crpbot
-#   → You are Builder Claude (Cloud Server)
+# /home/numan/crpbot  -> QC Claude (Local - Quality Control & Development)
+# /root/crpbot        -> Builder Claude (Cloud - Production & Deployment)
 ```
 
-### QC Claude (Local Machine: `/home/numan/crpbot`)
+### QC Claude (Local: `/home/numan/crpbot`)
+- **Quality Control**: Review before deployment
+- **Development**: Code changes and testing
+- **Documentation**: Maintain CLAUDE.md, handoff docs
+- **Testing**: Local verification
 
-**Primary Responsibilities**:
-- ✅ **Quality Control**: Review Builder Claude's work before deployment
-- ✅ **Documentation**: Maintain CLAUDE.md, PROJECT_MEMORY.md, and project docs
-- ✅ **Testing**: Verify changes locally before cloud deployment
-- ✅ **AWS Operations**: Run GPU training jobs on AWS (has AWS credentials)
-- ✅ **Coordination**: Create handoff docs for Builder Claude
+### Builder Claude (Cloud: `root@178.156.136.185`)
+- **Production Runtime**: HYDRA 4.0 running 24/7
+- **Deployment**: Primary deployment and monitoring
+- **Database**: SQLite (`/root/crpbot/data/hydra/hydra.db`)
 
-**Key Capabilities**:
-- Has AWS credentials (`~/.aws/credentials`) for EC2 and S3 operations
-- Can launch training jobs, upload/download from S3
-- Local development environment for testing
-
-**Common Tasks**:
+### Sync Protocol
 ```bash
-# Review Builder Claude's changes
+# ALWAYS sync before work
 git pull origin main
-git diff HEAD~5  # Review recent changes
 
-# Run AWS training
-aws s3 sync data/features/ s3://crpbot-ml-data/features/
-# Then launch GPU instance for training
-
-# Create handoff document
-cat > HANDOFF_TO_BUILDER_CLAUDE.md <<EOF
-# Changes Ready for Deployment
-
-## What Changed
-- [List changes made]
-
-## Testing Done
-- [List tests run]
-
-## Deployment Steps
-1. Pull latest from main
-2. [Specific deployment commands]
-EOF
-git add HANDOFF_TO_BUILDER_CLAUDE.md
-git commit -m "docs: handoff for deployment"
-git push
-```
-
-### Builder Claude (Cloud Server: `root@178.156.136.185:~/crpbot`)
-
-**Primary Responsibilities**:
-- ✅ **Development**: Primary code development and implementation
-- ✅ **Debugging**: Fix bugs and issues in production
-- ✅ **Production Runtime**: Deploy and monitor live trading bot
-- ✅ **Cloud Execution**: Run runtime, dashboard, and production services
-
-**Key Capabilities**:
-- Direct access to production environment
-- Runs 24/7 live trading bot
-- Has production database and logs
-
-**Common Tasks**:
-```bash
-# Deploy changes
-git pull origin main
-# Restart runtime if needed
-
-# Monitor production
-tail -f /tmp/v6_65pct.log
-cd apps/dashboard && uv run python app.py
-
-# Check production status
-sqlite3 tradingai.db "SELECT COUNT(*) FROM signals"
-ps aux | grep python
-```
-
-### Coordination Protocol
-
-**When QC Claude makes changes**:
-1. Test locally first
-2. Update documentation (CLAUDE.md, PROJECT_MEMORY.md)
-3. Create handoff document with deployment steps
-4. Push to GitHub
-5. Notify Builder Claude (via handoff doc in repo)
-
-**When Builder Claude makes changes**:
-1. Develop and test on cloud
-2. Commit with clear messages
-3. Push to GitHub
-4. Update QC Claude if review needed
-
-**Cross-Environment Sync**:
-```bash
-# QC Claude → Builder Claude (code changes)
-git push origin main
-# Builder Claude pulls with: git pull origin main
-
-# QC Claude → Builder Claude (models from AWS training)
-aws s3 sync models/ s3://crpbot-ml-data/models/v6_retrained/
-# Builder Claude downloads with: aws s3 sync s3://crpbot-ml-data/models/v6_retrained/ models/promoted/
-
-# Builder Claude → QC Claude (production data/logs for analysis)
-# Use git for small files, S3 for large data
-```
-
-### Decision Matrix: Who Does What?
-
-| Task | QC Claude | Builder Claude |
-|------|-----------|----------------|
-| AWS GPU Training | ✅ Primary | ✅ Can do (has creds) |
-| Code Development | ✅ Review/Test | ✅ Primary |
-| Documentation Updates | ✅ Primary | ✅ Can update |
-| Production Deployment | ❌ No access | ✅ Primary |
-| Bug Fixes | ✅ Can fix locally | ✅ Primary for prod |
-| Model Evaluation | ✅ Primary | ✅ Can help |
-| Live Runtime Monitoring | ❌ No access | ✅ Primary |
-| Feature Engineering | ✅ Primary | ✅ Can help |
-
-**Note**: Both environments have AWS credentials configured. QC Claude is designated as primary for training operations, but Builder Claude can handle AWS operations when needed.
-
----
-
-## 📋 V7 Ultimate - Production System
-
-**STATUS**: ✅ **ALL STEPS COMPLETE - RUNNING IN PRODUCTION**
-
-### What is V7 Ultimate?
-
-V7 Ultimate is a manual trading system (signal generation only) based on Renaissance Technologies methodology, now fully deployed and running 24/7 in production.
-
-**Core Components** (All Live ✅):
-- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Market Regime, Risk Metrics, Fractal Dimension, Market Context (CoinGecko)
-- **DeepSeek LLM**: AI synthesis of mathematical signals into trading decisions
-- **Premium Data**: CoinGecko Analyst API + Coinbase Advanced Trade API
-- **Signal Tracking**: Automated entry/exit detection with win rate calculation
-- **Telegram Bot**: Real-time notifications with price predictions
-- **Web Dashboard**: Live visualization at http://178.156.136.185:5000
-
-### Production Implementation Status
-
-✅ **ALL STEPS COMPLETE**:
-
-**STEP 1-4: Core Implementation** ✅
-1. ✅ V7 Runtime Orchestrator (33KB) - `apps/runtime/v7_runtime.py`
-2. ✅ 7 Mathematical Theories - `libs/analysis/*` (Shannon, Hurst, Kolmogorov, etc.)
-3. ✅ CoinGecko Integration - Market context and macro analysis
-4. ✅ DeepSeek LLM Integration - `libs/llm/*` (4 files)
-5. ✅ Bayesian Learning - `libs/bayesian/bayesian_learner.py`
-6. ✅ Rate Limiting - 30 signals/hour (aggressive FTMO mode)
-7. ✅ Cost Controls - $5/day, $150/month budgets
-8. ✅ FTMO Rules - Daily/total loss limits enforced
-
-**STEP 5: Dashboard & Visualization** ✅
-- ✅ V7 signal display with price predictions (Entry/SL/TP)
-- ✅ Live statistics (BUY/SELL/HOLD counts, confidence, API costs)
-- ✅ Signal breakdown charts (direction, symbol, confidence tier)
-- ✅ DeepSeek AI analysis display box
-
-**STEP 6: Telegram Integration** ✅
-- ✅ Real-time signal notifications with formatting
-- ✅ Price predictions (Entry, Stop Loss, Take Profit)
-- ✅ DeepSeek reasoning display
-- ✅ FTMO compliance status
-
-**STEP 7: Monitoring & Analytics** ✅
-- ✅ Performance tracking and cost monitoring
-- ✅ Signal results tracking system
-- ✅ Bayesian win rate calculation
-- ✅ Production logging and alerting
-
-**STEP 8: Production Deployment** ✅
-- ✅ 24/7 runtime on cloud server (178.156.136.185)
-- ✅ Momentum override for trend capture
-- ✅ Structured LLM output format
-- ✅ Signal timestamp conversion to EST
-- ✅ Comprehensive documentation (V7_MONITORING.md)
-
-### V7 Key Principles
-
-1. **No Auto-Execution**: Manual trading only (human confirms each signal)
-2. **Mathematical Foundation**: Every signal backed by mathematical evidence
-3. **Continuous Learning**: Bayesian updates from trade outcomes
-4. **Risk Management**: Monte Carlo simulation for every trade
-5. **Quality over Quantity**: 2-5 high-quality signals/day (not 20-30 low-quality)
-
-### V7 Production Files
-
-**Runtime** (Production):
-- `apps/runtime/v7_runtime.py` (33KB) - Main V7 orchestrator, running 24/7
-
-**LLM Integration** (`libs/llm/`):
-- `deepseek_client.py` - DeepSeek API client
-- `signal_synthesizer.py` - Theory → LLM prompt converter
-- `signal_parser.py` - LLM response → structured signal parser
-- `signal_generator.py` - Complete signal generation orchestrator
-
-**Mathematical Theories** (`libs/analysis/`):
-- `shannon_entropy.py` - Market predictability analysis
-- `hurst_exponent.py` - Trend persistence detection
-- `kolmogorov_complexity.py` - Pattern complexity measurement
-- `markov_chain.py` - 6-state regime detection
-- `kalman_filter.py` - Price denoising and momentum
-- `bayesian_inference.py` - Online learning from outcomes
-- `monte_carlo.py` - 10k scenario risk simulation
-
-**Data Sources** (`libs/data/`):
-- `coingecko_pro_client.py` - CoinGecko Analyst API ($129/month)
-- `coinbase_websocket.py` - Real-time market data
-- `yahoo_finance_client.py` - Macro market context
-
-**Dashboard & Notifications**:
-- `apps/dashboard/app.py` - Web dashboard with V7 visualization
-- `libs/notifications/telegram_bot.py` - Real-time Telegram alerts
-
-**Documentation** (Production Guides):
-- `V7_MONITORING.md` - Production monitoring guide ⭐
-- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix documentation
-- `V7_SIGNAL_FIXES.md` - Signal generation improvements
-- `V7_CLOUD_DEPLOYMENT.md` - Original deployment guide
-
-### Managing V7 in Production
-
-**Check Status**:
-```bash
-# V7 runtime status
-ps aux | grep v7_runtime.py | grep -v grep
-
-# View live logs
-tail -f /tmp/v7_production.log
-
-# Check recent signals
-sqlite3 tradingai.db "SELECT timestamp, symbol, direction, confidence
-FROM signals WHERE model_version='v7_ultimate'
-ORDER BY timestamp DESC LIMIT 10"
-```
-
-**Restart V7** (if needed):
-```bash
-# Stop V7
-pkill -f v7_runtime.py
-
-# Start V7 (aggressive FTMO mode)
-nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
-  --iterations -1 \
-  --sleep-seconds 120 \
-  --aggressive \
-  --max-signals-per-hour 30 \
-  > /tmp/v7_production.log 2>&1 &
-
-# Verify it's running
-tail -100 /tmp/v7_production.log | grep "V7 ULTIMATE"
-```
-
-**Monitor Performance**:
-```bash
-# Cost tracking
-tail -100 /tmp/v7_production.log | grep "V7 Statistics" -A 6
-
-# Signal breakdown (24 hours)
-sqlite3 tradingai.db "SELECT direction, COUNT(*), AVG(confidence)
-FROM signals WHERE model_version='v7_ultimate'
-AND timestamp > datetime('now', '-24 hours')
-GROUP BY direction"
-
-# Dashboard access
-curl http://localhost:5000/api/v7/signals/recent/20
+# Push changes after work
+git add . && git commit -m "message" && git push origin main
 ```
 
 ---
 
-## 🔄 GitHub Sync Protocol (CRITICAL)
+## HYDRA 4.0 - Current Production System
 
-**ALWAYS sync with GitHub before and after work** to keep both environments in sync.
+**STATUS**: OPERATIONAL - Paper trading mode
+**Last Updated**: 2025-12-03
+**Dashboard**: Grafana (Coming Soon - Port 3000)
 
-### Pre-Work Sync (ALWAYS RUN FIRST)
+### Architecture Overview
 
-```bash
-# Pull latest changes before starting any work
-git pull origin main
+**HYDRA 4.0 = Mother AI + 4 Independent Gladiator Engines**
 
-# If you have local changes that conflict:
-git stash                    # Save your work temporarily
-git pull origin main         # Pull latest
-git stash pop                # Restore your work
-# Resolve conflicts if needed
+```
+                    MOTHER AI (Orchestrator)
+                           |
+         +-----------------+-----------------+
+         |        |        |        |        |
+      Engine A  Engine B  Engine C  Engine D
+     (DeepSeek) (Claude)  (Grok)   (Gemini)
+         |        |        |        |
+    Independent P&L Tracking Per Engine
+                           |
+                    Tournament Manager
+                    (Rankings & Weights)
+                           |
+                      Guardian
+                    (Risk Control)
+                           |
+                    Paper Trader
+                    (Execution)
 ```
 
-### Post-Work Sync (ALWAYS RUN AFTER CHANGES)
+**L1 - Mother AI** (Supreme Orchestrator):
+- Tournament management and rankings
+- Final trade approval with FTMO governance
+- Weight adjustment (24-hour cycle)
+- Breeding mechanism (4-day cycle)
+- Emergency shutdown authority
 
-```bash
-# After making changes, commit and push
-git add .
-git status                   # Review what you're committing
-git commit -m "descriptive message"
-git push origin main
-```
+**L2 - 4 Gladiator Engines** (Independent Competitors):
+- Engine A (DeepSeek) - Structural edge hunter
+- Engine B (Claude) - Logic validator
+- Engine C (Grok) - Historical pattern matcher
+- Engine D (Gemini) - Synthesis engine
 
-### Sync Frequency
+**Key Design Principles**:
+- Each engine trades INDEPENDENTLY (not consensus voting)
+- Each engine has OWN P&L tracking and portfolio
+- Parallel execution: A||B||C||D
+- Tournament ranking by actual P&L performance
+- Weight distribution: #1=40%, #2=30%, #3=20%, #4=10%
 
-**QC Claude (Local)**:
-- ✅ Pull before starting any documentation updates
-- ✅ Pull before AWS training operations
-- ✅ Push after updating CLAUDE.md or PROJECT_MEMORY.md
-- ✅ Push after creating handoff documents
+### Key Files
 
-**Builder Claude (Cloud)**:
-- ✅ Pull at start of each session
-- ✅ Pull before deploying changes
-- ✅ Push after bug fixes or feature development
-- ✅ Push production status updates
+**Runtime**:
+- `apps/runtime/hydra_runtime.py` - Main HYDRA runtime (33KB)
+- `apps/runtime/hydra_guardian.py` - Risk management
 
-### Conflict Resolution
+**Core Library** (`libs/hydra/`):
+- `mother_ai.py` - L1 orchestrator
+- `guardian.py` - Risk control and kill switch
+- `tournament_manager.py` - Rankings and weights
+- `tournament_tracker.py` - Performance tracking
+- `paper_trader.py` - Trade execution
+- `engine_portfolio.py` - Per-engine P&L tracking
 
-If `git pull` shows conflicts:
+**Engines** (`libs/hydra/engines/`):
+- `base_engine.py` - Abstract base class
+- `engine_a_deepseek.py` - DeepSeek integration
+- `engine_b_claude.py` - Claude integration
+- `engine_c_grok.py` - Grok integration
+- `engine_d_gemini.py` - Gemini integration
 
-```bash
-# 1. Identify conflicted files
-git status
+**Data Feeds** (`libs/hydra/data_feeds/`):
+- `market_data_feeds.py` - Funding, liquidations
+- `orderbook_feed.py` - Order book analysis
+- `internet_search.py` - News & edge discovery
 
-# 2. Open conflicted files and resolve manually
-# Look for <<<<<<< HEAD markers
-
-# 3. After resolving:
-git add <resolved-files>
-git commit -m "fix: resolve merge conflicts"
-git push origin main
-```
-
-### Sync Verification
-
-```bash
-# Check if you're in sync
-git status
-# Should show: "Your branch is up to date with 'origin/main'"
-
-# See recent commits from other Claude
-git log --oneline -10
-
-# See what changed recently
-git diff HEAD~5
-```
-
-### Emergency: Force Sync (Use Carefully)
-
-```bash
-# If local changes should be discarded (DESTRUCTIVE):
-git fetch origin
-git reset --hard origin/main
-
-# If you want to keep a backup first:
-git branch backup-$(date +%Y%m%d-%H%M%S)
-git fetch origin
-git reset --hard origin/main
-```
+**Safety** (`libs/hydra/safety/`):
+- Risk validators and safety checks
 
 ---
 
-## 📋 Quick Commands
+## Quick Commands
 
 ### Development
 ```bash
-# Setup (first run)
-make setup              # Install deps + pre-commit hooks
-
-# Code quality
+make setup              # Initial setup (deps + pre-commit hooks)
 make fmt                # Format with ruff
 make lint               # Lint with ruff + mypy
-make test               # Run all tests
-make unit               # Run unit tests only
-make smoke              # Run 5-min smoke backtest
+make test               # All tests
+make unit               # Unit tests only
 ```
 
-### Runtime
+### HYDRA Runtime (Production)
 ```bash
-# V7 Ultimate (PRODUCTION - Currently Running)
-# Start V7 runtime (aggressive FTMO mode)
-nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
-  --iterations -1 --sleep-seconds 120 --aggressive --max-signals-per-hour 30 \
-  > /tmp/v7_production.log 2>&1 &
+# Check HYDRA status
+ps aux | grep hydra_runtime | grep -v grep
 
-# Monitor V7 logs
-tail -f /tmp/v7_production.log
+# Monitor logs
+tail -f /tmp/hydra_runtime*.log
 
-# Check V7 status
-ps aux | grep v7_runtime.py | grep -v grep
+# Start HYDRA (paper trading mode)
+cd /root/crpbot && source .env
+nohup .venv/bin/python apps/runtime/hydra_runtime.py \
+  --paper \
+  --assets BTC-USD ETH-USD SOL-USD \
+  > /tmp/hydra_runtime_$(date +%Y%m%d_%H%M).log 2>&1 &
 
-# Dashboard (already running in production)
-# Access: http://178.156.136.185:5000
-# Or restart: .venv/bin/python3 -m apps.dashboard.app
-
-# Legacy V6 Runtime (deprecated)
-./run_runtime_with_env.sh --mode dryrun --iterations 5
+# Stop HYDRA
+pkill -f hydra_runtime.py
 ```
 
-### Training (AWS GPU ONLY)
+### Database Operations
 ```bash
-# NEVER run locally! See MASTER_TRAINING_WORKFLOW.md for full workflow
+# HYDRA database location
+# Local: /home/numan/crpbot/data/hydra/hydra.db
+# Cloud: /root/crpbot/data/hydra/hydra.db
 
-# On AWS GPU instance only:
-uv run python apps/trainer/main.py --task lstm --coin BTC --epochs 15
-uv run python apps/trainer/main.py --task lstm --coin ETH --epochs 15
-uv run python apps/trainer/main.py --task lstm --coin SOL --epochs 15
-```
+# Check engine performance
+sqlite3 data/hydra/hydra.db "
+SELECT engine,
+       COUNT(*) as trades,
+       SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END) as wins,
+       ROUND(AVG(pnl_percent), 2) as avg_pnl
+FROM hydra_trades
+WHERE status='CLOSED'
+GROUP BY engine
+ORDER BY avg_pnl DESC;"
 
-### Testing
-```bash
-# All tests
-uv run pytest tests/
+# Recent trades
+sqlite3 data/hydra/hydra.db "
+SELECT timestamp, engine, asset, direction, status, pnl_percent
+FROM hydra_trades
+ORDER BY timestamp DESC LIMIT 20;"
 
-# Specific test
-uv run pytest tests/unit/test_ftmo_rules.py -v
-
-# With coverage
-uv run pytest tests/ --cov=apps --cov=libs --cov-report=html
-```
-
-### Debugging
-```bash
-# Check feature alignment (CRITICAL)
-python -c "import pandas as pd; df = pd.read_parquet('data/features/features_BTC-USD_1m_latest.parquet'); print(f'Features: {len([c for c in df.columns if c not in [\"timestamp\", \"open\", \"high\", \"low\", \"close\", \"volume\", \"session\", \"volatility_regime\"] and df[c].dtype in [\"float64\", \"int64\"]])}')"
-
-# Check model input size
-python -c "import torch; c = torch.load('models/promoted/lstm_BTC-USD_v6_enhanced.pt', map_location='cpu'); print(f'Model expects: {c[\"input_size\"]} features')"
-
-# Check runtime logs
-tail -100 /tmp/v5_live.log | grep "Numeric features selected"
-
-# Test Coinbase connection
-uv run python test_kraken_connection.py
+# Tournament leaderboard
+sqlite3 data/hydra/hydra.db "
+SELECT * FROM tournament_scores ORDER BY total_points DESC;"
 ```
 
 ---
 
-## 🏗️ Architecture Overview
+## Project Structure
 
-### Project Structure
 ```
 crpbot/
 ├── apps/
-│   ├── trainer/          # Model training (LSTM, Transformer)
-│   ├── runtime/          # Production signal generation
-│   └── dashboard/        # Flask monitoring dashboard
+│   ├── runtime/
+│   │   ├── hydra_runtime.py      # Main HYDRA orchestrator
+│   │   ├── hydra_guardian.py     # Risk management
+│   │   └── telegram_bot.py       # Notifications
+│   └── trainer/                  # Model training (AWS GPU only)
 ├── libs/
-│   ├── features/         # Feature engineering pipelines
-│   ├── config/           # Pydantic settings
-│   ├── db/              # SQLAlchemy models
-│   └── utils/           # Timezone, helpers
-├── scripts/             # Data fetching, feature engineering, monitoring
-├── models/              # Trained model weights (.pt files)
-├── data/                # Training data (parquet files)
-└── tests/               # Unit, integration, smoke tests
+│   ├── hydra/                    # HYDRA 4.0 core
+│   │   ├── mother_ai.py          # L1 orchestrator
+│   │   ├── guardian.py           # Risk control
+│   │   ├── tournament_manager.py # Rankings
+│   │   ├── tournament_tracker.py # Performance tracking
+│   │   ├── paper_trader.py       # Trade execution
+│   │   ├── engine_portfolio.py   # Per-engine P&L
+│   │   ├── engines/              # 4 gladiator engines
+│   │   ├── data_feeds/           # Market data
+│   │   ├── safety/               # Validators
+│   │   └── cycles/               # Kill cycle, breeding
+│   ├── data/                     # Data clients
+│   │   ├── coinbase_client.py
+│   │   └── coingecko_client.py
+│   ├── db/                       # SQLAlchemy models
+│   └── config/                   # Pydantic settings
+├── data/
+│   └── hydra/                    # HYDRA data directory
+│       ├── hydra.db              # Main database
+│       ├── paper_trades.jsonl    # Trade history
+│       ├── tournament_*.jsonl    # Tournament data
+│       └── lessons/              # Engine lessons learned
+├── monitoring/                   # Grafana + Prometheus (coming)
+│   ├── grafana/
+│   └── prometheus/
+├── .archive/                     # Archived systems
+│   ├── v7/                       # V7 Ultimate (archived)
+│   ├── dashboards/               # Old dashboards (ttyd, reflex)
+│   └── v3_ultimate/              # V3 system (archived)
+└── tests/
 ```
-
-### Data Flow
-```
-Raw API Data → Feature Engineering → Model Training → S3 Storage → Runtime Inference
-     ↓              ↓                      ↓              ↓              ↓
-Coinbase/      73/54/72 features      AWS GPU       models/        Live signals
-Kraken         + CoinGecko            (g4dn.xlarge)  promoted/      + Telegram
-```
-
-### Model System
-
-**Current Production**: V7 Ultimate (Mathematical Framework + DeepSeek LLM)
-- **Status**: ✅ **LIVE IN PRODUCTION** - Running 24/7 on cloud server
-- **Method**: Renaissance Technologies methodology (7 mathematical theories + AI synthesis)
-- **Symbols**: BTC-USD, ETH-USD, SOL-USD
-- **Signal Rate**: 30 signals/hour max (aggressive FTMO mode)
-- **Performance**: Real-time signal tracking with Bayesian learning
-- **Cost**: ~$0.01-0.02/day (well under $5/day budget)
-
-**V7 Ultimate Architecture** (Production):
-- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Markov Chain (6-state regime), Kalman Filter, Bayesian Inference, Monte Carlo Simulation
-- **DeepSeek LLM**: Synthesizes theory outputs into coherent trading signals
-- **CoinGecko Premium**: Market context and macro analysis (7th theory)
-- **Signal Tracking**: Automated entry/exit detection with win rate calculation
-- **Momentum Override**: Captures trending markets (recent fix)
-- **Rate Limiting**: 30 signals/hour with sliding window
-- **Cost Controls**: $5/day, $150/month budgets enforced
-- **FTMO Rules**: Daily/total loss limits checked before each signal
-
-**Model Evolution**:
-- V5 FIXED: 3-layer LSTM (73/54 features, multi-TF for BTC/SOL only) - Deprecated
-- V6 Real: 2-layer LSTM (31 features, uniform across symbols) - Deprecated
-- V6 Enhanced: 4-layer FNN (72 features, Amazon Q engineered) - Deprecated
-- **V7 Ultimate**: Mathematical Framework + LLM Synthesis ⭐ **PRODUCTION**
-
-**V7 Signal Generation** (`apps/runtime/v7_runtime.py`):
-- Mathematical theory analysis (Shannon, Hurst, etc.)
-- DeepSeek LLM synthesis with structured output
-- Price predictions (Entry, Stop Loss, Take Profit)
-- Confidence scoring with reasoning
-- FTMO compliance verification
-- Manual signal delivery (no auto-execution)
 
 ---
 
-## 🔑 Critical Concepts
+## Data Flow
 
-### Feature Count Alignment (MOST IMPORTANT)
-
-**The Problem**: If training uses 73 features but runtime generates 54, predictions are random (~50%).
-
-**The Solution**: Ensure exact match across all three:
-1. **Training data** (parquet files in `data/features/`)
-2. **Runtime generation** (`apps/runtime/runtime_features.py`)
-3. **Model expectations** (saved in checkpoint['input_size'])
-
-**Verification**:
-```bash
-# 1. Training data
-python -c "import pandas as pd; df = pd.read_parquet('data/features/features_BTC-USD_1m_latest.parquet'); print(len([c for c in df.columns if c not in ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'session', 'volatility_regime'] and df[c].dtype in ['float64', 'int64']]))"
-
-# 2. Runtime logs
-tail -100 /tmp/v5_live.log | grep "Numeric features selected"
-
-# 3. Model checkpoint
-python -c "import torch; c = torch.load('models/promoted/lstm_BTC-USD_v6_enhanced.pt', map_location='cpu'); print(c['input_size'])"
+```
+Market Data (Coinbase API)
+           |
+    +------+------+
+    |      |      |
+  BTC    ETH    SOL
+    |      |      |
+    +------+------+
+           |
+    MOTHER AI (Orchestrator)
+           |
+    +------+------+------+
+    |      |      |      |
+ Engine  Engine Engine Engine
+    A      B      C      D
+    |      |      |      |
+    +------+------+------+
+           |
+    Tournament Manager
+    (Score & Rank)
+           |
+    Guardian (Risk Check)
+           |
+    Paper Trader
+    (Execute Trade)
+           |
+    SQLite Database
+           |
+    +------+------+
+    |             |
+ Telegram      Grafana
+(Alerts)    (Dashboard)
 ```
 
-**All three MUST match!**
+---
 
-### Feature Engineering Pipeline
+## Critical Concepts
 
-**V6 Enhanced Features** (72 total):
-- Base technical: SMA, EMA (5/10/20/50/200)
-- Momentum: ROC, momentum over multiple windows
-- Oscillators: RSI (14/21/30), Stochastic, Williams %R
-- Trend: MACD (12/26 and 5/35 variants), Bollinger Bands (20/50)
-- Price channels, volatility, ATR
-- Lagged features: returns and volume (lag 1/2/3/5)
-- Price ratios: high/low, close/open, price to SMA/EMA ratios
+### Tournament System
 
-**Feature Exclusions** (always exclude from model input):
-- `timestamp`, `open`, `high`, `low`, `close`, `volume` (raw OHLCV)
-- `session`, `volatility_regime` (categorical - convert to numeric if needed)
+**Scoring Rules**:
+- Correct prediction (vote matches trade outcome): +1 point
+- Wrong prediction: 0 points
+- HOLD vote: 0 points (neutral)
 
-**Multi-Timeframe Features** (V5/V6 Real only):
-- 5m/15m/1h OHLCV data
-- TF alignment scores
-- Higher timeframe technical indicators
+**Weight Distribution** (by ranking):
+- #1: 40% weight
+- #2: 30% weight
+- #3: 20% weight
+- #4: 10% weight
 
-**CoinGecko Premium Features** (if using):
-- Market cap trends, ATH distance, volume changes
-- Requires `COINGECKO_API_KEY=CG-VQhq64e59sGxchtK8mRgdxXW`
+### Guardian (Risk Control)
 
-### FTMO Risk Management
-
-**Hard Limits** (`apps/runtime/ftmo_rules.py`):
-- Daily loss: 4.5% max (enforced strictly)
-- Total loss: 9% max (account termination)
+**Hard Limits**:
+- Daily loss: 4.5% max
+- Total drawdown: 9% max
 - Position sizing: Risk-based (1-2% per trade)
 
-**Rate Limiting** (`apps/runtime/rate_limiter.py`):
-- High tier: 5 signals/hour max
-- Medium tier: 10 signals/hour max
-- Low tier: Unlimited (logged only)
-
 **Kill Switch**:
-- Set `KILL_SWITCH=true` in `.env` to halt all trading
-- Instant stop via Telegram command (if configured)
-
----
-
-## 🧪 Testing Strategy
-
-### Test Types
-
-**Unit Tests** (`tests/unit/`):
-- FTMO rules enforcement
-- Confidence scoring
-- Rate limiting
-- Dataset utilities
-
-**Integration Tests** (`tests/integration/`):
-- Runtime guardrails (FTMO + rate limiter + kill switch)
-
-**Smoke Tests** (`tests/smoke/`):
-- 5-minute backtest to verify end-to-end flow
-
-### Running Tests
-
 ```bash
-# All tests
-make test  # or: uv run pytest tests/
-
-# Specific category
-make unit   # Unit tests only
-make smoke  # Smoke tests only
-
-# Single test file
-uv run pytest tests/unit/test_ftmo_rules.py -v
-
-# With verbose output and logging
-uv run pytest tests/ -v -s
-
-# With coverage report
-uv run pytest tests/ --cov=apps --cov=libs --cov-report=html
+# Emergency stop
+export KILL_SWITCH=true  # In .env
+# Or via Guardian
+sqlite3 data/hydra/hydra.db "UPDATE guardian_state SET kill_switch=1;"
 ```
 
----
+### Paper Trading
 
-## ☁️ AWS Infrastructure
+**Trade Flow**:
+1. Engine generates signal (BUY/SELL/HOLD)
+2. Mother AI approves via tournament consensus
+3. Guardian validates risk limits
+4. Paper Trader records entry
+5. Monitor for TP/SL hit
+6. Record outcome and score
 
-### GPU Training (g4dn.xlarge)
-- **GPU**: NVIDIA T4 (16GB VRAM)
-- **Cost**: $0.526/hour on-demand, $0.158/hour spot
-- **Region**: us-east-1 (N. Virginia)
-- **Training time**: ~10-15 min per model, ~1 hour for all 3
-
-### S3 Storage
-- **Bucket**: `crpbot-ml-data` or `crpbot-ml-data-20251110`
-- **Structure**:
-  - `raw/` - Historical OHLCV data
-  - `features/` - Engineered features (parquet)
-  - `models/v6_retrained/` - Trained model weights
-
-### Training Workflow (AWS GPU)
-```bash
-# See MASTER_TRAINING_WORKFLOW.md for complete workflow
-
-# Quick summary:
-1. Fetch data locally → Engineer features → Upload to S3
-2. Launch g4dn.xlarge spot instance
-3. SSH to instance → Clone repo → Download features from S3
-4. Train models on GPU (15 epochs each, ~10-15 min per model)
-5. Upload models to S3
-6. Terminate instance (CRITICAL - stop billing)
-7. Download models locally → Verify → Deploy
-```
-
-**Cost Tracking**:
-- One training run: ~$0.16 (spot) or ~$0.53 (on-demand)
-- Monthly (10-15 runs): ~$5-8
-- S3 storage (5GB): ~$0.12/month
+**Trade States**:
+- OPEN: Position active
+- CLOSED: Position exited (win/loss)
+- EXPIRED: Timeout reached
 
 ---
 
-## 📝 Configuration
+## Environment Variables (.env)
 
-### Environment Variables (`.env`)
-
-**Data Provider**:
+**Required**:
 ```bash
-DATA_PROVIDER=coinbase  # Options: coinbase, kraken, cryptocompare
-
-# Coinbase Advanced Trade API (JWT auth)
+# Data Provider
+DATA_PROVIDER=coinbase
 COINBASE_API_KEY_NAME=organizations/.../apiKeys/...
 COINBASE_API_PRIVATE_KEY=-----BEGIN EC PRIVATE KEY-----...
 
-# CoinGecko Premium
-COINGECKO_API_KEY=CG-VQhq64e59sGxchtK8mRgdxXW
+# LLM APIs (for 4 engines)
+DEEPSEEK_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+XAI_API_KEY=...
+GOOGLE_API_KEY=...
+
+# Premium APIs
+COINGECKO_API_KEY=CG-...
+
+# Safety
+KILL_SWITCH=false
 ```
 
-**Runtime**:
+**Optional**:
 ```bash
-CONFIDENCE_THRESHOLD=0.65  # Min confidence to emit signal
-KILL_SWITCH=false          # Emergency stop
-RUNTIME_MODE=dryrun        # or "live"
-```
-
-**Database**:
-```bash
-DB_URL=sqlite:///tradingai.db
-# Or PostgreSQL: postgresql+psycopg://user:pass@localhost:5432/tradingai
-```
-
-**Telegram** (optional):
-```bash
+# Telegram (notifications)
 TELEGRAM_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
 
-### Model Configuration
-- **Model path**: `models/promoted/` (production models)
-- **Model version**: Set via `MODEL_VERSION` env var
-- **Loading priority**: V6 Enhanced → V6 Real → V5 FIXED
+---
+
+## Monitoring (Grafana)
+
+**Status**: Coming Soon (In Development)
+
+**Architecture**:
+```
+HYDRA Runtime
+      |
+      v
+Prometheus Exporter (:9090/metrics)
+      |
+      v
+Prometheus (scrape every 15s)
+      |
+      v
+Grafana Dashboards (:3000)
+      |
+      v
+Alertmanager -> Telegram
+```
+
+**Dashboards** (Planned):
+1. **Overview**: P&L, win rate, prices, engine tournament
+2. **Engine Performance**: Per-engine stats and trends
+3. **Risk & Safety**: Drawdown, guardian status, limits
+4. **Trades & Signals**: Trade history, recent signals
 
 ---
 
-## 🚨 Common Pitfalls
+## Common Pitfalls
 
-### 1. Training Locally on CPU
-**Symptom**: Training takes 60-90 min per model
-**Fix**: ALWAYS use AWS GPU (see `MASTER_TRAINING_WORKFLOW.md`)
+### 1. HYDRA Not Running
+```bash
+# Check status
+ps aux | grep hydra_runtime | grep -v grep
 
-### 2. Feature Count Mismatch
-**Symptom**: Models predict ~50% (random)
-**Fix**: Verify alignment (see "Feature Count Alignment" above)
+# Check logs
+tail -100 /tmp/hydra_runtime*.log
 
-### 3. Multi-TF Features Missing
-**Symptom**: Feature count too low (31 instead of 73)
-**Fix**: Set `include_multi_tf=True` in runtime feature engineering
+# Restart
+pkill -f hydra_runtime.py
+cd /root/crpbot && source .env
+nohup .venv/bin/python apps/runtime/hydra_runtime.py --paper --assets BTC-USD ETH-USD SOL-USD > /tmp/hydra_runtime.log 2>&1 &
+```
 
-### 4. CoinGecko Features All Zeros
-**Symptom**: CoinGecko features show 0.0 values
-**Fix**: Export `COINGECKO_API_KEY=CG-VQhq64e59sGxchtK8mRgdxXW` before running
+### 2. Database Locked
+```bash
+# SQLite lock issues
+fuser -k data/hydra/hydra.db  # Kill processes holding lock
+```
 
-### 5. AWS Instance Not Terminated
-**Symptom**: Unexpected AWS charges
-**Fix**: ALWAYS run `aws ec2 terminate-instances --instance-ids <id>` after training
+### 3. API Rate Limits
+- Each engine has its own API key
+- DeepSeek: ~$0.0003/call
+- Claude: ~$0.002/call
+- Grok: ~$0.001/call
+- Gemini: Free tier available
 
-### 6. Predictions Too Low (<5%)
-**Symptom**: Confidence consistently below threshold
-**Expected**: Models are cautious during ranging/choppy markets (this is good!)
+### 4. Kill Switch Triggered
+```bash
+# Check Guardian state
+sqlite3 data/hydra/hydra.db "SELECT * FROM guardian_state;"
+
+# Reset kill switch
+sqlite3 data/hydra/hydra.db "UPDATE guardian_state SET kill_switch=0;"
+```
 
 ---
 
-## 📚 Key Documentation
+## Archived Systems
 
-**V7 Production Documentation** (CURRENT):
-- `V7_MONITORING.md` - **Production monitoring and management guide** ⭐ **PRIMARY**
-- `apps/runtime/v7_runtime.py` - V7 runtime (33KB, running 24/7)
-- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix for trend capture
-- `V7_SIGNAL_FIXES.md` - Signal generation improvements
-- `V7_MATHEMATICAL_THEORIES.md` - Theory explanations
-- `V7_CLOUD_DEPLOYMENT.md` - Original deployment guide (completed)
-- `PROJECT_MEMORY.md` - Session continuity and dual-environment setup
+**Location**: `.archive/`
 
-**Infrastructure & Training**:
-- `MASTER_TRAINING_WORKFLOW.md` - AUTHORITATIVE training guide
-- `CLAUDE.md` - This file (project architecture)
+- `.archive/v7/` - V7 Ultimate (11 theories + DeepSeek LLM)
+- `.archive/dashboards/ttyd/` - Terminal dashboard (Rich + ttyd)
+- `.archive/dashboards/reflex/` - Reflex web dashboard
+- `.archive/v3_ultimate/` - V3 system
+
+These systems are preserved for reference but no longer in production.
+
+---
+
+## Key Documentation
+
+- `CLAUDE.md` - This file (main reference)
+- `HYDRA_3.0_IMPLEMENTATION_PLAN.md` - HYDRA design blueprint
 - `README.md` - Project overview
-- `AWS_AUTO_TERMINATION_SUMMARY.md` - Auto-termination for GPU instances
-
-**V7 Production Architecture** (Code):
-- `apps/runtime/v7_runtime.py` - Main V7 orchestrator (production)
-- `libs/llm/*` - DeepSeek client, synthesizer, parser, generator
-- `libs/analysis/*` - 7 mathematical theories (Shannon, Hurst, etc.)
-- `libs/data/coingecko_pro_client.py` - Premium market data
-- `apps/dashboard/app.py` - Web dashboard with V7 visualization
-- `libs/notifications/telegram_bot.py` - Real-time Telegram alerts
-- `libs/config/config.py` - Configuration system
-
-**Deprecated** (ignore these):
-- Any docs mentioning Colab training
-- Any docs mentioning local CPU training
-- V6-specific runtime/deployment docs (superseded by V7)
-- V5 FIXED documentation (outdated)
-- Any planning docs marked "STEP X" (all steps complete)
+- `Makefile` - Available commands
 
 ---
 
-## 🎯 Development Workflow
+## Current Status (December 2025)
 
-1. **Create feature branch**: `git checkout -b feat/feature-name`
-2. **Make changes**: Edit code, write tests
-3. **Pre-commit hooks run automatically**: Format, lint, type-check
-4. **Run tests**: `make test` or `uv run pytest tests/`
-5. **Verify feature alignment** (if touching feature engineering)
-6. **Push and create PR**: CI checks must pass
-7. **Merge to main**: Deploy to production
+**Production System**: HYDRA 4.0
+- Mother AI + 4 Independent Engines
+- Paper trading on BTC-USD, ETH-USD, SOL-USD
+- Tournament-based engine ranking
+- Guardian risk control active
 
----
+**Infrastructure**:
+- Runtime: Cloud server (178.156.136.185)
+- Database: SQLite (`data/hydra/hydra.db`)
+- Monitoring: Grafana (Coming Soon)
 
-## 🔮 Current Status (Nov 2025)
-
-**Active Branch**: `feature/v7-ultimate`
-**Current Phase**: V7 Ultimate - PRODUCTION (All Steps Complete)
-
-**V7 Status**: ✅ **FULLY DEPLOYED AND RUNNING IN PRODUCTION**
-- **ALL STEPS COMPLETE** (Steps 1-8): Implementation, Dashboard, Telegram, Monitoring
-- **Production Runtime**: Running 24/7 on cloud server (178.156.136.185)
-- **Live Signals**: 30 signals/hour max, aggressive mode enabled
-- **Dashboard**: Live at http://178.156.136.185:5000 with signal visualization
-- **Telegram**: Real-time notifications with price predictions (Entry/SL/TP)
-- **Performance**: Momentum override implemented, signal tracking active
-- **Method**: Manual trading (signal generation only, no auto-execution)
-
-**V7 Framework** (Production Deployed ✅):
-- **7 Mathematical Theories**: Shannon Entropy, Hurst Exponent, Kolmogorov Complexity, Market Regime, Risk Metrics, Fractal Dimension, Market Context (CoinGecko)
-- **DeepSeek LLM**: Synthesis of theories into trade signals ($5/day budget)
-- **CoinGecko Premium**: Market context and macro analysis ($129/month)
-- **Rate Limiting**: 30 signals/hour (aggressive FTMO mode)
-- **Cost Controls**: $5/day, $150/month budgets
-- **Bayesian Learning**: Beta distribution updates from trade outcomes
-- **Signal Tracking**: Automated entry/exit detection and win rate calculation
-
-**Production Metrics**:
-- Runtime: 24/7 continuous operation
-- Symbols: BTC-USD, ETH-USD, SOL-USD
-- Data Sources: Coinbase REST API + CoinGecko Premium
-- Cost per signal: ~$0.0003-0.0005
-- Daily cost: ~$0.01-0.02 (well under $5 budget)
-
-**Key Production Files**:
-- `apps/runtime/v7_runtime.py` - Main V7 runtime (33KB, production)
-- `apps/dashboard/app.py` - Dashboard with V7 signal visualization
-- `libs/llm/*` - DeepSeek integration (4 files)
-- `libs/analysis/*` - 6 mathematical theories (6 files)
-- `libs/notifications/telegram_bot.py` - Telegram notifications
-- `V7_MONITORING.md` - Production monitoring guide ⭐
-- `V7_MOMENTUM_OVERRIDE_SUCCESS.md` - Momentum fix documentation
-
-**Production Monitoring**:
-```bash
-# Check V7 runtime status
-ps aux | grep v7_runtime.py | grep -v grep
-
-# View live logs
-tail -f /tmp/v7_production.log
-
-# Dashboard (already running)
-curl http://localhost:5000/api/v7/signals/recent/10
-
-# Database signals (last hour)
-sqlite3 tradingai.db "SELECT timestamp, symbol, direction, confidence, entry_price
-FROM signals WHERE model_version='v7_ultimate'
-AND timestamp > datetime('now', '-1 hour')
-ORDER BY timestamp DESC LIMIT 20"
-
-# Check Telegram bot status
-ps aux | grep telegram | grep -v grep
-```
-
-**Production Commands**:
-```bash
-# Restart V7 runtime
-pkill -f v7_runtime.py
-nohup .venv/bin/python3 apps/runtime/v7_runtime.py \
-  --iterations -1 --sleep-seconds 120 --aggressive --max-signals-per-hour 30 \
-  > /tmp/v7_production.log 2>&1 &
-
-# Monitor costs
-tail -100 /tmp/v7_production.log | grep "V7 Statistics" -A 6
-
-# Check signal performance
-sqlite3 tradingai.db "SELECT direction, COUNT(*), AVG(confidence)
-FROM signals WHERE model_version='v7_ultimate'
-AND timestamp > datetime('now', '-24 hours') GROUP BY direction"
-```
+**Next Milestones**:
+1. Complete Grafana + Prometheus monitoring stack
+2. Dashboard: P&L, engine tournament, risk metrics
+3. Alerting: Telegram notifications for critical events
 
 ---
 
-**Last Updated**: 2025-11-19
-**Status**: V7 Ultimate is LIVE in production on cloud server
+**Last Updated**: 2025-12-03
+**Branch**: `feature/v7-ultimate`

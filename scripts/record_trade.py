@@ -10,7 +10,10 @@ Usage:
 
 import sys
 from datetime import datetime
-sys.path.insert(0, '/root/crpbot')
+from pathlib import Path
+_this_file = Path(__file__).resolve()
+_project_root = _this_file.parent.parent
+sys.path.insert(0, str(_project_root))
 
 from libs.tracking.performance_tracker import PerformanceTracker
 

@@ -369,9 +369,10 @@ class TelegramBot:
                 )
                 return
 
-            # Start V7 runtime in background
+            # Start V7 runtime in background - use dynamic path detection
+            from libs.hydra.config import PROJECT_ROOT
             cmd = [
-                '/root/crpbot/.venv/bin/python3',
+                str(PROJECT_ROOT / '.venv/bin/python3'),
                 'apps/runtime/v7_runtime.py',
                 '--iterations', '-1',
                 '--sleep-seconds', '300'
@@ -380,7 +381,7 @@ class TelegramBot:
             # Start process in background
             subprocess.Popen(
                 cmd,
-                cwd='/root/crpbot',
+                cwd=str(PROJECT_ROOT),
                 stdout=open('/tmp/v7_runtime_telegram.log', 'w'),
                 stderr=subprocess.STDOUT,
                 start_new_session=True

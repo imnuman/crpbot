@@ -163,16 +163,18 @@ IMPORTANT: This is a MANUAL trading system. You generate signals for a human tra
         context: MarketContext,
         analysis: TheoryAnalysis,
         additional_context: Optional[str] = None,
-        coingecko_context: Optional[Dict[str, Any]] = None
+        coingecko_context: Optional[Dict[str, Any]] = None,
+        order_flow_features: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
         """
         Build DeepSeek chat prompt from market context and theory analysis
 
         Args:
             context: Market context (symbol, price, timeframe)
-            analysis: Results from all 7 theories (6 mathematical + CoinGecko)
+            analysis: Results from all 10 theories (6 mathematical + 4 statistical)
             additional_context: Optional additional context (news, etc.)
-            coingecko_context: Optional CoinGecko market context (7th theory)
+            coingecko_context: Optional CoinGecko market context (theory 11)
+            order_flow_features: Optional Order Flow analysis (Volume Profile, OFI, Microstructure)
 
         Returns:
             List of message dicts for DeepSeek chat API
@@ -210,33 +212,101 @@ Timestamp: {context.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
             if coingecko_context.get('notes'):
                 user_prompt += f"   - Notes: {coingecko_context['notes']}\n"
 
+        # Add Order Flow analysis if available (Phase 2)
+        if order_flow_features:
+            user_prompt += "\n**8. Order Flow Analysis (Institutional Level):**\n"
+
+            # Volume Profile
+            if 'vp_poc' in order_flow_features:
+                user_prompt += "   **Volume Profile:**\n"
+                user_prompt += f"      - POC (Point of Control): ${order_flow_features['vp_poc']:,.2f}\n"
+                user_prompt += f"      - Value Area: ${order_flow_features['vp_val']:,.2f} - ${order_flow_features['vp_vah']:,.2f}\n"
+                user_prompt += f"      - Trading Bias: {order_flow_features['vp_trading_bias']} (strength: {order_flow_features.get('vp_bias_strength', 0):.2f})\n"
+                user_prompt += f"      - Value Area Volume: {order_flow_features['vp_value_area_volume']:.1%}\n"
+
+                if order_flow_features.get('vp_at_hvn'):
+                    user_prompt += f"      - ⚠️ Price at High Volume Node (strong support/resistance)\n"
+
+                if order_flow_features.get('vp_support_levels'):
+                    user_prompt += f"      - Support Levels: " + ", ".join([f"${level:,.2f}" for level in order_flow_features['vp_support_levels'][:3]]) + "\n"
+
+                if order_flow_features.get('vp_resistance_levels'):
+                    user_prompt += f"      - Resistance Levels: " + ", ".join([f"${level:,.2f}" for level in order_flow_features['vp_resistance_levels'][:3]]) + "\n"
+
+            # Order Flow Imbalance
+            if 'ofi_imbalance' in order_flow_features:
+                user_prompt += "   **Order Flow Imbalance (OFI):**\n"
+                user_prompt += f"      - Imbalance: {order_flow_features['ofi_imbalance']:+.3f} "
+                user_prompt += f"({'more bids' if order_flow_features['ofi_imbalance'] > 0 else 'more asks'})\n"
+                user_prompt += f"      - Bid/Ask Ratio: {order_flow_features['ofi_ratio']:.2f}\n"
+
+                if order_flow_features.get('ofi_whale_detected'):
+                    user_prompt += f"      - 🐋 Whale Activity Detected (large orders present)\n"
+
+            # Market Microstructure
+            if 'ms_vwap' in order_flow_features:
+                user_prompt += "   **Market Microstructure:**\n"
+                user_prompt += f"      - VWAP: ${order_flow_features['ms_vwap']:,.2f}\n"
+                user_prompt += f"      - VWAP Deviation: {order_flow_features['ms_vwap_deviation_pct']:+.2f}%\n"
+
+                if abs(order_flow_features['ms_vwap_deviation_pct']) > 1.0:
+                    if order_flow_features['ms_vwap_deviation_pct'] > 0:
+                        user_prompt += f"      - ⚠️ Trading {order_flow_features['ms_vwap_deviation_pct']:.2f}% above VWAP (expensive)\n"
+                    else:
+                        user_prompt += f"      - ✅ Trading {abs(order_flow_features['ms_vwap_deviation_pct']):.2f}% below VWAP (cheap)\n"
+
+                if 'ms_spread_bps' in order_flow_features:
+                    user_prompt += f"      - Spread: {order_flow_features['ms_spread_bps']:.1f} bps ({order_flow_features.get('ms_spread_quality', 'N/A')})\n"
+
+                if 'ms_depth_imbalance' in order_flow_features:
+                    depth_imb = order_flow_features['ms_depth_imbalance']
+                    user_prompt += f"      - Depth Imbalance: {depth_imb:+.3f} ({'bid support' if depth_imb > 0 else 'ask pressure'})\n"
+
+                if 'ms_buy_pressure' in order_flow_features:
+                    user_prompt += f"      - Buy Pressure: {order_flow_features['ms_buy_pressure']:.1%}\n"
+
         # Add additional context if provided
         if additional_context:
             user_prompt += f"\n**Additional Context:**\n{additional_context}\n"
 
-        # Add conservative mode disclaimer with momentum priority
+        # Add AGGRESSIVE trading mode - we NEED more trades
         if self.conservative_mode:
             user_prompt += """
 **Risk Management: FTMO-COMPLIANT**
 Apply proper risk management and position sizing.
 
-**CRITICAL SIGNAL GENERATION RULES**:
-1. **In Choppy/Ranging Markets** (high entropy >0.85, consolidation regime):
-   - PRIORITIZE momentum signals (Kalman momentum, Hurst exponent)
-   - Strong momentum (>±15) with trending Hurst (>0.55) = ACTIONABLE SIGNAL
-   - Don't let negative Sharpe ratios paralyze you - they're backward-looking
+**AGGRESSIVE SIGNAL GENERATION RULES** - WE NEED MORE TRADES:
+1. **MANDATORY: Generate BUY/SELL whenever possible**:
+   - ANY momentum signal (Kalman >±5) = TAKE THE TRADE
+   - Hurst >0.52 = BUY, Hurst <0.48 = SELL
+   - Even weak signals are TRADEABLE with 4% stop loss protection
 
-2. **Price Action Override**:
-   - If Kalman momentum >+20 and Hurst >0.55: Consider BUY (35-55% confidence)
-   - If Kalman momentum <-20 and Hurst <0.45: Consider SELL (35-55% confidence)
-   - Clear directional movement >0.5% = tradeable opportunity
+2. **HOLD is RARE** - Use only if:
+   - Kalman momentum = exactly 0 AND
+   - Hurst = exactly 0.50 AND
+   - All theories completely neutral
+   - Otherwise: FORCE a BUY or SELL decision
 
-3. **Confidence Calibration**:
-   - High entropy + strong momentum = 35-45% confidence (ACCEPTABLE in ranging markets)
-   - Trending market + aligned theories = 60-75% confidence
-   - Conflicting signals = 20-35% confidence or HOLD
+3. **Confidence Calibration** - LOWER THRESHOLDS:
+   - Weak momentum (±5-15) = 30-40% confidence → STILL TRADE
+   - Moderate momentum (±15-30) = 40-60% confidence → TRADE
+   - Strong momentum (>±30) = 60-80% confidence → STRONG TRADE
+   - ANY signal >25% confidence = TRADEABLE
 
-Recommend BUY/SELL when momentum is clear, even if other metrics are mixed. HOLD only when truly no edge exists."""
+4. **Speed and Volume**:
+   - Generate AT LEAST 30-50% BUY/SELL signals (not HOLD)
+   - Faster execution = more opportunities to win
+   - Small losses with 4% SL are acceptable - volume wins
+
+CRITICAL: If you're unsure, default to BUY/SELL based on slightest momentum. HOLD only when absolutely zero directional bias exists.
+
+**ABSOLUTE MANDATE - NO EXCEPTIONS**:
+If Hurst Exponent > 0.52 → YOU MUST GENERATE BUY (not HOLD)
+If Hurst Exponent < 0.48 → YOU MUST GENERATE SELL (not HOLD)
+If Kalman Momentum > +10 → YOU MUST GENERATE BUY (not HOLD)
+If Kalman Momentum < -10 → YOU MUST GENERATE SELL (not HOLD)
+
+GENERATING HOLD WHEN THESE CONDITIONS EXIST IS A VIOLATION OF INSTRUCTIONS."""
 
         # Request format with price targets (SIMPLIFIED - system prompt now has format requirement)
         user_prompt += """
@@ -270,8 +340,8 @@ REASONING: High entropy (0.89) indicates random market. Insufficient edge for tr
 
 **Price Level Guidelines:**
 - Entry: Current price or specific limit level
-- Stop Loss: 0.5-2% risk from entry
-- Take Profit: Minimum 1:1.5 R:R ratio
+- Stop Loss: 2-4% risk from entry (WIDENED for crypto volatility - prevents instant stop-outs)
+- Take Profit: Minimum 1:2 R:R ratio (maintain risk/reward balance)
 - HOLD signals: Use N/A for all prices"""
 
         # Build messages list
@@ -280,11 +350,18 @@ REASONING: High entropy (0.89) indicates random market. Insufficient edge for tr
             {"role": "user", "content": user_prompt}
         ]
 
-        theories_count = 7 if coingecko_context else 6
+        # Count theories (6 core + CoinGecko + Order Flow)
+        theories_count = 6
+        if coingecko_context:
+            theories_count += 1
+        if order_flow_features:
+            theories_count += 1
+
         logger.debug(
             f"Built prompt for {context.symbol} | "
             f"Theories: {theories_count} | "
             f"CoinGecko: {bool(coingecko_context)} | "
+            f"OrderFlow: {bool(order_flow_features)} | "
             f"Conservative: {self.conservative_mode}"
         )
 
@@ -357,8 +434,8 @@ REASONING: [2-3 sentences explaining signal and price levels]
 
 **Price Level Guidelines:**
 - Entry: Current price or specific limit level
-- Stop Loss: 0.5-2% risk from entry
-- Take Profit: Minimum 1:1.5 R:R ratio
+- Stop Loss: 2-4% risk from entry (WIDENED for crypto volatility - prevents instant stop-outs)
+- Take Profit: Minimum 1:2 R:R ratio (maintain risk/reward balance)
 - HOLD signals: Use N/A for all prices"""
 
         # Simplified system prompt (no theory mentions)

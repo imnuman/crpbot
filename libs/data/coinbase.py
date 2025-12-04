@@ -114,7 +114,7 @@ class CoinbaseDataProvider(DataProviderInterface):
         logger.debug(f"Request: {method} {url}")
         logger.debug(f"JWT token generated (expires in 2 minutes)")
         
-        response = requests.request(method, url, headers=headers, params=params)
+        response = requests.request(method, url, headers=headers, params=params, timeout=30)
         
         # Log response for debugging
         if response.status_code != 200:

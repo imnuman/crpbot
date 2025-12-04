@@ -1,0 +1,42 @@
+# HYDRA 4.0 Terminal Dashboard (with ttyd web access)
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies and ttyd from GitHub
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    sqlite3 \
+    && wget -O /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
+    && chmod +x /usr/local/bin/ttyd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency management
+RUN pip install uv
+
+# Copy essential files first
+COPY pyproject.toml uv.lock README.md ./
+
+# Copy source code
+COPY apps/ ./apps/
+COPY libs/ ./libs/
+COPY scripts/ ./scripts/
+
+# Install dependencies (no editable install)
+RUN uv sync --frozen --no-dev --no-editable
+
+# Create symlink for hardcoded paths
+RUN mkdir -p /root && ln -s /app /root/crpbot
+
+# Set environment
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV TERM=xterm-256color
+ENV HYDRA_DATA_DIR=/app/data/hydra
+
+# Expose ttyd port
+EXPOSE 7682
+
+# Run Rich terminal dashboard via ttyd
+CMD ["ttyd", "-W", "-p", "7682", "uv", "run", "python", "scripts/hydra_dashboard.py"]

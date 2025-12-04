@@ -83,13 +83,13 @@ class DeepSeekClient:
 
     # Rate limiting (conservative defaults)
     MAX_REQUESTS_PER_MINUTE = 50
-    MAX_TOKENS_PER_REQUEST = 8000  # Conservative limit
+    MAX_TOKENS_PER_REQUEST = 16000  # Increased for comprehensive analysis (was 8000)
 
     def __init__(
         self,
         api_key: Optional[str] = None,
         model: str = DEFAULT_MODEL,
-        timeout: int = 30,
+        timeout: int = 180,  # Increased from 90s for HMAS V2 agents
         max_retries: int = 3
     ):
         """

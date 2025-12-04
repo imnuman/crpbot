@@ -1,0 +1,112 @@
+# Prometheus Alert Rules for HYDRA 4.0
+# These rules trigger alerts based on HYDRA metrics
+
+groups:
+  - name: hydra_critical
+    interval: 15s
+    rules:
+      # HYDRA Runtime Down
+      - alert: HydraRuntimeDown
+        expr: up{job="hydra"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HYDRA Runtime is DOWN"
+          description: "HYDRA runtime has been unreachable for more than 2 minutes. Check the process and logs."
+
+      # Daily Drawdown Exceeded
+      - alert: DailyDrawdownExceeded
+        expr: hydra_daily_drawdown_percent > 4.5
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Daily drawdown limit exceeded"
+          description: "Daily drawdown is {{ $value }}%, exceeding the 4.5% FTMO limit. Trading should be paused."
+
+      # Total Drawdown Exceeded
+      - alert: TotalDrawdownExceeded
+        expr: hydra_total_drawdown_percent > 9
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Total drawdown limit exceeded"
+          description: "Total drawdown is {{ $value }}%, exceeding the 9% FTMO limit. IMMEDIATE ACTION REQUIRED."
+
+      # Kill Switch Activated
+      - alert: KillSwitchActivated
+        expr: hydra_kill_switch_active == 1
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "HYDRA Kill Switch ACTIVATED"
+          description: "The HYDRA kill switch has been activated. All trading is halted. Manual intervention required."
+
+  - name: hydra_warning
+    interval: 30s
+    rules:
+      # Consecutive Losses
+      - alert: ConsecutiveLosses
+        expr: hydra_consecutive_losses >= 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} consecutive losing trades"
+          description: "HYDRA has had {{ $value }} consecutive losing trades. Consider reviewing strategy performance."
+
+      # Engine Offline
+      - alert: EngineOffline
+        expr: hydra_engine_active{engine=~"A|B|C|D"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Engine {{ $labels.engine }} is offline"
+          description: "Gladiator Engine {{ $labels.engine }} has been offline for 5+ minutes. Check API connectivity."
+
+      # High API Latency
+      - alert: HighAPILatency
+        expr: hydra_api_latency_seconds > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency detected"
+          description: "API latency is {{ $value }}s, which may affect trade execution timing."
+
+      # Low Win Rate
+      - alert: LowWinRate
+        expr: hydra_win_rate_24h < 40
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low 24h win rate: {{ $value }}%"
+          description: "The 24-hour win rate has dropped to {{ $value }}%. Consider reviewing strategy parameters."
+
+  - name: hydra_info
+    interval: 1m
+    rules:
+      # New Trade Opened
+      - alert: TradeOpened
+        expr: increase(hydra_trades_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: info
+        annotations:
+          summary: "New trade opened"
+          description: "A new trade has been opened by HYDRA."
+
+      # Engine Weight Changed
+      - alert: EngineWeightChanged
+        expr: changes(hydra_engine_weight[1h]) > 0
+        for: 0s
+        labels:
+          severity: info
+        annotations:
+          summary: "Engine tournament weights updated"
+          description: "The tournament manager has updated engine weights based on performance."

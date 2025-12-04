@@ -1,0 +1,48 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Data and models (too large)
+data/
+models/
+*.parquet
+*.csv
+*.db
+*.sqlite
+*.pt
+*.pth
+*.pkl
+
+# Logs
+logs/
+*.log
+
+# Tests
+tests/
+.pytest_cache
+.coverage
+
+# Misc
+.DS_Store
+*.md
+!README.md
+.env
+*.env.*
+node_modules

@@ -222,10 +222,11 @@ class SimpleV7Bot:
             )
             return
 
-        # Start runtime
+        # Start runtime - use dynamic path detection
+        from libs.hydra.config import PROJECT_ROOT
         subprocess.Popen(
-            ['/root/crpbot/.venv/bin/python3', 'apps/runtime/v7_runtime.py', '--iterations', '-1', '--sleep-seconds', '300'],
-            cwd='/root/crpbot',
+            [str(PROJECT_ROOT / '.venv/bin/python3'), 'apps/runtime/v7_runtime.py', '--iterations', '-1', '--sleep-seconds', '300'],
+            cwd=str(PROJECT_ROOT),
             stdout=open('/tmp/v7_runtime.log', 'w'),
             stderr=subprocess.STDOUT,
             start_new_session=True

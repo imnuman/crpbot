@@ -1,0 +1,40 @@
+# Alertmanager Configuration for HYDRA 4.0
+# Basic config - Telegram can be added later via Grafana UI
+
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default'
+  routes:
+    # Critical alerts
+    - match:
+        severity: critical
+      receiver: 'default'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'default'
+      group_wait: 1m
+      repeat_interval: 4h
+
+receivers:
+  # Default receiver - logs alerts
+  # Telegram integration can be configured via Grafana UI
+  - name: 'default'
+    webhook_configs: []
+
+inhibit_rules:
+  # Inhibit warning if critical is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']

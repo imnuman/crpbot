@@ -1,0 +1,139 @@
+# HYDRA 4.0 Complete Stack
+# Runtime + Monitoring (Prometheus, Grafana, Alertmanager)
+#
+# Deploy: docker compose up -d --build
+# Access:
+#   - Grafana:      http://178.156.136.185:3000
+#   - Prometheus:   http://178.156.136.185:9090
+#   - Metrics:      http://178.156.136.185:9100/metrics
+
+services:
+  # HYDRA Runtime - Main trading engine with Prometheus metrics
+  hydra-runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hydra-runtime
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "9100:9100"  # Prometheus metrics endpoint
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./tradingai.db:/app/tradingai.db
+    command: >
+      uv run python apps/runtime/hydra_runtime.py
+      --paper
+      --assets BTC-USD ETH-USD SOL-USD XRP-USD LTC-USD ADA-USD LINK-USD DOT-USD
+      --iterations -1
+      --interval 300
+    networks:
+      - hydra-network
+
+  # Prometheus - Time-series database for metrics
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: hydra-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - hydra-network
+
+  # Grafana - Dashboard and visualization
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: hydra-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-hydra4admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://178.156.136.185:3000
+      - GF_ALERTING_ENABLED=false
+      - GF_UNIFIED_ALERTING_ENABLED=true
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - hydra-network
+
+  # Loki - Log aggregation for agent chat logs
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: hydra-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - hydra-network
+
+  # Promtail - Log collector for HYDRA runtime
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: hydra-promtail
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/promtail/promtail-config.yaml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs:/var/log/hydra:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - hydra-network
+
+  # Alertmanager - Alert routing and notifications
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: hydra-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://178.156.136.185:9093'
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - hydra-network
+
+networks:
+  hydra-network:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+  loki_data:
+    driver: local
