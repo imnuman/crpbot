@@ -9,9 +9,11 @@ Each gladiator must implement:
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 from loguru import logger
+
+from ..engine_specialization import get_specialty_validator, SpecialtyConfig
 
 
 class BaseGladiator(ABC):
@@ -35,6 +37,8 @@ class BaseGladiator(ABC):
         self.api_key = api_key
         self.strategy_count = 0
         self.vote_history = []
+        self.specialty_validator = get_specialty_validator()
+        self.specialty_config = self.specialty_validator.get_specialty(name)
 
         logger.info(f"Gladiator {name} initialized: {role}")
 
@@ -109,6 +113,71 @@ class BaseGladiator(ABC):
             }
         """
         pass
+
+    def check_specialty_trigger(self, market_data: Dict) -> Tuple[bool, str]:
+        """
+        Check if this engine's specialty trigger is active.
+
+        Each engine has ONE specialty:
+        - Engine A: Liquidation cascades ($20M+ trigger)
+        - Engine B: Funding rate extremes (>0.5%)
+        - Engine C: Orderbook imbalance (>2.5:1)
+        - Engine D: Regime transitions (ATR 2× expansion)
+
+        Args:
+            market_data: Dict with market conditions
+
+        Returns:
+            Tuple of (is_triggered: bool, reason: str)
+        """
+        if not self.specialty_config:
+            return True, "No specialty configured - always active"
+
+        active_triggers = self.specialty_validator.get_active_triggers(market_data)
+        is_triggered = active_triggers.get(self.name, False)
+
+        if is_triggered:
+            return True, f"Specialty triggered: {self.specialty_config.specialty.value}"
+        else:
+            return False, f"Specialty NOT triggered: {self.specialty_config.specialty.value}"
+
+    def vote_on_trade_with_specialty_check(
+        self,
+        asset: str,
+        asset_type: str,
+        regime: str,
+        strategy: Dict,
+        signal: Dict,
+        market_data: Dict
+    ) -> Dict:
+        """
+        Vote on a trade with specialty enforcement.
+
+        If engine's specialty is not triggered, returns HOLD vote.
+        Otherwise, calls the underlying vote_on_trade() method.
+
+        Args:
+            Same as vote_on_trade()
+
+        Returns:
+            Vote dict with "vote", "confidence", "reasoning", "concerns"
+        """
+        # Check specialty trigger
+        is_triggered, reason = self.check_specialty_trigger(market_data)
+
+        if not is_triggered:
+            logger.info(f"Gladiator {self.name}: {reason} - voting HOLD")
+            return {
+                "vote": "HOLD",
+                "confidence": 0.0,
+                "reasoning": f"Specialty not triggered: {reason}",
+                "concerns": ["Engine specialty condition not met"],
+                "specialty_blocked": True
+            }
+
+        # Specialty triggered - proceed with normal vote
+        logger.info(f"Gladiator {self.name}: {reason} - proceeding with vote")
+        return self.vote_on_trade(asset, asset_type, regime, strategy, signal, market_data)
 
     def _call_llm(
         self,

@@ -445,7 +445,8 @@ class HydraRuntime:
 
         for engine_name, gladiator, engine_market_data in engines_data:
             # Try to select from strategy memory (80% exploit)
-            selected = self.strategy_memory.select_strategy(
+            # Uses edge decay detection + regime validation
+            selected = self.strategy_memory.select_strategy_with_validation(
                 engine=engine_name,
                 asset=asset,
                 regime=regime,
@@ -520,7 +521,8 @@ class HydraRuntime:
             best_strategy_id = None
 
             for strategy in strategies:
-                vote = gladiator.vote_on_trade(
+                # Use specialty-enforced voting - engines vote HOLD if specialty not triggered
+                vote = gladiator.vote_on_trade_with_specialty_check(
                     asset=asset,
                     asset_type=asset_type,
                     regime=regime,
@@ -1132,6 +1134,15 @@ Only trade when your specialty trigger activates. Patience beats aggression.
             outcome=trade.outcome,
             pnl_percent=trade.pnl_percent,
             rr_actual=trade.rr_actual
+        )
+
+        # Record trade result for decay detection + regime validation
+        self.strategy_memory.record_trade_result(
+            engine=trade.gladiator,
+            asset=trade.asset,
+            regime=trade.regime,
+            strategy_id=trade.strategy_id,
+            outcome=trade.outcome
         )
         logger.debug(f"Strategy memory updated: {trade.gladiator} - {trade.strategy_id} ({trade.outcome})")
 
