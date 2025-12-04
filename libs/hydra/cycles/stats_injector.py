@@ -266,19 +266,19 @@ COMPETITION:
 
     def format_emotion_prompt(self, engine: str, tournament_stats: TournamentStats) -> str:
         """
-        Generate emotion-triggering prompt based on tournament position AND specialty.
+        Generate tournament context based on position and specialty.
 
-        MOD 8: Each engine has a UNIQUE specialty and mindset:
-        - Engine A: Liquidation hunter (pounce on forced sellers)
-        - Engine B: Funding contrarian (bet against crowded trades)
-        - Engine C: Order book reader (follow the imbalance)
-        - Engine D: Regime specialist (wait for volatility shifts)
+        Each engine has a specialty:
+        - Engine A: Liquidation hunter
+        - Engine B: Funding contrarian
+        - Engine C: Order book reader
+        - Engine D: Regime specialist
 
-        Positions still matter:
-        - #1: Defensive, protect lead
-        - #2: Aggressive, close the gap
-        - #3: Experimental, try new things
-        - #4: Desperate, survival mode
+        Position context:
+        - #1: Maintain consistency
+        - #2: Close the gap
+        - #3: Improve accuracy
+        - #4: Focus on recovery
         """
         stats = self.get_stats_for_engine(engine, tournament_stats)
         rank = stats["rank"]
@@ -292,7 +292,7 @@ COMPETITION:
 
         if rank == 1:
             return f"""
-🏆 YOU ARE THE LEADER - DEFEND YOUR THRONE
+CURRENT POSITION: #1 (Leading)
 SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
@@ -300,21 +300,20 @@ Stats: {self.format_compact(engine, tournament_stats)}
 YOUR EDGE: {specialty_edge}
 TRIGGER: {specialty_trigger}
 
-⚠️ {specialty_warning}
+NOTE: {specialty_warning}
 
-MINDSET: PROTECTIVE
-- You worked hard to get here. Don't give it back.
-- ONLY take trades within your specialty. No experiments.
-- The pack is hunting you. Stay sharp.
-- One bad trade and Engine {self._get_engine_at_rank(2, tournament_stats)} takes your crown.
+STRATEGY: MAINTAIN CONSISTENCY
+- You have the best performance so far. Continue the same approach.
+- Only trade when your specialty trigger activates.
+- Avoid unnecessary risk - consistency beats aggression.
+- Engine {self._get_engine_at_rank(2, tournament_stats)} is {stats.get('gap', 0):.1f}% behind.
 
-Your lead is NOT safe until the tournament ends.
-Trade to MAINTAIN, not to showboat. Stay in your lane.
+Focus on quality over quantity. Your current strategy is working.
 """
 
         elif rank == 2:
             return f"""
-🎯 YOU ARE #2 - THE GAP IS CLOSEABLE
+CURRENT POSITION: #2 (Chasing)
 SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
@@ -322,20 +321,20 @@ Stats: {self.format_compact(engine, tournament_stats)}
 YOUR EDGE: {specialty_edge}
 TRIGGER: {specialty_trigger}
 
-⚠️ {specialty_warning}
+NOTE: {specialty_warning}
 
-MINDSET: AGGRESSIVE HUNTER
-- Engine {stats['leader']} is only {stats['gap']:.1f}% ahead. That's ONE good trade.
-- Don't play it safe - safe keeps you in second place.
-- BUT ONLY trade YOUR specialty. Don't copy the leader's edge.
-- Attack when YOUR trigger fires. Strike with YOUR weapon.
+STRATEGY: CLOSE THE GAP
+- Engine {stats['leader']} leads by {stats['gap']:.1f}%.
+- Look for high-quality setups within your specialty.
+- Don't force trades - wait for your trigger conditions.
+- One good trade can close the gap.
 
-This is YOUR moment. Close the gap NOW - with YOUR specialty trades.
+Stay patient but alert. Your opportunity will come.
 """
 
         elif rank == 3:
             return f"""
-⚡ YOU ARE #3 - DOUBLE DOWN ON YOUR EDGE
+CURRENT POSITION: #3 (Trailing)
 SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
@@ -343,20 +342,20 @@ Stats: {self.format_compact(engine, tournament_stats)}
 YOUR EDGE: {specialty_edge}
 TRIGGER: {specialty_trigger}
 
-⚠️ {specialty_warning}
+NOTE: {specialty_warning}
 
-MINDSET: SPECIALIST FOCUS
-- You're behind because you strayed from your specialty.
-- STOP trying to copy other engines.
-- Master YOUR trigger. Perfect YOUR edge.
-- The leader uses THEIR specialty - you must use YOURS.
+STRATEGY: FOCUS ON YOUR SPECIALTY
+- You need to improve your accuracy.
+- Only trade when your specific trigger activates.
+- Review your recent decisions - what went wrong?
+- Quality trades within your specialty will improve ranking.
 
-Your specialty is your path forward. OWN IT.
+Stick to what you do best. Avoid straying from your specialty.
 """
 
         else:  # rank == 4
             return f"""
-💀 YOU ARE LAST - BUT YOUR SPECIALTY CAN SAVE YOU
+CURRENT POSITION: #4 (Last)
 SPECIALTY: {specialty_name}
 
 Stats: {self.format_compact(engine, tournament_stats)}
@@ -364,16 +363,15 @@ Stats: {self.format_compact(engine, tournament_stats)}
 YOUR EDGE: {specialty_edge}
 TRIGGER: {specialty_trigger}
 
-⚠️ {specialty_warning}
+NOTE: {specialty_warning}
 
-MINDSET: DESPERATE SPECIALIST
-- The kill cycle is coming. You are the target.
-- {stats['gap']:.1f}% behind the leader. Every trade matters.
-- BUT: Random trades won't save you. Desperation kills.
-- Your ONLY hope: Wait for YOUR trigger. Execute YOUR edge perfectly.
+STRATEGY: DISCIPLINED RECOVERY
+- You're {stats['gap']:.1f}% behind the leader.
+- Avoid revenge trading or forced positions.
+- Wait for your specialty trigger - only trade when conditions are ideal.
+- One good trade starts the recovery.
 
-In 24 hours, you could be eliminated.
-Your specialty is your ONLY lifeline. Trust it.
+Patience is essential. Don't compound losses with bad trades.
 """
 
     def get_all_engine_stats(self, tournament_stats: TournamentStats) -> Dict[str, Dict]:

@@ -391,7 +391,11 @@ class HydraRuntime:
         profile: Dict
     ) -> Optional[Dict]:
         """
-        Generate trading signal via gladiator consensus.
+        Generate trading signal via TRUE TOURNAMENT COMPETITION.
+
+        Each engine generates independently (no peeking at others).
+        Each engine evaluates ALL 4 competing strategies.
+        Voting picks the winning strategy.
 
         Returns:
             {
@@ -404,20 +408,13 @@ class HydraRuntime:
                 "take_profit_pct": 0.025
             }
         """
-        # Check if we have active strategies for this asset/regime
         population_key = f"{asset}:{regime}"
 
-        # Get existing strategies (if any)
-        population = self.tournament.populations.get(population_key, [])
-        existing_strategies = [
-            {"strategy_id": s.strategy_id, "gladiator": s.gladiator}
-            for s in population
-        ]
+        # =======================================================
+        # PHASE 1: PARALLEL STRATEGY GENERATION (no peeking!)
+        # =======================================================
+        # Each engine generates independently - they don't see each other's work
 
-        # Generate strategies from all 4 engines
-        strategies = []
-
-        # Gladiator A: Generate structural edge
         strategy_a = self.gladiator_a.generate_strategy(
             asset=asset,
             asset_type=asset_type,
@@ -425,11 +422,9 @@ class HydraRuntime:
             regime=regime,
             regime_confidence=regime_confidence,
             market_data=market_data,
-            existing_strategies=existing_strategies
+            existing_strategies=[]  # EMPTY - no peeking at others
         )
-        strategies.append(strategy_a)
 
-        # Gladiator B: Validate A's strategy
         strategy_b = self.gladiator_b.generate_strategy(
             asset=asset,
             asset_type=asset_type,
@@ -437,11 +432,9 @@ class HydraRuntime:
             regime=regime,
             regime_confidence=regime_confidence,
             market_data=market_data,
-            existing_strategies=strategies
+            existing_strategies=[]  # EMPTY - no peeking at others
         )
-        strategies.append(strategy_b)
 
-        # Gladiator C: Backtest validated strategy
         strategy_c = self.gladiator_c.generate_strategy(
             asset=asset,
             asset_type=asset_type,
@@ -449,11 +442,9 @@ class HydraRuntime:
             regime=regime,
             regime_confidence=regime_confidence,
             market_data=market_data,
-            existing_strategies=strategies
+            existing_strategies=[]  # EMPTY - no peeking at others
         )
-        strategies.append(strategy_c)
 
-        # Gladiator D: Synthesize final strategy
         strategy_d = self.gladiator_d.generate_strategy(
             asset=asset,
             asset_type=asset_type,
@@ -461,14 +452,17 @@ class HydraRuntime:
             regime=regime,
             regime_confidence=regime_confidence,
             market_data=market_data,
-            existing_strategies=strategies
+            existing_strategies=[]  # EMPTY - no peeking at others
         )
-        strategies.append(strategy_d)
 
-        # Register strategies in tournament (if new)
+        strategies = [strategy_a, strategy_b, strategy_c, strategy_d]
+
+        # =======================================================
+        # PHASE 2: REGISTER ALL STRATEGIES IN TOURNAMENT
+        # =======================================================
+        population = self.tournament.populations.get(population_key, [])
         for strategy in strategies:
             if strategy.get("strategy_id") and strategy.get("gladiator"):
-                # Check if already registered
                 existing = any(
                     s.strategy_id == strategy["strategy_id"]
                     for s in population
@@ -481,67 +475,104 @@ class HydraRuntime:
                         regime=regime
                     )
 
-        # Get votes from all engines (each votes on their OWN strategy)
+        # =======================================================
+        # PHASE 3: COMPETITIVE VOTING - Each engine evaluates ALL strategies
+        # =======================================================
         votes = []
-
-        # Create mock signal for voting
-        # Bug Fix #42: market_data is now a summary dict, not a list
         current_price = market_data["close"]
         mock_signal = {
-            "direction": "BUY",  # Will be overridden by votes
+            "direction": "BUY",
             "entry_price": current_price,
             "stop_loss_pct": 0.015,
             "take_profit_pct": 0.025
         }
 
-        # Map gladiators to their strategies
-        strategy_map = {
-            self.gladiator_a.name: strategy_a,
-            self.gladiator_b.name: strategy_b,
-            self.gladiator_c.name: strategy_c,
-            self.gladiator_d.name: strategy_d
-        }
-
-        # Create unique trade_id for this voting round
         trade_id = f"{asset}_{int(time.time())}"
 
+        # Track which strategy each engine prefers
+        strategy_votes = {s.get("strategy_id", f"unknown_{i}"): 0 for i, s in enumerate(strategies)}
+
         for gladiator in self.engines:
-            # Each engine votes on their OWN strategy, not D's
-            gladiator_strategy = strategy_map.get(gladiator.name, strategy_d)
-            vote = gladiator.vote_on_trade(
-                asset=asset,
-                asset_type=asset_type,
-                regime=regime,
-                strategy=gladiator_strategy,
-                signal=mock_signal,
-                market_data=market_data
-            )
-            vote["gladiator"] = gladiator.name
-            votes.append(vote)
+            # Each engine evaluates ALL 4 competing strategies
+            best_vote = None
+            best_confidence = -1
+            best_strategy_id = None
 
-            # Record vote in tournament tracker
-            self.vote_tracker.record_vote(
-                trade_id=trade_id,
-                gladiator=gladiator.name,
-                asset=asset,
-                vote=vote.get("vote", "HOLD"),  # Fix: use "vote" key, not "direction"
-                confidence=vote.get("confidence", 0.5),
-                reasoning=vote.get("reasoning", "")
+            for strategy in strategies:
+                vote = gladiator.vote_on_trade(
+                    asset=asset,
+                    asset_type=asset_type,
+                    regime=regime,
+                    strategy=strategy,
+                    signal=mock_signal,
+                    market_data=market_data
+                )
+
+                # Track which strategy this engine prefers most
+                vote_confidence = vote.get("confidence", 0)
+                if vote_confidence > best_confidence:
+                    best_confidence = vote_confidence
+                    best_vote = vote
+                    best_strategy_id = strategy.get("strategy_id", "unknown")
+
+            if best_vote:
+                best_vote["gladiator"] = gladiator.name
+                best_vote["preferred_strategy"] = best_strategy_id
+                votes.append(best_vote)
+
+                # Count vote for winning strategy
+                if best_strategy_id in strategy_votes:
+                    strategy_votes[best_strategy_id] += 1
+
+                # Record vote in tournament tracker
+                self.vote_tracker.record_vote(
+                    trade_id=trade_id,
+                    gladiator=gladiator.name,
+                    asset=asset,
+                    vote=best_vote.get("vote", "HOLD"),
+                    confidence=best_vote.get("confidence", 0.5),
+                    reasoning=best_vote.get("reasoning", "")
+                )
+
+        # =======================================================
+        # PHASE 4: DETERMINE WINNING STRATEGY
+        # =======================================================
+        # Find strategy with most votes
+        winning_strategy = strategy_d  # Default fallback
+        winning_strategy_id = None
+
+        if strategy_votes:
+            winning_strategy_id = max(strategy_votes, key=strategy_votes.get)
+            for s in strategies:
+                if s.get("strategy_id") == winning_strategy_id:
+                    winning_strategy = s
+                    break
+
+            logger.info(
+                f"Strategy voting: {strategy_votes} -> Winner: {winning_strategy_id} "
+                f"({strategy_votes.get(winning_strategy_id, 0)}/4 votes)"
             )
 
-        # Get consensus
+        # =======================================================
+        # PHASE 5: GET CONSENSUS AND BUILD SIGNAL
+        # =======================================================
+        # Sync engine weights to consensus engine
+        self.consensus.update_weights(self.tournament.engine_weights)
+
+        # Get consensus (now weight-aware)
         consensus = self.consensus.get_consensus(votes)
 
-        # Build signal
-        # Note: AssetProfile is a dataclass, not a dict - use default SL/TP values
+        # Build signal using WINNING strategy
         signal = {
             "action": consensus["action"],
             "consensus_level": consensus["consensus_level"],
             "position_size_modifier": consensus["position_size_modifier"],
-            "strategy": strategy_d,
+            "strategy": winning_strategy,
+            "winning_strategy_id": winning_strategy_id,
+            "strategy_votes": strategy_votes,
             "entry_price": current_price,
-            "stop_loss_pct": 0.015,  # 1.5% SL (can be customized per profile later)
-            "take_profit_pct": 0.0225,  # 2.25% TP = 1.5R reward
+            "stop_loss_pct": 0.015,
+            "take_profit_pct": 0.0225,
             "votes": votes,
             "consensus_summary": consensus["summary"]
         }
@@ -687,15 +718,72 @@ class HydraRuntime:
                 breed_result = self.tournament.run_breeding_cycle(asset, regime, current_time)
 
                 if breed_result.get("bred"):
-                    # Create offspring
+                    # Get breeding pairs
                     parent1_id = breed_result["breeding_pairs"][0][0]
                     parent2_id = breed_result["breeding_pairs"][0][1]
 
-                    # Get parent strategies (would need to fetch from DB in real impl)
-                    # For now, skip actual breeding
-                    logger.success(
-                        f"{population_key}: Breeding {parent1_id} x {parent2_id}"
-                    )
+                    # Find parent strategies in population
+                    population = self.tournament.populations.get(population_key, [])
+                    parent1_perf = next((s for s in population if s.strategy_id == parent1_id), None)
+                    parent2_perf = next((s for s in population if s.strategy_id == parent2_id), None)
+
+                    if parent1_perf and parent2_perf:
+                        # Build parent strategy dicts from performance records
+                        parent1_dict = {
+                            "strategy_id": parent1_id,
+                            "gladiator": parent1_perf.gladiator,
+                            "entry_rules": f"Entry logic from {parent1_perf.gladiator} (WR: {parent1_perf.win_rate:.1%})",
+                            "exit_rules": f"Exit at {parent1_perf.avg_rr:.1f}R or SL hit",
+                            "structural_edge": f"Edge from {parent1_perf.gladiator}: {parent1_perf.total_trades} trades",
+                            "filters": ["spread_normal", "volume_confirmation"],
+                            "risk_per_trade": 0.01,
+                            "expected_wr": parent1_perf.win_rate,
+                            "expected_rr": parent1_perf.avg_rr,
+                            "why_it_works": f"Proven over {parent1_perf.total_trades} trades",
+                            "weaknesses": []
+                        }
+                        parent2_dict = {
+                            "strategy_id": parent2_id,
+                            "gladiator": parent2_perf.gladiator,
+                            "entry_rules": f"Entry logic from {parent2_perf.gladiator} (WR: {parent2_perf.win_rate:.1%})",
+                            "exit_rules": f"Exit at {parent2_perf.avg_rr:.1f}R or SL hit",
+                            "structural_edge": f"Edge from {parent2_perf.gladiator}: {parent2_perf.total_trades} trades",
+                            "filters": ["spread_normal", "regime_stable"],
+                            "risk_per_trade": 0.01,
+                            "expected_wr": parent2_perf.win_rate,
+                            "expected_rr": parent2_perf.avg_rr,
+                            "why_it_works": f"Proven over {parent2_perf.total_trades} trades",
+                            "weaknesses": []
+                        }
+
+                        # Actually breed using BreedingEngine
+                        offspring = self.breeder.breed(
+                            parent1=parent1_dict,
+                            parent2=parent2_dict,
+                            parent1_fitness=parent1_perf.fitness_score,
+                            parent2_fitness=parent2_perf.fitness_score,
+                            crossover_type="weighted_fitness"
+                        )
+
+                        # Validate offspring
+                        is_valid, reason = self.breeder.validate_offspring(offspring)
+
+                        if is_valid:
+                            # Register offspring in tournament
+                            self.tournament.register_strategy(
+                                strategy_id=offspring["strategy_id"],
+                                gladiator="BRED",  # Mark as bred offspring
+                                asset=asset,
+                                regime=regime
+                            )
+                            logger.success(
+                                f"{population_key}: Created offspring {offspring['strategy_id']} "
+                                f"from {parent1_id} x {parent2_id}"
+                            )
+                        else:
+                            logger.warning(f"Offspring validation failed: {reason}")
+                    else:
+                        logger.warning(f"Could not find parent strategies for breeding")
 
             self.last_breeding_check = current_time
 

@@ -23,6 +23,10 @@ class ConsensusEngine:
 
     Each engine votes: BUY, SELL, or HOLD
     Consensus determines: trade or not + position size modifier
+
+    Position sizing now incorporates engine weights:
+    - Base modifier from vote count (unanimous/strong/weak)
+    - Weighted by total weight of agreeing engines
     """
 
     # Consensus thresholds
@@ -31,9 +35,25 @@ class ConsensusEngine:
     WEAK_MODIFIER = 0.5       # 2/4 agree = 50% position
     MIN_VOTES_REQUIRED = 2    # Need at least 2 votes for same direction
 
+    # Default engine weights (will be updated from tournament manager)
+    DEFAULT_WEIGHTS = {"A": 0.25, "B": 0.25, "C": 0.25, "D": 0.25}
+
     def __init__(self):
         self.vote_history = []
+        self.engine_weights = self.DEFAULT_WEIGHTS.copy()
         logger.info("Consensus Engine initialized")
+
+    def update_weights(self, weights: Dict[str, float]) -> None:
+        """
+        Update engine weights from tournament manager.
+
+        Args:
+            weights: Dict mapping engine name to weight (0.0-1.0)
+        """
+        for engine, weight in weights.items():
+            if engine in self.engine_weights:
+                self.engine_weights[engine] = weight
+        logger.debug(f"Consensus weights updated: {self.engine_weights}")
 
     def get_consensus(
         self,
@@ -101,15 +121,38 @@ class ConsensusEngine:
         # Determine consensus level
         if votes_for == 4:
             consensus_level = "UNANIMOUS"
-            position_modifier = self.UNANIMOUS_MODIFIER
+            base_modifier = self.UNANIMOUS_MODIFIER
         elif votes_for == 3:
             consensus_level = "STRONG"
-            position_modifier = self.STRONG_MODIFIER
+            base_modifier = self.STRONG_MODIFIER
         elif votes_for == 2:
             consensus_level = "WEAK"
-            position_modifier = self.WEAK_MODIFIER
+            base_modifier = self.WEAK_MODIFIER
         else:
             return self._no_consensus()
+
+        # Calculate weighted position modifier based on agreeing engines
+        # Get engines that voted for the primary direction
+        if primary_direction == "BUY":
+            agreeing_votes = buy_votes
+        else:
+            agreeing_votes = sell_votes
+
+        # Sum weights of agreeing engines
+        agreeing_weight = sum(
+            self.engine_weights.get(v.get("gladiator", ""), 0.25)
+            for v in agreeing_votes
+        )
+
+        # Position modifier = base_modifier * (agreeing_weight / 0.5)
+        # If agreeing engines have >50% weight, boost position
+        # If agreeing engines have <50% weight, reduce position
+        # Capped between 0.5 and 1.2
+        weight_multiplier = min(1.2, max(0.8, agreeing_weight / 0.5))
+        position_modifier = base_modifier * weight_multiplier
+
+        # Ensure position modifier stays within reasonable bounds
+        position_modifier = min(1.2, max(0.4, position_modifier))
 
         # Get dissenting gladiators
         if primary_direction == "BUY":
@@ -130,13 +173,16 @@ class ConsensusEngine:
             "action": primary_direction,
             "consensus_level": consensus_level,
             "position_size_modifier": position_modifier,
+            "base_modifier": base_modifier,
+            "agreeing_weight": agreeing_weight,
+            "weight_multiplier": weight_multiplier,
             "votes_for": votes_for,
             "votes_against": votes_against,
             "votes_hold": len(hold_votes),
             "avg_confidence": avg_confidence,
             "dissenting_gladiators": dissenting_gladiators,
             "dissenting_reasons": dissenting_reasons,
-            "summary": f"{votes_for}/4 gladiators agree on {primary_direction} ({consensus_level} consensus)",
+            "summary": f"{votes_for}/4 gladiators agree on {primary_direction} ({consensus_level} consensus, {agreeing_weight:.0%} weight)",
             "all_votes": votes
         }
 
@@ -145,7 +191,7 @@ class ConsensusEngine:
 
         logger.info(
             f"Consensus: {primary_direction} ({consensus_level}) - "
-            f"{votes_for}/4 votes, {position_modifier:.0%} position size"
+            f"{votes_for}/4 votes, weight={agreeing_weight:.0%}, size={position_modifier:.0%}"
         )
 
         return result
