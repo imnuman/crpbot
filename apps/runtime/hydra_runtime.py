@@ -265,6 +265,10 @@ class HydraRuntime:
             logger.warning(f"Insufficient data for {asset}")
             return
 
+        # Update price metrics for dashboard
+        current_price = market_data[-1]["close"]
+        HydraMetrics.set_price(asset, current_price)
+
         # Step 2: Detect regime
         regime_result = self.regime_detector.detect_regime(
             symbol=asset,
