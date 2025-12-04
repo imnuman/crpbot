@@ -1,0 +1,56 @@
+# Promtail Configuration for HYDRA 4.0
+# Collects logs from HYDRA runtime container and sends to Loki
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Collect logs from Docker containers
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Only collect from hydra-runtime container
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/hydra-runtime'
+        action: keep
+      # Add container name as label
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      # Add job label
+      - replacement: hydra
+        target_label: job
+    pipeline_stages:
+      # Parse loguru format: timestamp | level | module:function:line - message
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \| (?P<level>\w+)\s+\| (?P<module>[^:]+):(?P<function>[^:]+):(?P<line>\d+) - (?P<message>.*)$'
+      # Extract engine from log messages
+      - regex:
+          expression: '(?P<engine>Gladiator [A-D]|Engine [A-D]|engine_[a-d])'
+          source: message
+      # Label engine votes and strategies
+      - regex:
+          expression: '(?P<action>votes|voting|generated|validated|backtested|synthesized)'
+          source: message
+      # Add labels
+      - labels:
+          level:
+          module:
+          engine:
+          action:
+      # Filter to only agent-related logs for the chat view
+      - match:
+          selector: '{job="hydra"}'
+          stages:
+            - regex:
+                expression: '(Gladiator|Engine|votes|strategy|consensus|trade|signal)'
+                source: message

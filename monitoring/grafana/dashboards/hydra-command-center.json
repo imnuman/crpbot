@@ -599,6 +599,36 @@
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_engine_win_rate", "legendFormat": "Engine {{engine}}", "refId": "A" }],
       "title": "Engine Win Rate Over Time",
       "type": "timeseries"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "id": 70,
+      "title": "AGENT LIVE CHAT",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 44 },
+      "id": 71,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"hydra\"} |~ \"Gladiator|Engine|votes|strategy|consensus|trade|signal|BUY|SELL|HOLD\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Agent Communication Feed",
+      "type": "logs"
     }
   ],
   "refresh": "5s",
