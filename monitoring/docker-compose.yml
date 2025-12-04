@@ -93,7 +93,7 @@ services:
     volumes:
       - ./promtail/promtail-config.yaml:/etc/promtail/config.yml:ro
       - /tmp:/tmp:ro
-      - /var/log:/var/log:ro
+      - promtail_positions:/var/log
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
@@ -114,4 +114,6 @@ volumes:
   alertmanager_data:
     driver: local
   loki_data:
+    driver: local
+  promtail_positions:
     driver: local
