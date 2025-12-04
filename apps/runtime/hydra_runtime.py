@@ -194,6 +194,9 @@ class HydraRuntime:
                 logger.info(f"Iteration {self.iteration} - {datetime.now(timezone.utc)}")
                 logger.info(f"{'='*80}\n")
 
+                # Quick price update for all assets (for dashboard)
+                self._update_all_prices()
+
                 # Check open paper trades first
                 if self.paper_trading:
                     self._check_paper_trades()
@@ -889,6 +892,21 @@ class HydraRuntime:
         logger.info(f"Sharpe Ratio: {stats['sharpe_ratio']:.2f}")
         logger.info(f"Open Trades: {stats['open_trades']}")
         logger.info("="*80 + "\n")
+
+    def _update_all_prices(self):
+        """Quick price update for all assets (for dashboard real-time display)."""
+        try:
+            for asset in self.assets:
+                df = self.data_client.get_historical_data(
+                    symbol=asset,
+                    interval="1m",
+                    limit=1  # Just get latest candle
+                )
+                if df is not None and not df.empty:
+                    current_price = df.iloc[-1]["close"]
+                    HydraMetrics.set_price(asset, current_price)
+        except Exception as e:
+            logger.warning(f"Failed to update prices: {e}")
 
     def _update_prometheus_metrics(self):
         """Update Prometheus metrics with current state."""
