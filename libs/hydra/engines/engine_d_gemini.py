@@ -32,7 +32,7 @@ class EngineD_Gemini(BaseEngine):
     PHASE 3 UPGRADE: Now an INDEPENDENT trader with own portfolio.
     """
 
-    GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+    GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     # Rate limiting configuration
     MIN_CALL_INTERVAL = 3.0  # Minimum seconds between API calls
