@@ -42,9 +42,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-hydra4admin}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=http://178.156.136.185:3000
-      - GF_ALERTING_ENABLED=true
+      - GF_ALERTING_ENABLED=false
       - GF_UNIFIED_ALERTING_ENABLED=true
-      - GF_FEATURE_TOGGLES_ENABLE=ngalert
     volumes:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
