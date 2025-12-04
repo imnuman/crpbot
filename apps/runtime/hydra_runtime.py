@@ -49,6 +49,7 @@ from libs.hydra.database import init_hydra_db, HydraSession
 from libs.hydra.tournament_tracker import TournamentTracker
 from libs.hydra.cycles.stats_injector import get_stats_injector
 from libs.hydra.strategy_memory import get_strategy_memory
+from libs.hydra.specialty_data_fetcher import get_specialty_data_fetcher
 
 # Engines (4 AI competitors)
 from libs.hydra.engines.engine_a_deepseek import EngineA_DeepSeek
@@ -163,6 +164,9 @@ class HydraRuntime:
 
         # Strategy Memory for 80/20 exploit/explore
         self.strategy_memory = get_strategy_memory()
+
+        # Specialty Data Fetcher (liquidations, funding, orderbook, ATR)
+        self.specialty_fetcher = get_specialty_data_fetcher()
 
         # Data provider
         self.data_client = get_coinbase_client()
@@ -306,6 +310,31 @@ class HydraRuntime:
         # Step 5: Create market summary for gladiators
         # Bug Fix #41: Gladiators need summary dict, not candle list
         market_summary = self._create_market_summary(market_data)
+
+        # Step 5.5: Inject specialty trigger data (liquidations, funding, orderbook, ATR)
+        try:
+            specialty_data = self.specialty_fetcher.get_all_specialty_data(asset, market_data)
+            market_summary.update({
+                'liquidation_total_usd': specialty_data.get('liquidation_total_usd', 0),
+                'funding_rate_pct': specialty_data.get('funding_rate_pct', 0),
+                'bid_ask_ratio': specialty_data.get('bid_ask_ratio', 1.0),
+                'atr_multiplier': specialty_data.get('atr_multiplier', 1.0),
+            })
+            logger.debug(
+                f"[{asset}] Specialty data: liq=${specialty_data.get('liquidation_total_usd', 0):,.0f}, "
+                f"funding={specialty_data.get('funding_rate_pct', 0):.4f}%, "
+                f"ob={specialty_data.get('bid_ask_ratio', 1.0):.2f}, "
+                f"atr={specialty_data.get('atr_multiplier', 1.0):.2f}x"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to fetch specialty data for {asset}: {e}")
+            # Use defaults so specialty triggers won't fire (conservative)
+            market_summary.update({
+                'liquidation_total_usd': 0,
+                'funding_rate_pct': 0,
+                'bid_ask_ratio': 1.0,
+                'atr_multiplier': 1.0,
+            })
 
         # Step 6-7: Strategy generation and signal creation
         signal = self._generate_signal(
