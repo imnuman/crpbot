@@ -903,7 +903,7 @@ class HydraRuntime:
         """Quick price update for all assets (for dashboard real-time display)."""
         try:
             for asset in self.assets:
-                df = self.data_client.get_historical_data(
+                df = self.data_client.fetch_klines(
                     symbol=asset,
                     interval="1m",
                     limit=1  # Just get latest candle
@@ -921,7 +921,7 @@ class HydraRuntime:
             try:
                 for asset in self.assets:
                     try:
-                        df = self.data_client.get_historical_data(
+                        df = self.data_client.fetch_klines(
                             symbol=asset,
                             interval="1m",
                             limit=1
