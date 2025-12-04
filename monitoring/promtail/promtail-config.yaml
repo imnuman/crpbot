@@ -26,31 +26,17 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: container
-      # Add job label
+      # Add job label - REQUIRED
       - replacement: hydra
         target_label: job
     pipeline_stages:
       # Parse loguru format: timestamp | level | module:function:line - message
       - regex:
           expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+) \| (?P<level>\w+)\s+\| (?P<module>[^:]+):(?P<function>[^:]+):(?P<line>\d+) - (?P<message>.*)$'
-      # Extract engine from log messages
+      # Extract engine from log messages (optional)
       - regex:
-          expression: '(?P<engine>Gladiator [A-D]|Engine [A-D]|engine_[a-d])'
+          expression: '(?P<engine>Gladiator [A-D])'
           source: message
-      # Label engine votes and strategies
-      - regex:
-          expression: '(?P<action>votes|voting|generated|validated|backtested|synthesized)'
-          source: message
-      # Add labels
+      # Add labels - only level is guaranteed to exist
       - labels:
           level:
-          module:
-          engine:
-          action:
-      # Filter to only agent-related logs for the chat view
-      - match:
-          selector: '{job="hydra"}'
-          stages:
-            - regex:
-                expression: '(Gladiator|Engine|votes|strategy|consensus|trade|signal)'
-                source: message
