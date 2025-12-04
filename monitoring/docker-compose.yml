@@ -93,6 +93,7 @@ services:
     volumes:
       - ./promtail/promtail-config.yaml:/etc/promtail/config.yml:ro
       - /tmp:/tmp:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - promtail_positions:/var/log
     command: -config.file=/etc/promtail/config.yml
     depends_on:
