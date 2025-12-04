@@ -72,6 +72,37 @@ services:
     networks:
       - hydra-monitoring
 
+  # Loki - Log aggregation (for agent conversations)
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: hydra-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - hydra-monitoring
+
+  # Promtail - Log collector (ships logs to Loki)
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: hydra-promtail
+    restart: unless-stopped
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yml:ro
+      - /tmp:/tmp:ro
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - hydra-monitoring
+
 networks:
   hydra-monitoring:
     driver: bridge
@@ -82,4 +113,6 @@ volumes:
   grafana_data:
     driver: local
   alertmanager_data:
+    driver: local
+  loki_data:
     driver: local

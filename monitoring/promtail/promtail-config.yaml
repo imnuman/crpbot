@@ -1,5 +1,5 @@
-# Promtail Configuration for HYDRA 4.0
-# Collects logs from HYDRA runtime container and sends to Loki
+# Promtail Configuration for HYDRA 3.0
+# Collects logs from HYDRA runtime and sends to Loki
 
 server:
   http_listen_port: 9080
@@ -12,29 +12,37 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  # Collect logs from Docker containers
-  - job_name: docker
-    docker_sd_configs:
-      - host: unix:///var/run/docker.sock
-        refresh_interval: 5s
-    relabel_configs:
-      # Only collect from hydra-runtime container
-      - source_labels: ['__meta_docker_container_name']
-        regex: '/hydra-runtime'
-        action: keep
-      # Add container name as label
-      - source_labels: ['__meta_docker_container_name']
-        regex: '/(.*)'
-        target_label: container
-    pipeline_stages:
-      # Ensure we always have the job label
-      - static_labels:
+  # Collect logs from HYDRA runtime log files
+  - job_name: hydra_runtime
+    static_configs:
+      - targets:
+          - localhost
+        labels:
           job: hydra
           source: runtime
+          __path__: /tmp/hydra_runtime*.log
+
+    pipeline_stages:
       # Parse loguru format: timestamp | level | module:func:line - message
       - regex:
-          expression: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \| (?P<level>\w+)\s+\| (?P<module>[^:]+):[^-]+ - (?P<msg>.*)$'
-      # Add labels
+          expression: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \| (?P<level>\w+)\s+\| (?P<module>[^:]+):(?P<func>[^:]+):(?P<line>\d+) - (?P<message>.*)$'
       - labels:
           level:
           module:
+      # Extract agent conversation events
+      - match:
+          selector: '{job="hydra"}'
+          stages:
+            - regex:
+                expression: '(?P<engine>Engine [A-D])'
+            - labels:
+                engine:
+
+  # Collect system logs for context
+  - job_name: syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/syslog
