@@ -740,7 +740,13 @@ Output JSON:
                 response.raise_for_status()
 
                 data = response.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"]
+                # Handle cases where response doesn't have expected structure
+                try:
+                    return data["candidates"][0]["content"]["parts"][0]["text"]
+                except (KeyError, IndexError) as e:
+                    logger.warning(f"Gemini response missing expected fields: {e}")
+                    logger.debug(f"Response data: {data}")
+                    return self._mock_vote_response() if vote_mode else self._mock_response()
 
             except requests.exceptions.HTTPError as e:
                 # Check if it's a rate limit error (429)
