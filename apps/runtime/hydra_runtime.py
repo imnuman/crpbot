@@ -51,6 +51,15 @@ from libs.hydra.cycles.stats_injector import get_stats_injector
 from libs.hydra.strategy_memory import get_strategy_memory
 from libs.hydra.specialty_data_fetcher import get_specialty_data_fetcher
 
+# HYDRA 4.0 Components
+from libs.hydra.turbo_generator import get_turbo_generator, StrategyType
+from libs.hydra.turbo_tournament import get_turbo_tournament
+from libs.hydra.paper_trading_gate import get_paper_gate
+from libs.hydra.confidence_gate import get_confidence_gate
+from libs.hydra.daily_evolution import get_daily_evolution
+from libs.hydra.turbo_config import get_turbo_config
+from libs.hydra.nightly_scheduler import init_nightly_scheduler
+
 # Engines (4 AI competitors)
 from libs.hydra.engines.engine_a_deepseek import EngineA_DeepSeek
 from libs.hydra.engines.engine_b_claude import EngineB_Claude
@@ -168,10 +177,30 @@ class HydraRuntime:
         # Specialty Data Fetcher (liquidations, funding, orderbook, ATR)
         self.specialty_fetcher = get_specialty_data_fetcher()
 
+        # HYDRA 4.0 Components
+        self.turbo_config = get_turbo_config()
+        self.turbo_generator = get_turbo_generator()
+        self.turbo_tournament = get_turbo_tournament()
+        self.paper_gate = get_paper_gate()
+        self.confidence_gate = get_confidence_gate()
+        self.daily_evolution = get_daily_evolution()
+
+        # Initialize nightly scheduler
+        self.nightly_scheduler = init_nightly_scheduler(
+            paper_trader=self.paper_trader,
+            daily_evolution=self.daily_evolution,
+            turbo_generator=self.turbo_generator,
+            turbo_tournament=self.turbo_tournament,
+            turbo_config=self.turbo_config,
+            strategy_memory=self.strategy_memory
+        )
+
         # Data provider
         self.data_client = get_coinbase_client()
 
         logger.success("All layers initialized")
+        logger.info(f"[HYDRA 4.0] Mode: {'FTMO_PREP' if self.turbo_config.FTMO_PREP_MODE else 'NORMAL'}")
+        logger.info(f"[HYDRA 4.0] Explore rate: {self.turbo_config.get_explore_rate()*100:.0f}%")
 
     def _init_engines(self):
         """Initialize 4 gladiators with API keys."""
@@ -203,6 +232,11 @@ class HydraRuntime:
         logger.info(f"Starting HYDRA runtime (paper trading: {self.paper_trading})")
         logger.info(f"Assets: {', '.join(self.assets)}")
         logger.info(f"Check interval: {self.check_interval}s")
+
+        # Start HYDRA 4.0 nightly scheduler
+        if self.nightly_scheduler:
+            self.nightly_scheduler.start()
+            logger.info(f"[HYDRA 4.0] Nightly scheduler started (next run: {self.nightly_scheduler.get_next_run_time()})")
 
         while iterations == -1 or self.iteration < iterations:
             self.iteration += 1

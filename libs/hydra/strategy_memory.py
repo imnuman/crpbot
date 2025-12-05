@@ -645,6 +645,89 @@ class StrategyMemory:
 
         return valid_strategies[0]
 
+    # ==================== HYDRA 4.0 PAPER TRADING METHODS ====================
+
+    def record_paper_trade(
+        self,
+        engine: str,
+        asset: str,
+        regime: str,
+        strategy_id: str,
+        outcome: str  # "win" or "loss"
+    ) -> bool:
+        """
+        Record a paper trade result for a strategy.
+
+        Updates paper_trades, paper_wr, and paper_trade_history fields.
+
+        Args:
+            engine: Engine name (A, B, C, D)
+            asset: Asset symbol
+            regime: Market regime
+            strategy_id: Strategy ID
+            outcome: "win" or "loss"
+
+        Returns:
+            True if recorded successfully
+        """
+        key = f"{engine}:{asset}:{regime}"
+
+        if key not in self.database:
+            return False
+
+        for strategy in self.database[key]:
+            if strategy.get("strategy_id") == strategy_id:
+                # Initialize paper trading fields if not present
+                if "paper_trades" not in strategy:
+                    strategy["paper_trades"] = 0
+                if "paper_trade_history" not in strategy:
+                    strategy["paper_trade_history"] = []
+
+                # Update counts
+                strategy["paper_trades"] += 1
+                strategy["paper_trade_history"].append(outcome)
+
+                # Keep only last 20 paper trades in history
+                if len(strategy["paper_trade_history"]) > 20:
+                    strategy["paper_trade_history"] = strategy["paper_trade_history"][-20:]
+
+                # Calculate paper win rate
+                wins = sum(1 for t in strategy["paper_trade_history"] if t == "win")
+                strategy["paper_wr"] = wins / len(strategy["paper_trade_history"])
+
+                self._save_database()
+                logger.debug(f"[StrategyMemory] Paper trade recorded for {strategy_id}: {outcome} (paper_wr: {strategy['paper_wr']*100:.1f}%)")
+                return True
+
+        return False
+
+    def get_paper_stats(self, strategy_id: str) -> Dict:
+        """
+        Get paper trading statistics for a strategy.
+
+        Args:
+            strategy_id: Strategy ID to look up
+
+        Returns:
+            Dict with paper_trades, paper_wr, paper_trade_history
+        """
+        for key, strategies in self.database.items():
+            for strategy in strategies:
+                if strategy.get("strategy_id") == strategy_id:
+                    return {
+                        "strategy_id": strategy_id,
+                        "paper_trades": strategy.get("paper_trades", 0),
+                        "paper_wr": strategy.get("paper_wr", 0.0),
+                        "paper_trade_history": strategy.get("paper_trade_history", []),
+                    }
+
+        return {
+            "strategy_id": strategy_id,
+            "paper_trades": 0,
+            "paper_wr": 0.0,
+            "paper_trade_history": [],
+        }
+
 
 # ==================== SINGLETON PATTERN ====================
 
