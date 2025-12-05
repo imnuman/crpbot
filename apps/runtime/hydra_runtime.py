@@ -312,28 +312,43 @@ class HydraRuntime:
         market_summary = self._create_market_summary(market_data)
 
         # Step 5.5: Inject specialty trigger data (liquidations, funding, orderbook, ATR)
+        # NOTE: We inject BOTH key formats for compatibility:
+        #   - Keys for engine_specialization.py (runtime check)
+        #   - Keys for engine's internal make_trade_decision() checks
         try:
             specialty_data = self.specialty_fetcher.get_all_specialty_data(asset, market_data)
+            liq_usd = specialty_data.get('liquidation_total_usd', 0)
+            funding_pct = specialty_data.get('funding_rate_pct', 0)
+            ob_ratio = specialty_data.get('bid_ask_ratio', 1.0)
+            atr_mult = specialty_data.get('atr_multiplier', 1.0)
+            atr_current = market_summary.get('atr', 0)
+
             market_summary.update({
-                'liquidation_total_usd': specialty_data.get('liquidation_total_usd', 0),
-                'funding_rate_pct': specialty_data.get('funding_rate_pct', 0),
-                'bid_ask_ratio': specialty_data.get('bid_ask_ratio', 1.0),
-                'atr_multiplier': specialty_data.get('atr_multiplier', 1.0),
+                # Keys for engine_specialization.py (runtime check)
+                'liquidation_total_usd': liq_usd,
+                'funding_rate_pct': funding_pct,
+                'bid_ask_ratio': ob_ratio,
+                'atr_multiplier': atr_mult,
+                # Keys for engine's internal make_trade_decision() checks
+                'liquidation_15m': liq_usd,  # Engine A expects this
+                'funding_rate': funding_pct / 100,  # Engine B expects decimal (0.005 = 0.5%)
+                'orderbook_analysis': {'imbalance': ob_ratio - 1.0},  # Engine C expects dict
+                'atr_20d_avg': atr_current / atr_mult if atr_mult > 0 else atr_current,  # Engine D
             })
             logger.debug(
-                f"[{asset}] Specialty data: liq=${specialty_data.get('liquidation_total_usd', 0):,.0f}, "
-                f"funding={specialty_data.get('funding_rate_pct', 0):.4f}%, "
-                f"ob={specialty_data.get('bid_ask_ratio', 1.0):.2f}, "
-                f"atr={specialty_data.get('atr_multiplier', 1.0):.2f}x"
+                f"[{asset}] Specialty data: liq=${liq_usd:,.0f}, "
+                f"funding={funding_pct:.4f}%, "
+                f"ob={ob_ratio:.2f}, "
+                f"atr={atr_mult:.2f}x"
             )
         except Exception as e:
             logger.warning(f"Failed to fetch specialty data for {asset}: {e}")
             # Use defaults so specialty triggers won't fire (conservative)
             market_summary.update({
-                'liquidation_total_usd': 0,
-                'funding_rate_pct': 0,
-                'bid_ask_ratio': 1.0,
-                'atr_multiplier': 1.0,
+                'liquidation_total_usd': 0, 'liquidation_15m': 0,
+                'funding_rate_pct': 0, 'funding_rate': 0,
+                'bid_ask_ratio': 1.0, 'orderbook_analysis': {'imbalance': 0},
+                'atr_multiplier': 1.0, 'atr_20d_avg': market_summary.get('atr', 0),
             })
 
         # Step 6-7: Strategy generation and signal creation
