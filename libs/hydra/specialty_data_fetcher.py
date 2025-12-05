@@ -127,13 +127,13 @@ class SpecialtyDataFetcher:
 
     def get_liquidation_data(self, symbol: str) -> Dict[str, Any]:
         """
-        Fetch liquidation data from Coinglass API.
+        Fetch liquidation data from OKX API (works in Canada).
 
-        Engine A specialty: $20M+ liquidations trigger trading.
+        Engine A specialty: $1M+ liquidations trigger trading.
 
         Returns:
             {
-                'total_usd': float (total liquidations in last 15 min),
+                'total_usd': float (total liquidations),
                 'long_usd': float,
                 'short_usd': float,
                 'source': str
@@ -143,94 +143,93 @@ class SpecialtyDataFetcher:
         if self._is_cache_valid(cache_key):
             return self._cache[cache_key]
 
-        result = {
-            'total_usd': 0,
-            'long_usd': 0,
-            'short_usd': 0,
-            'source': 'coinglass'
-        }
-
-        try:
-            cg_symbol = self.coinglass_symbols.get(symbol, symbol.split('-')[0])
-
-            # Coinglass public API for liquidation data
-            # Note: Free tier has rate limits, use cached data
-            url = f"https://open-api.coinglass.com/public/v2/liquidation_history"
-            params = {
-                'symbol': cg_symbol,
-                'time_type': 'h1'  # Last hour
-            }
-
-            response = requests.get(url, params=params, timeout=10)
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('success') and data.get('data'):
-                    # Sum recent liquidations
-                    liq_data = data['data']
-                    if isinstance(liq_data, list) and len(liq_data) > 0:
-                        # Take last entry (most recent)
-                        latest = liq_data[-1]
-                        result['long_usd'] = float(latest.get('longLiquidationUsd', 0))
-                        result['short_usd'] = float(latest.get('shortLiquidationUsd', 0))
-                        result['total_usd'] = result['long_usd'] + result['short_usd']
-            else:
-                logger.debug(f"Coinglass API returned {response.status_code}")
-                # Fall back to Binance liquidation estimate
-                result = self._estimate_liquidations_from_binance(symbol)
-
-        except Exception as e:
-            logger.warning(f"Failed to fetch liquidation data for {symbol}: {e}")
-            # Fall back to Binance-based estimate
-            result = self._estimate_liquidations_from_binance(symbol)
+        # Try OKX first (works in Canada)
+        result = self._get_okx_liquidations(symbol)
 
         self._cache[cache_key] = result
         self._cache_time[cache_key] = time.time()
 
         return result
 
-    def _estimate_liquidations_from_binance(self, symbol: str) -> Dict[str, Any]:
+    def _get_okx_liquidations(self, symbol: str) -> Dict[str, Any]:
         """
-        Estimate liquidations from Binance open interest changes.
+        Fetch liquidation data from OKX API.
+        """
+        result = {
+            'total_usd': 0,
+            'long_usd': 0,
+            'short_usd': 0,
+            'source': 'okx'
+        }
 
-        When OI drops sharply with price move = liquidations.
-        """
+        # OKX underlying symbol mapping
+        okx_uly_map = {
+            'BTC-USD': 'BTC-USDT',
+            'ETH-USD': 'ETH-USDT',
+            'SOL-USD': 'SOL-USDT',
+            'XRP-USD': 'XRP-USDT',
+            'LTC-USD': 'LTC-USDT',
+            'ADA-USD': 'ADA-USDT',
+            'LINK-USD': 'LINK-USDT',
+            'DOT-USD': 'DOT-USDT',
+            'DOGE-USD': 'DOGE-USDT',
+            'AVAX-USD': 'AVAX-USDT',
+        }
+
         try:
-            binance_symbol = self.binance_symbols.get(symbol)
-            if not binance_symbol:
-                return {'total_usd': 0, 'long_usd': 0, 'short_usd': 0, 'source': 'estimate'}
+            okx_uly = okx_uly_map.get(symbol)
+            if not okx_uly:
+                logger.debug(f"No OKX symbol mapping for {symbol}")
+                result['source'] = 'failed'
+                return result
 
-            # Get open interest history
-            url = "https://fapi.binance.com/fapi/v1/openInterestHist"
+            # OKX liquidation orders API
+            url = "https://www.okx.com/api/v5/public/liquidation-orders"
             params = {
-                'symbol': binance_symbol,
-                'period': '5m',
-                'limit': 3  # Last 15 minutes
+                'instType': 'SWAP',
+                'uly': okx_uly,
+                'state': 'filled'
             }
 
             response = requests.get(url, params=params, timeout=10)
+
             if response.status_code == 200:
                 data = response.json()
-                if len(data) >= 2:
-                    # Calculate OI change
-                    oi_now = float(data[-1].get('sumOpenInterestValue', 0))
-                    oi_prev = float(data[0].get('sumOpenInterestValue', 0))
-                    oi_change = oi_prev - oi_now  # Positive = OI dropped = liquidations
+                if data.get('code') == '0' and data.get('data'):
+                    long_usd = 0
+                    short_usd = 0
 
-                    if oi_change > 0:
-                        # Rough estimate: 50% of OI drop is liquidations
-                        estimated_liq = oi_change * 0.5
-                        return {
-                            'total_usd': estimated_liq,
-                            'long_usd': estimated_liq * 0.5,
-                            'short_usd': estimated_liq * 0.5,
-                            'source': 'binance_estimate'
-                        }
+                    for liq in data['data']:
+                        details = liq.get('details', [])
+                        for d in details:
+                            sz = float(d.get('sz', 0))
+                            bkPx = float(d.get('bkPx', 0))
+                            val = sz * bkPx
+                            side = d.get('side', '')
+
+                            # sell side = long liquidation, buy side = short liquidation
+                            if side == 'sell':
+                                long_usd += val
+                            else:
+                                short_usd += val
+
+                    result['long_usd'] = long_usd
+                    result['short_usd'] = short_usd
+                    result['total_usd'] = long_usd + short_usd
+
+                    logger.debug(f"[Liquidations/OKX] {symbol}: ${result['total_usd']:,.0f} (longs=${long_usd:,.0f}, shorts=${short_usd:,.0f})")
+                else:
+                    logger.debug(f"OKX liquidation API returned no data for {symbol}")
+                    result['source'] = 'failed'
+            else:
+                logger.warning(f"OKX liquidation API returned {response.status_code}")
+                result['source'] = 'failed'
 
         except Exception as e:
-            logger.debug(f"Binance OI estimate failed: {e}")
+            logger.warning(f"Failed to fetch OKX liquidations for {symbol}: {e}")
+            result['source'] = 'failed'
 
-        return {'total_usd': 0, 'long_usd': 0, 'short_usd': 0, 'source': 'failed'}
+        return result
 
     # ==================== FUNDING RATE (Engine B) ====================
 
