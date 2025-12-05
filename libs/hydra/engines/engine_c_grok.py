@@ -24,6 +24,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 import requests
 import os
+import time
 from datetime import datetime, timezone
 
 from .base_engine import BaseGladiator as BaseEngine
@@ -36,10 +37,18 @@ class EngineC_Grok(BaseEngine):
 
     Cost: ~$5 per 1M tokens (competitive pricing)
     Speed: Fast inference with powerful reasoning
+
+    RATE LIMITING:
+    - Max 60 calls per hour ($10/day budget protection)
+    - Minimum 60 seconds between calls
     """
 
     GROK_API_URL = "https://api.x.ai/v1/chat/completions"
     MODEL = "grok-3"  # X.AI's Grok model (grok-beta deprecated 2025-09-15)
+
+    # Rate limiting settings
+    MAX_CALLS_PER_HOUR = 60  # ~$10/day max
+    MIN_CALL_INTERVAL = 60.0  # Minimum 60 seconds between calls
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
@@ -47,6 +56,11 @@ class EngineC_Grok(BaseEngine):
             role="Fast Backtester",
             api_key=api_key or os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY") or os.getenv("GROQ_API_KEY")  # Support multiple env var names
         )
+
+        # Rate limiting state
+        self._last_call_time: float = 0
+        self._calls_this_hour: int = 0
+        self._hour_start_time: float = time.time()
 
         # Portfolio integration
         self.tournament_manager = get_tournament_manager()
@@ -524,6 +538,35 @@ Output JSON:
 
     # ==================== LLM API INTEGRATION ====================
 
+    def _check_rate_limit(self) -> bool:
+        """
+        Check if we're within rate limits.
+
+        Returns:
+            True if we can make a call, False if rate limited
+        """
+        current_time = time.time()
+
+        # Reset hourly counter if hour has passed
+        if current_time - self._hour_start_time >= 3600:
+            self._calls_this_hour = 0
+            self._hour_start_time = current_time
+            logger.debug("[Grok] Hourly rate limit counter reset")
+
+        # Check hourly limit
+        if self._calls_this_hour >= self.MAX_CALLS_PER_HOUR:
+            logger.warning(f"[Grok] Rate limit: {self._calls_this_hour}/{self.MAX_CALLS_PER_HOUR} calls this hour")
+            return False
+
+        # Check minimum interval
+        time_since_last = current_time - self._last_call_time
+        if time_since_last < self.MIN_CALL_INTERVAL:
+            wait_time = self.MIN_CALL_INTERVAL - time_since_last
+            logger.debug(f"[Grok] Rate limit: waiting {wait_time:.1f}s before next call")
+            time.sleep(wait_time)
+
+        return True
+
     def _call_llm(
         self,
         system_prompt: str,
@@ -532,10 +575,19 @@ Output JSON:
         max_tokens: int = 1500
     ) -> str:
         """
-        Call Grok (X.AI) API.
+        Call Grok (X.AI) API with rate limiting.
+
+        Rate limits:
+        - Max 60 calls per hour
+        - Minimum 60 seconds between calls
         """
         if not self.api_key:
             logger.warning("Grok API key not set - using mock response")
+            return self._mock_response()
+
+        # Check rate limit
+        if not self._check_rate_limit():
+            logger.warning("[Grok] Rate limited - using mock response")
             return self._mock_response()
 
         headers = {
@@ -554,6 +606,12 @@ Output JSON:
         }
 
         try:
+            # Update rate limit tracking BEFORE call
+            self._last_call_time = time.time()
+            self._calls_this_hour += 1
+
+            logger.debug(f"[Grok] API call {self._calls_this_hour}/{self.MAX_CALLS_PER_HOUR} this hour")
+
             response = requests.post(
                 self.GROK_API_URL,
                 headers=headers,

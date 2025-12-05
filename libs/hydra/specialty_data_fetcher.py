@@ -236,9 +236,11 @@ class SpecialtyDataFetcher:
 
     def get_funding_rate(self, symbol: str) -> Dict[str, Any]:
         """
-        Fetch funding rate from Binance Futures.
+        Fetch funding rate from multiple sources (Bybit primary, OKX fallback).
 
-        Engine B specialty: >0.5% funding rate triggers trading.
+        NOTE: Binance is blocked in Canada, so we use Bybit as primary.
+
+        Engine B specialty: >0.05% funding rate triggers trading.
 
         Returns:
             {
@@ -251,44 +253,158 @@ class SpecialtyDataFetcher:
         if self._is_cache_valid(cache_key):
             return self._cache[cache_key]
 
+        # Try Bybit first (works in Canada)
+        result = self._get_bybit_funding_rate(symbol)
+
+        # If Bybit fails, try OKX
+        if result['rate_pct'] == 0 and result['source'] == 'failed':
+            result = self._get_okx_funding_rate(symbol)
+
+        self._cache[cache_key] = result
+        self._cache_time[cache_key] = time.time()
+
+        return result
+
+    def _get_bybit_funding_rate(self, symbol: str) -> Dict[str, Any]:
+        """
+        Fetch funding rate from Bybit API (works in Canada).
+        """
         result = {
             'rate_pct': 0,
             'next_funding_time': None,
-            'source': 'binance'
+            'source': 'bybit'
+        }
+
+        # Bybit symbol mapping
+        bybit_symbols = {
+            'BTC-USD': 'BTCUSDT',
+            'ETH-USD': 'ETHUSDT',
+            'SOL-USD': 'SOLUSDT',
+            'XRP-USD': 'XRPUSDT',
+            'LTC-USD': 'LTCUSDT',
+            'ADA-USD': 'ADAUSDT',
+            'LINK-USD': 'LINKUSDT',
+            'DOT-USD': 'DOTUSDT',
+            'DOGE-USD': 'DOGEUSDT',
+            'AVAX-USD': 'AVAXUSDT',
         }
 
         try:
-            binance_symbol = self.binance_symbols.get(symbol)
-            if not binance_symbol:
-                logger.debug(f"No Binance symbol mapping for {symbol}")
+            bybit_symbol = bybit_symbols.get(symbol)
+            if not bybit_symbol:
+                logger.debug(f"No Bybit symbol mapping for {symbol}")
+                result['source'] = 'failed'
                 return result
 
-            url = "https://fapi.binance.com/fapi/v1/premiumIndex"
-            params = {'symbol': binance_symbol}
+            # Bybit V5 API - Linear perpetuals
+            url = "https://api.bybit.com/v5/market/tickers"
+            params = {
+                'category': 'linear',
+                'symbol': bybit_symbol
+            }
 
             response = requests.get(url, params=params, timeout=10)
 
             if response.status_code == 200:
                 data = response.json()
-                # Funding rate is returned as decimal (0.0001 = 0.01%)
-                funding_rate = float(data.get('lastFundingRate', 0)) * 100
-                next_funding = datetime.fromtimestamp(
-                    int(data.get('nextFundingTime', 0)) / 1000,
-                    tz=timezone.utc
-                )
+                if data.get('retCode') == 0 and data.get('result', {}).get('list'):
+                    ticker = data['result']['list'][0]
+                    # fundingRate is returned as decimal (0.0001 = 0.01%)
+                    funding_rate = float(ticker.get('fundingRate', 0)) * 100
+                    next_funding_ts = int(ticker.get('nextFundingTime', 0))
 
-                result['rate_pct'] = funding_rate
-                result['next_funding_time'] = next_funding
+                    if next_funding_ts > 0:
+                        next_funding = datetime.fromtimestamp(
+                            next_funding_ts / 1000,
+                            tz=timezone.utc
+                        )
+                    else:
+                        next_funding = None
 
-                logger.debug(f"[Funding] {symbol}: {funding_rate:+.4f}%")
+                    result['rate_pct'] = funding_rate
+                    result['next_funding_time'] = next_funding
+
+                    logger.debug(f"[Funding/Bybit] {symbol}: {funding_rate:+.4f}%")
+                else:
+                    logger.debug(f"Bybit API returned no data for {symbol}")
+                    result['source'] = 'failed'
             else:
-                logger.warning(f"Binance funding API returned {response.status_code}")
+                logger.warning(f"Bybit funding API returned {response.status_code}")
+                result['source'] = 'failed'
 
         except Exception as e:
-            logger.warning(f"Failed to fetch funding rate for {symbol}: {e}")
+            logger.warning(f"Failed to fetch Bybit funding rate for {symbol}: {e}")
+            result['source'] = 'failed'
 
-        self._cache[cache_key] = result
-        self._cache_time[cache_key] = time.time()
+        return result
+
+    def _get_okx_funding_rate(self, symbol: str) -> Dict[str, Any]:
+        """
+        Fetch funding rate from OKX API (fallback).
+        """
+        result = {
+            'rate_pct': 0,
+            'next_funding_time': None,
+            'source': 'okx'
+        }
+
+        # OKX symbol mapping
+        okx_symbols = {
+            'BTC-USD': 'BTC-USDT-SWAP',
+            'ETH-USD': 'ETH-USDT-SWAP',
+            'SOL-USD': 'SOL-USDT-SWAP',
+            'XRP-USD': 'XRP-USDT-SWAP',
+            'LTC-USD': 'LTC-USDT-SWAP',
+            'ADA-USD': 'ADA-USDT-SWAP',
+            'LINK-USD': 'LINK-USDT-SWAP',
+            'DOT-USD': 'DOT-USDT-SWAP',
+            'DOGE-USD': 'DOGE-USDT-SWAP',
+            'AVAX-USD': 'AVAX-USDT-SWAP',
+        }
+
+        try:
+            okx_symbol = okx_symbols.get(symbol)
+            if not okx_symbol:
+                logger.debug(f"No OKX symbol mapping for {symbol}")
+                result['source'] = 'failed'
+                return result
+
+            # OKX V5 API
+            url = "https://www.okx.com/api/v5/public/funding-rate"
+            params = {'instId': okx_symbol}
+
+            response = requests.get(url, params=params, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('code') == '0' and data.get('data'):
+                    rate_data = data['data'][0]
+                    # fundingRate is returned as decimal
+                    funding_rate = float(rate_data.get('fundingRate', 0)) * 100
+                    next_funding_ts = int(rate_data.get('nextFundingTime', 0))
+
+                    if next_funding_ts > 0:
+                        next_funding = datetime.fromtimestamp(
+                            next_funding_ts / 1000,
+                            tz=timezone.utc
+                        )
+                    else:
+                        next_funding = None
+
+                    result['rate_pct'] = funding_rate
+                    result['next_funding_time'] = next_funding
+
+                    logger.debug(f"[Funding/OKX] {symbol}: {funding_rate:+.4f}%")
+                else:
+                    logger.debug(f"OKX API returned no data for {symbol}")
+                    result['source'] = 'failed'
+            else:
+                logger.warning(f"OKX funding API returned {response.status_code}")
+                result['source'] = 'failed'
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch OKX funding rate for {symbol}: {e}")
+            result['source'] = 'failed'
 
         return result
 

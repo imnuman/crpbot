@@ -12,7 +12,7 @@ Funding rates indicate market sentiment:
 - Negative = Shorts pay longs = Bearish crowd (contrarian bullish)
 - Extreme rates often precede reversals
 
-Uses Binance Futures API (free, no auth needed).
+Uses Bybit API (works in Canada, Binance blocked).
 """
 
 import logging
@@ -26,8 +26,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-# API Configuration
-BINANCE_FUTURES_URL = "https://fapi.binance.com"
+# API Configuration - Using Bybit instead of Binance (blocked in Canada)
+BYBIT_URL = "https://api.bybit.com"
 CACHE_TTL_SECONDS = 60  # Cache for 1 minute
 
 # Funding rate thresholds (annualized)
@@ -36,7 +36,7 @@ EXTREME_LOW_ANNUAL = -50.0     # <-50% APR = extremely bearish crowd
 HIGH_ANNUAL = 50.0             # >50% APR = bullish
 LOW_ANNUAL = -25.0             # <-25% APR = bearish
 
-# Symbol mapping (Coinbase spot -> Binance futures)
+# Symbol mapping (Coinbase spot -> Bybit futures)
 SYMBOL_MAP = {
     "BTC-USD": "BTCUSDT",
     "ETH-USD": "ETHUSDT",
@@ -49,7 +49,6 @@ SYMBOL_MAP = {
     "DOT-USD": "DOTUSDT",
     "MATIC-USD": "MATICUSDT",
     "LTC-USD": "LTCUSDT",
-    "BNB-USD": "BNBUSDT",
 }
 
 
@@ -178,7 +177,7 @@ class FundingRatesFeed:
         logger.info("FundingRatesFeed initialized")
 
     def _convert_symbol(self, symbol: str) -> str:
-        """Convert Coinbase symbol to Binance futures symbol."""
+        """Convert Coinbase symbol to Bybit futures symbol."""
         return SYMBOL_MAP.get(symbol, symbol.replace("-USD", "USDT"))
 
     def _analyze_sentiment(self, funding_rate: float) -> tuple[str, str, str]:
@@ -224,7 +223,7 @@ class FundingRatesFeed:
 
     async def fetch_funding_rate(self, symbol: str = "BTC-USD") -> Optional[FundingRate]:
         """
-        Fetch current funding rate for a symbol.
+        Fetch current funding rate for a symbol using Bybit API.
 
         Args:
             symbol: Trading pair (Coinbase format like BTC-USD)
@@ -232,17 +231,17 @@ class FundingRatesFeed:
         Returns:
             FundingRate or None on error
         """
-        binance_symbol = self._convert_symbol(symbol)
+        bybit_symbol = self._convert_symbol(symbol)
 
         # Check cache
-        cache_key = binance_symbol
+        cache_key = bybit_symbol
         if cache_key in self.cache:
             cached_time, cached_rate = self.cache[cache_key]
             if (datetime.now() - cached_time).total_seconds() < CACHE_TTL_SECONDS:
                 return cached_rate
 
-        url = f"{BINANCE_FUTURES_URL}/fapi/v1/premiumIndex"
-        params = {"symbol": binance_symbol}
+        url = f"{BYBIT_URL}/v5/market/tickers"
+        params = {"category": "linear", "symbol": bybit_symbol}
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -250,18 +249,28 @@ class FundingRatesFeed:
                 resp.raise_for_status()
                 data = resp.json()
 
-            funding_rate = float(data["lastFundingRate"])
+            if data.get("retCode") != 0 or not data.get("result", {}).get("list"):
+                logger.warning(f"Bybit returned no data for {symbol}")
+                return None
+
+            ticker = data["result"]["list"][0]
+            funding_rate = float(ticker.get("fundingRate", 0))
             annual_rate = funding_rate * 3 * 365 * 100  # 3 funding periods/day * 365 days
 
             sentiment, strength, contrarian = self._analyze_sentiment(funding_rate)
+
+            # Bybit provides mark/index prices
+            mark_price = float(ticker.get("markPrice", 0))
+            index_price = float(ticker.get("indexPrice", 0))
+            next_funding_ts = int(ticker.get("nextFundingTime", 0))
 
             rate = FundingRate(
                 symbol=symbol,
                 funding_rate=funding_rate,
                 funding_rate_annual=annual_rate,
-                next_funding_time=datetime.fromtimestamp(int(data["nextFundingTime"]) / 1000),
-                mark_price=float(data["markPrice"]),
-                index_price=float(data["indexPrice"]),
+                next_funding_time=datetime.fromtimestamp(next_funding_ts / 1000) if next_funding_ts else datetime.now(),
+                mark_price=mark_price,
+                index_price=index_price,
                 timestamp=datetime.now(),
                 sentiment=sentiment,
                 sentiment_strength=strength,
@@ -279,7 +288,7 @@ class FundingRatesFeed:
 
     async def fetch_all_funding_rates(self) -> Optional[FundingSnapshot]:
         """
-        Fetch funding rates for all major symbols.
+        Fetch funding rates for all major symbols using Bybit API.
 
         Returns:
             FundingSnapshot with all rates
@@ -290,13 +299,21 @@ class FundingRatesFeed:
             if (datetime.now() - cached_time).total_seconds() < CACHE_TTL_SECONDS:
                 return cached_snapshot
 
-        url = f"{BINANCE_FUTURES_URL}/fapi/v1/premiumIndex"
+        # Bybit V5 API - get all linear tickers
+        url = f"{BYBIT_URL}/v5/market/tickers"
+        params = {"category": "linear"}
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url)
+                resp = await client.get(url, params=params)
                 resp.raise_for_status()
-                all_data = resp.json()
+                data = resp.json()
+
+            if data.get("retCode") != 0 or not data.get("result", {}).get("list"):
+                logger.warning("Bybit returned no data for all tickers")
+                return None
+
+            all_data = data["result"]["list"]
 
             rates = {}
             bullish_count = 0
@@ -307,29 +324,33 @@ class FundingRatesFeed:
             # Filter to our symbols
             target_symbols = set(SYMBOL_MAP.values())
 
-            for data in all_data:
-                binance_symbol = data["symbol"]
-                if binance_symbol not in target_symbols:
+            for ticker in all_data:
+                bybit_symbol = ticker["symbol"]
+                if bybit_symbol not in target_symbols:
                     continue
 
                 # Convert back to Coinbase format
                 coinbase_symbol = next(
-                    (k for k, v in SYMBOL_MAP.items() if v == binance_symbol),
-                    binance_symbol
+                    (k for k, v in SYMBOL_MAP.items() if v == bybit_symbol),
+                    bybit_symbol
                 )
 
-                funding_rate = float(data["lastFundingRate"])
+                funding_rate = float(ticker.get("fundingRate", 0))
                 annual_rate = funding_rate * 3 * 365 * 100
 
                 sentiment, strength, contrarian = self._analyze_sentiment(funding_rate)
+
+                mark_price = float(ticker.get("markPrice", 0))
+                index_price = float(ticker.get("indexPrice", 0))
+                next_funding_ts = int(ticker.get("nextFundingTime", 0))
 
                 rate = FundingRate(
                     symbol=coinbase_symbol,
                     funding_rate=funding_rate,
                     funding_rate_annual=annual_rate,
-                    next_funding_time=datetime.fromtimestamp(int(data["nextFundingTime"]) / 1000),
-                    mark_price=float(data["markPrice"]),
-                    index_price=float(data["indexPrice"]),
+                    next_funding_time=datetime.fromtimestamp(next_funding_ts / 1000) if next_funding_ts else datetime.now(),
+                    mark_price=mark_price,
+                    index_price=index_price,
                     timestamp=datetime.now(),
                     sentiment=sentiment,
                     sentiment_strength=strength,
@@ -386,7 +407,7 @@ class FundingRatesFeed:
         limit: int = 100
     ) -> list[dict]:
         """
-        Fetch historical funding rates.
+        Fetch historical funding rates using Bybit API.
 
         Args:
             symbol: Trading pair
@@ -395,9 +416,9 @@ class FundingRatesFeed:
         Returns:
             List of historical funding records
         """
-        binance_symbol = self._convert_symbol(symbol)
-        url = f"{BINANCE_FUTURES_URL}/fapi/v1/fundingRate"
-        params = {"symbol": binance_symbol, "limit": limit}
+        bybit_symbol = self._convert_symbol(symbol)
+        url = f"{BYBIT_URL}/v5/market/funding/history"
+        params = {"category": "linear", "symbol": bybit_symbol, "limit": min(limit, 200)}
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -405,16 +426,21 @@ class FundingRatesFeed:
                 resp.raise_for_status()
                 data = resp.json()
 
+            if data.get("retCode") != 0 or not data.get("result", {}).get("list"):
+                logger.warning(f"Bybit returned no history for {symbol}")
+                return []
+
             history = []
-            for record in data:
-                funding_rate = float(record["fundingRate"])
+            for record in data["result"]["list"]:
+                funding_rate = float(record.get("fundingRate", 0))
                 annual_rate = funding_rate * 3 * 365 * 100
+                funding_ts = int(record.get("fundingRateTimestamp", 0))
 
                 history.append({
                     "symbol": symbol,
                     "funding_rate": funding_rate,
                     "funding_rate_annual": annual_rate,
-                    "funding_time": datetime.fromtimestamp(int(record["fundingTime"]) / 1000).isoformat(),
+                    "funding_time": datetime.fromtimestamp(funding_ts / 1000).isoformat() if funding_ts else None,
                 })
 
             return history
