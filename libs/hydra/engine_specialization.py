@@ -72,7 +72,7 @@ ENGINE_SPECIALTIES = {
         specialty=Specialty.ORDERBOOK_IMBALANCE,
         engine_id="C",
         description="Orderbook imbalance - one-sided pressure",
-        trigger_threshold=1.5,  # 1.5:1 bid/ask ratio (was 2.5:1)
+        trigger_threshold=1.03,  # 1.03:1 bid/ask ratio (3% imbalance to trigger)
         trigger_unit="ratio",
     ),
     "D": SpecialtyConfig(
