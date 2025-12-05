@@ -263,6 +263,21 @@ def create_default_scheduler(
                         except Exception as e:
                             logger.debug(f"Error adding strategy to memory: {e}")
 
+                # Update Prometheus metrics
+                try:
+                    from libs.monitoring.metrics import HydraMetrics
+                    HydraMetrics.set_generation_stats(
+                        total_strategies=result.get("total_strategies", 0),
+                        by_engine=result.get("by_engine", {}),
+                        winning_engine=result.get("winning_engine", ""),
+                        vote_breakdown=result.get("vote_breakdown", {}),
+                        duration_ms=result.get("generation_time_ms", 0),
+                        is_mock=use_mock
+                    )
+                    logger.info("[NightlyScheduler] Updated Prometheus metrics with generation stats")
+                except Exception as e:
+                    logger.warning(f"[NightlyScheduler] Failed to update metrics: {e}")
+
                 return {
                     "mode": "4_engine",
                     "total_generated": result.get("total_strategies", 0),
