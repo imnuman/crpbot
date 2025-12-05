@@ -183,7 +183,9 @@ def create_default_scheduler(
     turbo_generator=None,
     turbo_tournament=None,
     turbo_config=None,
-    strategy_memory=None
+    strategy_memory=None,
+    mother_ai=None,
+    use_4_engine: bool = True
 ) -> NightlyScheduler:
     """
     Create a scheduler with default callbacks wired up.
@@ -195,6 +197,8 @@ def create_default_scheduler(
         turbo_tournament: Strategy ranker
         turbo_config: Configuration
         strategy_memory: Strategy memory
+        mother_ai: Mother AI for 4-engine parallel generation
+        use_4_engine: If True, use 4-engine parallel generation via Mother AI
 
     Returns:
         Configured NightlyScheduler
@@ -221,7 +225,59 @@ def create_default_scheduler(
         return daily_evolution.run_at_midnight(losing_trades)
 
     def generation_callback():
-        """Generate nightly batch of strategies."""
+        """Generate nightly batch of strategies using 4-engine or legacy mode."""
+
+        # HYDRA 4.0: Use 4-engine parallel generation via Mother AI
+        if use_4_engine and mother_ai:
+            logger.info("[NightlyScheduler] Using 4-engine parallel generation")
+            try:
+                # Get market context for generation
+                market_context = None
+                if paper_trader:
+                    try:
+                        market_context = paper_trader.get_market_context()
+                    except Exception:
+                        pass
+
+                # Determine if we should use real API or mock
+                # Default: use_mock=False for real generation (can be configured)
+                use_mock = turbo_config.USE_MOCK_GENERATION if turbo_config else False
+
+                # Get strategies per engine from config
+                strategies_per_engine = turbo_config.STRATEGIES_PER_ENGINE if turbo_config else 1000
+
+                # Run 4-engine generation cycle
+                result = mother_ai.run_generation_cycle(
+                    strategies_per_engine=strategies_per_engine,
+                    market_context=market_context,
+                    use_mock=use_mock,
+                    parallel=True,
+                    use_backtest=True  # Use tournament backtesting for ranking
+                )
+
+                # Add top strategies to memory if available
+                if strategy_memory and result.get("top_10"):
+                    for strategy in result["top_10"]:
+                        try:
+                            strategy_memory.add_strategy(strategy)
+                        except Exception as e:
+                            logger.debug(f"Error adding strategy to memory: {e}")
+
+                return {
+                    "mode": "4_engine",
+                    "total_generated": result.get("total_strategies", 0),
+                    "by_engine": result.get("by_engine", {}),
+                    "winning_engine": result.get("winning_engine"),
+                    "top_strategy": result.get("winning_strategy", {}).get("strategy_id"),
+                    "vote_breakdown": result.get("vote_breakdown", {}),
+                    "generation_time_ms": result.get("generation_time_ms", 0),
+                }
+
+            except Exception as e:
+                logger.error(f"[NightlyScheduler] 4-engine generation failed: {e}")
+                # Fall through to legacy mode
+
+        # Legacy mode: Use turbo_generator
         if not turbo_generator or not turbo_tournament or not turbo_config:
             return {"skipped": "missing dependencies"}
 
@@ -231,6 +287,7 @@ def create_default_scheduler(
         from libs.hydra.turbo_generator import StrategyType
 
         results = {
+            "mode": "legacy",
             "generated": 0,
             "ranked": 0,
             "top_strategies": [],
@@ -302,9 +359,12 @@ def create_default_scheduler(
 
         return stats
 
+    # Enable generation if either mother_ai (4-engine) or turbo_generator (legacy) is available
+    has_generation = mother_ai is not None or turbo_generator is not None
+
     return NightlyScheduler(
         evolution_callback=evolution_callback if daily_evolution else None,
-        generation_callback=generation_callback if turbo_generator else None,
+        generation_callback=generation_callback if has_generation else None,
         stats_callback=stats_callback,
         target_hour=0  # Midnight UTC
     )

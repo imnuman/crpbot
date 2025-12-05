@@ -56,6 +56,10 @@ class TurboConfig:
     MAX_DAILY_API_COST: float = 10.0  # $10/day max for strategy generation
     COST_PER_BATCH: float = 1.50  # Estimated cost per 1000 strategies
 
+    # 4-Engine generation settings
+    USE_MOCK_GENERATION: bool = False  # True = mock (no API cost), False = real LLM calls
+    STRATEGIES_PER_ENGINE: int = 1000  # 1000 per engine = 4000 total per cycle
+
     def get_explore_rate(self) -> float:
         """Get current exploration rate based on mode."""
         if self.FTMO_PREP_MODE:
@@ -94,6 +98,8 @@ class TurboConfig:
             "paper_gate_min_trades": self.PAPER_GATE_MIN_TRADES,
             "paper_gate_min_wr": self.PAPER_GATE_MIN_WR,
             "confidence_threshold": self.CONFIDENCE_GATE_THRESHOLD,
+            "use_mock_generation": self.USE_MOCK_GENERATION,
+            "strategies_per_engine": self.STRATEGIES_PER_ENGINE,
         }
 
     @classmethod
@@ -113,6 +119,13 @@ class TurboConfig:
 
         if os.getenv("HYDRA_MAX_DAILY_COST"):
             config.MAX_DAILY_API_COST = float(os.getenv("HYDRA_MAX_DAILY_COST", "10.0"))
+
+        # 4-Engine settings
+        if os.getenv("HYDRA_USE_MOCK_GENERATION"):
+            config.USE_MOCK_GENERATION = os.getenv("HYDRA_USE_MOCK_GENERATION", "false").lower() == "true"
+
+        if os.getenv("HYDRA_STRATEGIES_PER_ENGINE"):
+            config.STRATEGIES_PER_ENGINE = int(os.getenv("HYDRA_STRATEGIES_PER_ENGINE", "1000"))
 
         return config
 

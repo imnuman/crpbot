@@ -723,7 +723,8 @@ class MotherAI:
         strategies_per_engine: int = 1000,
         market_context: Optional[Dict] = None,
         use_mock: bool = False,
-        parallel: bool = True
+        parallel: bool = True,
+        use_backtest: bool = True
     ) -> Dict:
         """
         HYDRA 4.0: Run a full 4-engine strategy generation cycle.
@@ -797,8 +798,8 @@ class MotherAI:
                     engine_results[name] = {"count": 0, "success": False, "error": str(e)}
 
         # Rank all strategies using tournament
-        logger.info(f"[MotherAI] Ranking {len(all_strategies)} strategies...")
-        ranked = self._rank_strategies(all_strategies)
+        logger.info(f"[MotherAI] Ranking {len(all_strategies)} strategies (backtest={use_backtest})...")
+        ranked = self._rank_strategies(all_strategies, use_backtest=use_backtest)
 
         # Count votes by engine (top 100)
         vote_breakdown = self._count_votes(ranked[:100])
@@ -831,13 +832,83 @@ class MotherAI:
 
         return result
 
-    def _rank_strategies(self, strategies: List[Dict]) -> List[Dict]:
-        """Rank strategies using tournament scoring."""
-        import random
+    def _rank_strategies(self, strategies: List[Dict], use_backtest: bool = False) -> List[Dict]:
+        """
+        Rank strategies using tournament scoring.
 
-        # Simple ranking by confidence for now
-        # TODO: Integrate with turbo_tournament for backtesting
-        ranked = sorted(strategies, key=lambda s: s.get("confidence", 0), reverse=True)
+        Args:
+            strategies: List of strategy dicts
+            use_backtest: If True, run full backtesting (slower but accurate)
+
+        Returns:
+            List of strategies sorted by rank score
+        """
+        if not strategies:
+            return []
+
+        if use_backtest:
+            # Use TurboTournament for full backtesting
+            try:
+                from libs.hydra.turbo_tournament import get_turbo_tournament, BacktestResult
+                from libs.hydra.turbo_generator import GeneratedStrategy, StrategyType
+
+                tournament = get_turbo_tournament()
+
+                # Convert dicts to GeneratedStrategy objects
+                gen_strategies = []
+                for s in strategies:
+                    try:
+                        specialty_str = s.get("specialty", "liquidation_cascade")
+                        specialty = StrategyType(specialty_str) if specialty_str in [t.value for t in StrategyType] else StrategyType.LIQUIDATION_CASCADE
+
+                        gen_strat = GeneratedStrategy(
+                            strategy_id=s.get("strategy_id", f"GEN_{len(gen_strategies):06d}"),
+                            name=s.get("reasoning", "Generated Strategy")[:50],
+                            specialty=specialty,
+                            regime=s.get("regime", "RANGING"),
+                            asset_class=s.get("asset_class", "crypto"),
+                            entry_rules={"rule": s.get("entry_rules", "")},
+                            exit_rules={"rule": s.get("exit_rules", "")},
+                            risk_per_trade=s.get("position_size_pct", 1.0) / 100,
+                            stop_loss_atr_mult=s.get("stop_loss_pct", 2.0),
+                            take_profit_atr_mult=s.get("take_profit_pct", 4.0),
+                            min_confidence=s.get("confidence", 0.5),
+                        )
+                        gen_strategies.append(gen_strat)
+                    except Exception as e:
+                        logger.debug(f"[MotherAI] Error converting strategy: {e}")
+                        continue
+
+                if gen_strategies:
+                    # Run tournament ranking
+                    ranked_results = tournament.rank_batch(gen_strategies, max_workers=4)
+
+                    # Convert back to dicts with scores
+                    ranked = []
+                    for strat, result in ranked_results:
+                        strat_dict = strategies[gen_strategies.index(strat)] if strat in gen_strategies else {}
+                        strat_dict["rank_score"] = result.rank_score
+                        strat_dict["backtest_wr"] = result.win_rate
+                        strat_dict["backtest_sharpe"] = result.sharpe_ratio
+                        ranked.append(strat_dict)
+
+                    return ranked
+
+            except Exception as e:
+                logger.warning(f"[MotherAI] Backtest ranking failed, using confidence: {e}")
+
+        # Fallback: rank by confidence score
+        # Add computed rank score based on multiple factors
+        for s in strategies:
+            confidence = s.get("confidence", 0.5)
+            sl = s.get("stop_loss_pct", 2.0)
+            tp = s.get("take_profit_pct", 4.0)
+            rr_ratio = tp / sl if sl > 0 else 1.0
+
+            # Composite score: confidence + risk/reward bonus
+            s["rank_score"] = confidence * 0.6 + min(rr_ratio / 3, 0.4)
+
+        ranked = sorted(strategies, key=lambda s: s.get("rank_score", 0), reverse=True)
         return ranked
 
     def _count_votes(self, top_strategies: List[Dict]) -> Dict[str, int]:
