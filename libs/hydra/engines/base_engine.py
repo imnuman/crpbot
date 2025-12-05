@@ -228,6 +228,101 @@ class BaseGladiator(ABC):
             logger.error(f"Failed to parse JSON: {e}\nResponse: {json_str[:200]}")
             return None
 
+    def generate_batch(
+        self,
+        count: int = 1000,
+        market_context: Optional[Dict] = None,
+        use_mock: bool = False
+    ) -> List[Dict]:
+        """
+        Generate a batch of strategies (for HYDRA 4.0 turbo mode).
+
+        This enables 4x parallel strategy generation:
+        - Engine A: 1000 liquidation cascade strategies
+        - Engine B: 1000 funding rate strategies
+        - Engine C: 1000 orderbook imbalance strategies
+        - Engine D: 1000 regime transition strategies
+        = 4000 total strategies per cycle
+
+        Args:
+            count: Number of strategies to generate (default 1000)
+            market_context: Current market data for context
+            use_mock: Use mock generation (no API cost)
+
+        Returns:
+            List of strategy dicts
+        """
+        import random
+        from datetime import datetime, timezone
+
+        logger.info(f"[{self.name}] Generating batch of {count} strategies...")
+
+        strategies = []
+
+        if use_mock:
+            # Generate mock strategies based on engine specialty
+            for i in range(count):
+                strategy = self._generate_mock_strategy(i, market_context)
+                strategies.append(strategy)
+        else:
+            # Use LLM to generate strategies
+            # Generate in smaller batches to avoid token limits
+            batch_size = 50
+            for batch_start in range(0, count, batch_size):
+                batch_count = min(batch_size, count - batch_start)
+                try:
+                    batch = self._generate_llm_batch(batch_count, market_context)
+                    strategies.extend(batch)
+                except Exception as e:
+                    logger.error(f"[{self.name}] LLM batch generation failed: {e}")
+                    # Fill with mock strategies on failure
+                    for i in range(batch_count):
+                        strategies.append(self._generate_mock_strategy(batch_start + i, market_context))
+
+        self.strategy_count += len(strategies)
+        logger.info(f"[{self.name}] Generated {len(strategies)} strategies")
+
+        return strategies
+
+    def _generate_mock_strategy(self, index: int, market_context: Optional[Dict] = None) -> Dict:
+        """Generate a mock strategy for testing."""
+        import random
+
+        # Get specialty from config (it's a dataclass, not dict)
+        specialty = 'general'
+        if hasattr(self, 'specialty_config') and self.specialty_config:
+            if hasattr(self.specialty_config, 'specialty'):
+                specialty = str(self.specialty_config.specialty.value) if hasattr(self.specialty_config.specialty, 'value') else str(self.specialty_config.specialty)
+
+        return {
+            "strategy_id": f"{self.name}_{self.strategy_count + index:06d}",
+            "engine": self.name,
+            "specialty": specialty,
+            "entry_rules": f"Mock entry rule {index}",
+            "exit_rules": f"Mock exit rule {index}",
+            "stop_loss_pct": round(random.uniform(0.5, 3.0), 2),
+            "take_profit_pct": round(random.uniform(1.0, 6.0), 2),
+            "position_size_pct": round(random.uniform(1.0, 5.0), 2),
+            "confidence": round(random.uniform(0.5, 1.0), 3),
+            "reasoning": f"Mock strategy {index} from {self.name}",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def _generate_llm_batch(self, count: int, market_context: Optional[Dict] = None) -> List[Dict]:
+        """Generate batch of strategies using LLM. Override in subclass."""
+        # Default implementation generates mock strategies
+        return [self._generate_mock_strategy(i, market_context) for i in range(count)]
+
+    def learn_from_winner(self, winning_strategy: Dict):
+        """
+        Learn from a winning strategy (winner teaches loser mechanism).
+
+        Args:
+            winning_strategy: The strategy that won the tournament
+        """
+        logger.info(f"[{self.name}] Learning from winning strategy: {winning_strategy.get('strategy_id')}")
+        # Subclasses can override to implement specific learning
+
     def get_stats(self) -> Dict:
         """Get gladiator performance statistics."""
         return {

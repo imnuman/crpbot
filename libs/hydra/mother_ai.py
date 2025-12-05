@@ -716,6 +716,160 @@ class MotherAI:
         except Exception as e:
             logger.warning(f"Failed to save Mother AI state: {e}")
 
+    # ==================== HYDRA 4.0: BATCH GENERATION ====================
+
+    def run_generation_cycle(
+        self,
+        strategies_per_engine: int = 1000,
+        market_context: Optional[Dict] = None,
+        use_mock: bool = False,
+        parallel: bool = True
+    ) -> Dict:
+        """
+        HYDRA 4.0: Run a full 4-engine strategy generation cycle.
+
+        This is the core of HYDRA 4.0 turbo mode:
+        - Each engine generates 1000 strategies in parallel
+        - All 4000 strategies are ranked in tournament
+        - Votes counted by engine (top 100 strategies)
+        - Winner teaches losers mechanism applied
+
+        Args:
+            strategies_per_engine: Strategies each engine generates (default 1000)
+            market_context: Current market data
+            use_mock: Use mock generation (no API costs)
+            parallel: Run engines in parallel (faster)
+
+        Returns:
+            Dict with cycle results including winning engine and strategies
+        """
+        import time
+        start_time = time.time()
+
+        logger.info(f"[MotherAI] Starting HYDRA 4.0 generation cycle ({strategies_per_engine} per engine)")
+
+        all_strategies = []
+        engine_results = {}
+
+        if parallel:
+            # Run all 4 engines in parallel
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {
+                    executor.submit(
+                        gladiator.generate_batch,
+                        strategies_per_engine,
+                        market_context,
+                        use_mock
+                    ): name
+                    for name, gladiator in self.gladiators.items()
+                }
+
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        strategies = future.result()
+                        all_strategies.extend(strategies)
+                        engine_results[name] = {
+                            "count": len(strategies),
+                            "success": True
+                        }
+                        logger.info(f"[MotherAI] Engine {name} generated {len(strategies)} strategies")
+                    except Exception as e:
+                        logger.error(f"[MotherAI] Engine {name} failed: {e}")
+                        engine_results[name] = {
+                            "count": 0,
+                            "success": False,
+                            "error": str(e)
+                        }
+        else:
+            # Sequential generation (for debugging)
+            for name, gladiator in self.gladiators.items():
+                try:
+                    strategies = gladiator.generate_batch(
+                        strategies_per_engine,
+                        market_context,
+                        use_mock
+                    )
+                    all_strategies.extend(strategies)
+                    engine_results[name] = {"count": len(strategies), "success": True}
+                except Exception as e:
+                    logger.error(f"[MotherAI] Engine {name} failed: {e}")
+                    engine_results[name] = {"count": 0, "success": False, "error": str(e)}
+
+        # Rank all strategies using tournament
+        logger.info(f"[MotherAI] Ranking {len(all_strategies)} strategies...")
+        ranked = self._rank_strategies(all_strategies)
+
+        # Count votes by engine (top 100)
+        vote_breakdown = self._count_votes(ranked[:100])
+
+        # Determine winning engine
+        winning_engine = max(vote_breakdown, key=vote_breakdown.get) if vote_breakdown else "A"
+
+        # Get winning strategy
+        winning_strategy = ranked[0] if ranked else None
+
+        # Apply winner teaches loser
+        if winning_strategy:
+            self._apply_winner_teaches_loser(winning_engine, winning_strategy)
+
+        cycle_time_ms = int((time.time() - start_time) * 1000)
+
+        result = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "total_strategies": len(all_strategies),
+            "engine_results": engine_results,
+            "winning_engine": winning_engine,
+            "winning_strategy_id": winning_strategy.get("strategy_id") if winning_strategy else None,
+            "vote_breakdown": vote_breakdown,
+            "cycle_time_ms": cycle_time_ms,
+            "top_10": ranked[:10] if len(ranked) >= 10 else ranked
+        }
+
+        logger.info(f"[MotherAI] Generation cycle complete: {len(all_strategies)} strategies, "
+                   f"winner: Engine {winning_engine}, time: {cycle_time_ms}ms")
+
+        return result
+
+    def _rank_strategies(self, strategies: List[Dict]) -> List[Dict]:
+        """Rank strategies using tournament scoring."""
+        import random
+
+        # Simple ranking by confidence for now
+        # TODO: Integrate with turbo_tournament for backtesting
+        ranked = sorted(strategies, key=lambda s: s.get("confidence", 0), reverse=True)
+        return ranked
+
+    def _count_votes(self, top_strategies: List[Dict]) -> Dict[str, int]:
+        """Count votes by engine in top strategies."""
+        votes = {"A": 0, "B": 0, "C": 0, "D": 0}
+
+        for strategy in top_strategies:
+            engine = strategy.get("engine", "")
+            if engine in votes:
+                votes[engine] += 1
+            elif strategy.get("strategy_id", "").startswith("A_"):
+                votes["A"] += 1
+            elif strategy.get("strategy_id", "").startswith("B_"):
+                votes["B"] += 1
+            elif strategy.get("strategy_id", "").startswith("C_"):
+                votes["C"] += 1
+            elif strategy.get("strategy_id", "").startswith("D_"):
+                votes["D"] += 1
+
+        return votes
+
+    def _apply_winner_teaches_loser(self, winning_engine: str, winning_strategy: Dict):
+        """Apply winner teaches loser mechanism."""
+        logger.info(f"[MotherAI] Winner teaches loser: Engine {winning_engine} shares knowledge")
+
+        for name, gladiator in self.gladiators.items():
+            if name != winning_engine:
+                try:
+                    gladiator.learn_from_winner(winning_strategy)
+                except Exception as e:
+                    logger.warning(f"[MotherAI] Engine {name} failed to learn: {e}")
+
     def get_tournament_summary(self) -> Dict:
         """Get full tournament summary."""
         return {
