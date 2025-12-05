@@ -52,33 +52,34 @@ class SpecialtyConfig:
 
 
 # Engine specialty assignments
+# NOTE: Thresholds lowered from original extreme values to trigger during normal trading
 ENGINE_SPECIALTIES = {
     "A": SpecialtyConfig(
         specialty=Specialty.LIQUIDATION_CASCADE,
         engine_id="A",
-        description="Liquidation cascades - large forced liquidations triggering price moves",
-        trigger_threshold=20_000_000,  # $20M+ in liquidations
+        description="Liquidation cascades - forced liquidations triggering price moves",
+        trigger_threshold=1_000_000,  # $1M+ in liquidations (was $20M)
         trigger_unit="USD",
     ),
     "B": SpecialtyConfig(
         specialty=Specialty.FUNDING_EXTREME,
         engine_id="B",
         description="Funding rate extremes - crowded trades about to reverse",
-        trigger_threshold=0.5,  # >0.5% funding rate (annualized ~180%)
+        trigger_threshold=0.05,  # >0.05% funding rate (was 0.5%)
         trigger_unit="percent",
     ),
     "C": SpecialtyConfig(
         specialty=Specialty.ORDERBOOK_IMBALANCE,
         engine_id="C",
-        description="Orderbook imbalance - heavy one-sided pressure",
-        trigger_threshold=2.5,  # 2.5:1 bid/ask ratio
+        description="Orderbook imbalance - one-sided pressure",
+        trigger_threshold=1.5,  # 1.5:1 bid/ask ratio (was 2.5:1)
         trigger_unit="ratio",
     ),
     "D": SpecialtyConfig(
         specialty=Specialty.REGIME_TRANSITION,
         engine_id="D",
-        description="Regime transitions - volatility expansions signaling trend changes",
-        trigger_threshold=2.0,  # ATR 2× expansion
+        description="Regime transitions - volatility changes signaling trend shifts",
+        trigger_threshold=1.2,  # ATR 1.2× expansion (was 2×)
         trigger_unit="multiplier",
     ),
 }
