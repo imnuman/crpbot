@@ -447,6 +447,106 @@ class HydraMetrics:
         'Generation mode: 0=real API, 1=mock'
     )
 
+    # ========== Independent Trading Mode (HYDRA 4.0) ==========
+
+    # Independent mode active flag
+    independent_mode_active = Gauge(
+        'hydra_independent_mode_active',
+        'Whether independent trading mode is active (1) or disabled (0)'
+    )
+
+    # Specialty trigger status per engine
+    specialty_trigger = Gauge(
+        'hydra_specialty_trigger',
+        'Whether engine specialty is triggered for current market: 1=triggered, 0=not triggered',
+        ['engine']
+    )
+
+    # Engine portfolio balance (each starts at $25k)
+    engine_portfolio_balance = Gauge(
+        'hydra_engine_portfolio_balance_usd',
+        'Current engine portfolio balance in USD',
+        ['engine']
+    )
+
+    # Engine portfolio trades
+    engine_portfolio_trades = Gauge(
+        'hydra_engine_portfolio_trades',
+        'Total trades made by engine portfolio',
+        ['engine']
+    )
+
+    # Engine portfolio wins
+    engine_portfolio_wins = Gauge(
+        'hydra_engine_portfolio_wins',
+        'Total wins by engine portfolio',
+        ['engine']
+    )
+
+    # Engine portfolio P&L
+    engine_portfolio_pnl = Gauge(
+        'hydra_engine_portfolio_pnl_usd',
+        'Engine portfolio P&L in USD',
+        ['engine']
+    )
+
+    # Engine specialty type
+    engine_specialty = Info(
+        'hydra_engine_specialty',
+        'Engine specialty type (liquidation_cascade, funding_extreme, etc)'
+    )
+
+    # ========== Turbo Batch Generation (HYDRA 4.0) ==========
+
+    # Turbo batch mode active flag
+    turbo_batch_active = Gauge(
+        'hydra_turbo_batch_active',
+        'Whether turbo batch generation mode is active (1) or disabled (0)'
+    )
+
+    # Strategies generated per specialty
+    turbo_strategies_per_specialty = Gauge(
+        'hydra_turbo_strategies_per_specialty',
+        'Number of strategies generated per specialty (target: 250)',
+        ['specialty']
+    )
+
+    # Total strategies backtested
+    turbo_backtested_count = Gauge(
+        'hydra_turbo_backtested_count',
+        'Total strategies backtested in turbo tournament'
+    )
+
+    # Top strategy Sharpe ratio
+    turbo_top_sharpe = Gauge(
+        'hydra_turbo_top_sharpe',
+        'Sharpe ratio of top-ranked strategy from turbo tournament'
+    )
+
+    # Top strategy return
+    turbo_top_return = Gauge(
+        'hydra_turbo_top_return_percent',
+        'Return percentage of top-ranked strategy'
+    )
+
+    # Turbo generation time
+    turbo_generation_time_ms = Gauge(
+        'hydra_turbo_generation_time_ms',
+        'Time taken for turbo batch generation in milliseconds'
+    )
+
+    # Turbo tournament time
+    turbo_tournament_time_ms = Gauge(
+        'hydra_turbo_tournament_time_ms',
+        'Time taken for turbo tournament ranking in milliseconds'
+    )
+
+    # Best specialty (which specialty won)
+    turbo_best_specialty = Gauge(
+        'hydra_turbo_best_specialty',
+        'Specialty that produced winning strategy: 1=liquidation, 2=funding, 3=orderbook, 4=regime'
+    )
+
     # ========== System Health ==========
 
     # Runtime uptime
@@ -520,6 +620,9 @@ class HydraMetrics:
         cls.win_rate_total.set(0)
         cls.consecutive_wins.set(0)
         cls.consecutive_losses.set(0)
+
+        # Initialize HYDRA 4.0 metrics
+        cls.initialize_hydra_40()
 
     @classmethod
     def update_uptime(cls):
@@ -880,3 +983,158 @@ class HydraMetrics:
         now = datetime.now(timezone.utc)
         next_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         cls.generation_next_run.set(next_midnight.timestamp())
+
+    # ========== Independent Trading Mode Methods ==========
+
+    @classmethod
+    def set_independent_mode(cls, active: bool):
+        """Set whether independent trading mode is active."""
+        cls.independent_mode_active.set(1 if active else 0)
+
+    @classmethod
+    def set_specialty_triggers(cls, triggers: Dict[str, bool]):
+        """
+        Set specialty trigger status for each engine.
+
+        Args:
+            triggers: Dict mapping engine name (A,B,C,D) to trigger status (True/False)
+        """
+        for engine in ['A', 'B', 'C', 'D']:
+            cls.specialty_trigger.labels(engine=engine).set(
+                1 if triggers.get(engine, False) else 0
+            )
+
+    @classmethod
+    def set_engine_portfolio(
+        cls,
+        engine: str,
+        balance: float,
+        trades: int,
+        wins: int,
+        pnl: float
+    ):
+        """Set engine portfolio metrics for independent trading mode."""
+        cls.engine_portfolio_balance.labels(engine=engine).set(balance)
+        cls.engine_portfolio_trades.labels(engine=engine).set(trades)
+        cls.engine_portfolio_wins.labels(engine=engine).set(wins)
+        cls.engine_portfolio_pnl.labels(engine=engine).set(pnl)
+
+    @classmethod
+    def set_all_engine_portfolios(cls, portfolios: Dict[str, Dict[str, Any]]):
+        """
+        Set all engine portfolios at once.
+
+        Args:
+            portfolios: Dict mapping engine name to portfolio dict with keys:
+                       balance, trades, wins, pnl
+        """
+        for engine, portfolio in portfolios.items():
+            cls.set_engine_portfolio(
+                engine=engine,
+                balance=portfolio.get('balance', 25000.0),
+                trades=portfolio.get('trades', 0),
+                wins=portfolio.get('wins', 0),
+                pnl=portfolio.get('pnl', 0.0)
+            )
+
+    @classmethod
+    def set_engine_specialties(cls):
+        """Set engine specialty info."""
+        cls.engine_specialty.info({
+            'engine_a': 'liquidation_cascade',
+            'engine_b': 'funding_extreme',
+            'engine_c': 'orderbook_imbalance',
+            'engine_d': 'regime_transition'
+        })
+
+    # ========== Turbo Batch Generation Methods ==========
+
+    @classmethod
+    def set_turbo_mode(cls, active: bool):
+        """Set whether turbo batch generation mode is active."""
+        cls.turbo_batch_active.set(1 if active else 0)
+
+    @classmethod
+    def set_turbo_generation_stats(
+        cls,
+        strategies_by_specialty: Dict[str, int],
+        backtested_count: int,
+        generation_time_ms: int
+    ):
+        """
+        Set turbo generation statistics.
+
+        Args:
+            strategies_by_specialty: Dict mapping specialty name to strategy count
+            backtested_count: Total strategies backtested
+            generation_time_ms: Time taken for generation in milliseconds
+        """
+        specialty_map = {
+            'liquidation_cascade': 'liquidation',
+            'funding_extreme': 'funding',
+            'orderbook_imbalance': 'orderbook',
+            'regime_transition': 'regime'
+        }
+
+        for specialty, count in strategies_by_specialty.items():
+            label = specialty_map.get(specialty, specialty)
+            cls.turbo_strategies_per_specialty.labels(specialty=label).set(count)
+
+        cls.turbo_backtested_count.set(backtested_count)
+        cls.turbo_generation_time_ms.set(generation_time_ms)
+
+    @classmethod
+    def set_turbo_tournament_result(
+        cls,
+        top_sharpe: float,
+        top_return: float,
+        best_specialty: str,
+        tournament_time_ms: int
+    ):
+        """
+        Set turbo tournament results.
+
+        Args:
+            top_sharpe: Sharpe ratio of winning strategy
+            top_return: Return percentage of winning strategy
+            best_specialty: Specialty that produced winning strategy
+            tournament_time_ms: Time taken for tournament in milliseconds
+        """
+        cls.turbo_top_sharpe.set(top_sharpe)
+        cls.turbo_top_return.set(top_return)
+        cls.turbo_tournament_time_ms.set(tournament_time_ms)
+
+        # Convert specialty to numeric
+        specialty_map = {
+            'liquidation_cascade': 1,
+            'funding_extreme': 2,
+            'orderbook_imbalance': 3,
+            'regime_transition': 4
+        }
+        cls.turbo_best_specialty.set(specialty_map.get(best_specialty, 0))
+
+    @classmethod
+    def initialize_hydra_40(cls):
+        """Initialize HYDRA 4.0 specific metrics."""
+        # Initialize independent mode metrics
+        cls.independent_mode_active.set(0)
+        for engine in ['A', 'B', 'C', 'D']:
+            cls.specialty_trigger.labels(engine=engine).set(0)
+            cls.engine_portfolio_balance.labels(engine=engine).set(25000.0)
+            cls.engine_portfolio_trades.labels(engine=engine).set(0)
+            cls.engine_portfolio_wins.labels(engine=engine).set(0)
+            cls.engine_portfolio_pnl.labels(engine=engine).set(0.0)
+
+        # Set engine specialties info
+        cls.set_engine_specialties()
+
+        # Initialize turbo mode metrics
+        cls.turbo_batch_active.set(0)
+        for specialty in ['liquidation', 'funding', 'orderbook', 'regime']:
+            cls.turbo_strategies_per_specialty.labels(specialty=specialty).set(0)
+        cls.turbo_backtested_count.set(0)
+        cls.turbo_top_sharpe.set(0.0)
+        cls.turbo_top_return.set(0.0)
+        cls.turbo_generation_time_ms.set(0)
+        cls.turbo_tournament_time_ms.set(0)
+        cls.turbo_best_specialty.set(0)

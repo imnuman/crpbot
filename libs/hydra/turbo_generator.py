@@ -8,7 +8,6 @@ Cost: ~$1.50 per 1000 strategies
 """
 
 import json
-import logging
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,8 +15,7 @@ from typing import List, Dict, Any, Optional
 from enum import Enum
 
 import anthropic
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class StrategyType(Enum):
@@ -178,14 +176,19 @@ class TurboGenerator:
         try:
             prompt = self._build_mega_prompt(specialty, regime, asset_class, count)
 
-            response = self.client.messages.create(
+            # Use streaming for long operations (required for >10 min calls)
+            collected_text = []
+            with self.client.messages.stream(
                 model="claude-sonnet-4-20250514",
-                max_tokens=100000,
+                max_tokens=60000,  # Max 64000 for sonnet
                 messages=[{"role": "user", "content": prompt}]
-            )
+            ) as stream:
+                for text in stream.text_stream:
+                    collected_text.append(text)
+                response = stream.get_final_message()
 
             # Parse response
-            content = response.content[0].text
+            content = "".join(collected_text)
             strategies = self._parse_response(content, specialty)
 
             # Log cost estimate

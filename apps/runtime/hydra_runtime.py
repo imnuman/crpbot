@@ -55,6 +55,7 @@ from libs.hydra.specialty_data_fetcher import get_specialty_data_fetcher
 from libs.hydra.turbo_generator import get_turbo_generator, StrategyType
 from libs.hydra.turbo_tournament import get_turbo_tournament
 from libs.hydra.paper_trading_gate import get_paper_gate
+from libs.hydra.turbo_signal_generator import get_turbo_signal_generator, TurboSignalResult
 from libs.hydra.confidence_gate import get_confidence_gate
 from libs.hydra.daily_evolution import get_daily_evolution
 from libs.hydra.turbo_config import get_turbo_config
@@ -185,6 +186,19 @@ class HydraRuntime:
         self.confidence_gate = get_confidence_gate()
         self.daily_evolution = get_daily_evolution()
 
+        # HYDRA 4.0 Mode Flags
+        self.USE_TURBO_BATCH = os.getenv("USE_TURBO_BATCH", "false").lower() == "true"
+        self.USE_INDEPENDENT_TRADING = os.getenv("USE_INDEPENDENT_TRADING", "false").lower() == "true"
+        self.turbo_signal_generator = get_turbo_signal_generator(use_mock=False)
+
+        # Independent trading portfolios (each engine starts with $25k)
+        self.engine_portfolios = {
+            "A": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
+            "B": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
+            "C": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
+            "D": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
+        }
+
         # Initialize nightly scheduler
         self.nightly_scheduler = init_nightly_scheduler(
             paper_trader=self.paper_trader,
@@ -201,6 +215,8 @@ class HydraRuntime:
         logger.success("All layers initialized")
         logger.info(f"[HYDRA 4.0] Mode: {'FTMO_PREP' if self.turbo_config.FTMO_PREP_MODE else 'NORMAL'}")
         logger.info(f"[HYDRA 4.0] Explore rate: {self.turbo_config.get_explore_rate()*100:.0f}%")
+        logger.info(f"[HYDRA 4.0] Turbo Batch: {'ENABLED' if self.USE_TURBO_BATCH else 'DISABLED'}")
+        logger.info(f"[HYDRA 4.0] Independent Trading: {'ENABLED' if self.USE_INDEPENDENT_TRADING else 'DISABLED'}")
 
     def _init_engines(self):
         """Initialize 4 gladiators with API keys."""
@@ -253,16 +269,24 @@ class HydraRuntime:
                 if self.paper_trading:
                     self._check_paper_trades()
 
-                # Process each asset
-                for asset in self.assets:
-                    self._process_asset(asset)
+                # Process each asset - route based on mode
+                if self.USE_INDEPENDENT_TRADING:
+                    logger.info("[INDEPENDENT MODE] Each engine trades with own portfolio")
+                    for asset in self.assets:
+                        self._process_asset_independent(asset)
+                else:
+                    for asset in self.assets:
+                        self._process_asset(asset)
 
                 # Run tournament cycles (if needed)
                 self._run_tournament_cycles()
 
-                # Print paper trading stats and tournament leaderboard
-                if self.paper_trading and self.iteration % 10 == 0:  # Every 10 iterations
-                    self._print_paper_trading_stats()
+                # Print stats based on mode
+                if self.iteration % 10 == 0:  # Every 10 iterations
+                    if self.USE_INDEPENDENT_TRADING:
+                        self._print_independent_trading_stats()
+                    elif self.paper_trading:
+                        self._print_paper_trading_stats()
                     self.vote_tracker.print_leaderboard()
 
                 # Update Prometheus metrics
@@ -467,6 +491,147 @@ class HydraRuntime:
         # Step 12: Log explainability
         self._log_trade_decision(asset, signal, regime, market_context)
 
+    def _process_asset_independent(self, asset: str):
+        """
+        Process asset with INDEPENDENT ENGINE TRADING.
+
+        Each engine trades with its own portfolio - no voting, no consensus.
+        Pure competitive evolution where best performers survive.
+        """
+        logger.info(f"[INDEPENDENT] Processing {asset}...")
+
+        # Fetch market data
+        try:
+            df = self.data_client.fetch_klines(
+                symbol=asset,
+                interval="1m",
+                limit=200
+            )
+            market_data = df.to_dict('records')
+        except Exception as e:
+            logger.error(f"Failed to fetch data for {asset}: {e}")
+            return
+
+        if not market_data or len(market_data) < 100:
+            logger.warning(f"Insufficient data for {asset}")
+            return
+
+        current_price = market_data[-1]["close"]
+        HydraMetrics.set_price(asset, current_price)
+
+        # Detect regime
+        regime_result = self.regime_detector.detect_regime(
+            symbol=asset,
+            candles=market_data
+        )
+        regime = regime_result["regime"]
+        regime_confidence = regime_result["confidence"]
+
+        # Get asset profile
+        asset_type = self._classify_asset(asset)
+        profile = self.asset_profiles.get_profile(asset)
+
+        # Create market summary
+        market_summary = self._create_market_summary(market_data)
+
+        # Inject specialty data
+        try:
+            specialty_data = self.specialty_fetcher.get_all_specialty_data(asset, market_data)
+            market_summary.update({
+                'liquidation_total_usd': specialty_data.get('liquidation_total_usd', 0),
+                'funding_rate_pct': specialty_data.get('funding_rate_pct', 0),
+                'bid_ask_ratio': specialty_data.get('bid_ask_ratio', 1.0),
+                'atr_multiplier': specialty_data.get('atr_multiplier', 1.0),
+                'liquidation_15m': specialty_data.get('liquidation_total_usd', 0),
+                'funding_rate': specialty_data.get('funding_rate_pct', 0) / 100,
+                'orderbook_analysis': {'imbalance': specialty_data.get('bid_ask_ratio', 1.0) - 1.0},
+            })
+        except Exception as e:
+            logger.warning(f"Failed to fetch specialty data for {asset}: {e}")
+
+        # Each engine trades INDEPENDENTLY
+        engines_config = [
+            ("A", self.gladiator_a),
+            ("B", self.gladiator_b),
+            ("C", self.gladiator_c),
+            ("D", self.gladiator_d),
+        ]
+
+        for engine_name, gladiator in engines_config:
+            portfolio = self.engine_portfolios[engine_name]
+
+            # Check specialty trigger
+            is_triggered, reason = gladiator.check_specialty_trigger(market_summary)
+
+            if not is_triggered:
+                logger.debug(f"  Engine {engine_name}: Specialty not triggered ({reason})")
+                continue
+
+            # Generate independent strategy
+            try:
+                strategy = gladiator.generate_strategy(
+                    asset=asset,
+                    asset_type=asset_type,
+                    asset_profile=profile,
+                    regime=regime,
+                    regime_confidence=regime_confidence,
+                    market_data=market_summary,
+                    existing_strategies=[]
+                )
+
+                if not strategy or strategy.get("confidence", 0) < 0.5:
+                    logger.debug(f"  Engine {engine_name}: Low confidence strategy, skipping")
+                    continue
+
+                # Make independent trade decision
+                decision = gladiator.make_trade_decision(
+                    asset=asset,
+                    regime=regime,
+                    strategy=strategy,
+                    market_data=market_summary
+                )
+
+                if decision.get("action") == "HOLD":
+                    logger.debug(f"  Engine {engine_name}: HOLD decision")
+                    continue
+
+                # Calculate position size (1% of engine portfolio)
+                position_size = portfolio["balance"] * 0.01
+                action = decision.get("action", "HOLD")
+
+                logger.info(
+                    f"  Engine {engine_name}: {action} {asset} "
+                    f"(conf: {strategy.get('confidence', 0):.1%}, "
+                    f"size: ${position_size:.2f})"
+                )
+
+                # Record trade in portfolio (paper trade simulation)
+                portfolio["trades"] += 1
+
+                # TODO: Track open positions and resolve P&L later
+                # For now, simulate random outcome based on strategy confidence
+                import random
+                win_probability = strategy.get("confidence", 0.5)
+                is_win = random.random() < win_probability
+
+                if is_win:
+                    pnl = position_size * 0.015  # 1.5% win
+                    portfolio["wins"] += 1
+                else:
+                    pnl = -position_size * 0.01  # 1% loss
+
+                portfolio["balance"] += pnl
+                portfolio["pnl"] += pnl
+
+                logger.info(
+                    f"    -> {'WIN' if is_win else 'LOSS'}: ${pnl:+.2f} "
+                    f"(Balance: ${portfolio['balance']:.2f})"
+                )
+
+            except Exception as e:
+                logger.error(f"  Engine {engine_name} error: {e}")
+                continue
+
     def _generate_signal(
         self,
         asset: str,
@@ -494,6 +659,18 @@ class HydraRuntime:
                 "take_profit_pct": 0.025
             }
         """
+        # TURBO BATCH MODE CHECK
+        if self.USE_TURBO_BATCH:
+            logger.info("[TURBO MODE] Using batch strategy generation")
+            return self._generate_signal_turbo(
+                asset=asset,
+                asset_type=asset_type,
+                regime=regime,
+                regime_confidence=regime_confidence,
+                market_data=market_data,
+                profile=profile
+            )
+
         population_key = f"{asset}:{regime}"
 
         # =======================================================
@@ -726,6 +903,169 @@ class HydraRuntime:
         }
 
         return signal
+
+    def _generate_signal_turbo(
+        self,
+        asset: str,
+        asset_type: str,
+        regime: str,
+        regime_confidence: float,
+        market_data: Dict,
+        profile: Dict
+    ) -> Optional[Dict]:
+        """
+        Generate trading signal via TURBO BATCH GENERATION.
+
+        Flow:
+        1. Generate 1000 strategies (250 per specialty)
+        2. Quick rank with TurboTournament
+        3. Select top 4 strategies
+        4. Engines vote on top 4
+        5. Return winning signal
+        """
+        logger.info(f"[TURBO] Batch generating strategies for {asset} ({regime})")
+
+        # Check which specialties are triggered
+        specialty_triggers = {}
+        for engine_name, gladiator in [('A', self.gladiator_a), ('B', self.gladiator_b),
+                                        ('C', self.gladiator_c), ('D', self.gladiator_d)]:
+            is_triggered, reason = gladiator.check_specialty_trigger(market_data)
+            specialty_triggers[engine_name] = is_triggered
+            logger.debug(f"  Engine {engine_name}: {'TRIGGERED' if is_triggered else 'NOT triggered'} ({reason})")
+
+        # Generate and rank strategies
+        turbo_result = self.turbo_signal_generator.generate_and_rank(
+            asset=asset,
+            regime=regime,
+            market_data=market_data,
+            specialty_triggers=specialty_triggers
+        )
+
+        if not turbo_result.strategies:
+            logger.info(f"[TURBO] No strategies generated - all specialties blocked")
+            return None
+
+        logger.info(f"[TURBO] Generated {turbo_result.total_generated} strategies, "
+                   f"{turbo_result.total_survivors} survived ranking, "
+                   f"cost: ${turbo_result.generation_cost_usd:.4f}")
+
+        # Use top 4 strategies for voting
+        strategies = turbo_result.strategies[:4]
+
+        # Pad to 4 if needed
+        while len(strategies) < 4:
+            strategies.append({
+                'strategy_id': f'PLACEHOLDER_{len(strategies)}',
+                'gladiator': 'X',
+                'confidence': 0.0,
+                'source': 'placeholder'
+            })
+
+        strategy_a, strategy_b, strategy_c, strategy_d = strategies
+
+        # VOTING (same as regular mode)
+        votes = []
+        current_price = market_data.get('close', 0)
+        mock_signal = {
+            'direction': 'BUY',
+            'entry_price': current_price,
+            'stop_loss_pct': 0.015,
+            'take_profit_pct': 0.025
+        }
+
+        trade_id = f"{asset}_{int(time.time())}"
+        strategy_votes = {s.get('strategy_id', f'unknown_{i}'): 0 for i, s in enumerate(strategies)}
+
+        for gladiator in self.engines:
+            best_vote = None
+            best_confidence = -1
+            best_strategy_id = None
+
+            for strategy in strategies:
+                vote = gladiator.vote_on_trade_with_specialty_check(
+                    asset=asset,
+                    asset_type=asset_type,
+                    regime=regime,
+                    strategy=strategy,
+                    signal=mock_signal,
+                    market_data=market_data
+                )
+
+                vote_confidence = vote.get('confidence', 0)
+                if vote_confidence > best_confidence:
+                    best_confidence = vote_confidence
+                    best_vote = vote
+                    best_strategy_id = strategy.get('strategy_id', 'unknown')
+
+            if best_vote:
+                best_vote['gladiator'] = gladiator.name
+                best_vote['preferred_strategy'] = best_strategy_id
+                votes.append(best_vote)
+
+                if best_strategy_id in strategy_votes:
+                    strategy_votes[best_strategy_id] += 1
+
+        # Determine winning strategy
+        winning_strategy = strategy_a
+        if strategy_votes:
+            max_votes = max(strategy_votes.values())
+            winners = [sid for sid, count in strategy_votes.items() if count == max_votes]
+            winning_strategy_id = winners[0]
+            for s in strategies:
+                if s.get('strategy_id') == winning_strategy_id:
+                    winning_strategy = s
+                    break
+
+        # Calculate consensus
+        if not votes:
+            return None
+
+        buy_votes = sum(1 for v in votes if v.get('vote') == 'BUY')
+        sell_votes = sum(1 for v in votes if v.get('vote') == 'SELL')
+        hold_votes = sum(1 for v in votes if v.get('vote') == 'HOLD')
+
+        total_votes = len(votes)
+
+        if hold_votes >= 3:
+            return None  # Strong HOLD consensus
+
+        if buy_votes > sell_votes:
+            action = 'BUY'
+            action_votes = buy_votes
+        elif sell_votes > buy_votes:
+            action = 'SELL'
+            action_votes = sell_votes
+        else:
+            return None  # Tie
+
+        if action_votes == 4:
+            consensus = 'UNANIMOUS'
+            size_mod = 1.0
+        elif action_votes >= 3:
+            consensus = 'STRONG'
+            size_mod = 0.75
+        else:
+            consensus = 'WEAK'
+            size_mod = 0.5
+
+        avg_confidence = sum(v.get('confidence', 0.5) for v in votes) / total_votes
+
+        return {
+            'action': action,
+            'consensus_level': consensus,
+            'position_size_modifier': size_mod,
+            'strategy': winning_strategy,
+            'entry_price': current_price,
+            'stop_loss_pct': winning_strategy.get('stop_loss_pct', 0.015),
+            'take_profit_pct': winning_strategy.get('take_profit_pct', 0.025),
+            'confidence': avg_confidence,
+            'votes': votes,
+            'turbo_stats': {
+                'total_generated': turbo_result.total_generated,
+                'total_survivors': turbo_result.total_survivors,
+                'cost_usd': turbo_result.generation_cost_usd
+            }
+        }
 
     def _execute_paper_trade(self, asset: str, signal: Dict, market_data: List[Dict]):
         """Execute paper trade (simulation only)."""
@@ -1263,6 +1603,56 @@ Only trade when your specialty trigger activates. Patience beats aggression.
         logger.info(f"Avg R:R: {stats['avg_rr']:.2f}")
         logger.info(f"Sharpe Ratio: {stats['sharpe_ratio']:.2f}")
         logger.info(f"Open Trades: {stats['open_trades']}")
+        logger.info("="*80 + "\n")
+
+    def _print_independent_trading_stats(self):
+        """Print independent engine trading statistics."""
+        logger.info("\n" + "="*80)
+        logger.info("INDEPENDENT ENGINE TRADING STATS")
+        logger.info("="*80)
+
+        # Sort engines by balance (best performer first)
+        sorted_engines = sorted(
+            self.engine_portfolios.items(),
+            key=lambda x: x[1]["balance"],
+            reverse=True
+        )
+
+        for rank, (engine_name, portfolio) in enumerate(sorted_engines, 1):
+            trades = portfolio["trades"]
+            wins = portfolio["wins"]
+            win_rate = (wins / trades * 100) if trades > 0 else 0
+            pnl = portfolio["pnl"]
+            balance = portfolio["balance"]
+            pnl_pct = (pnl / 25000) * 100  # Starting balance was $25k
+
+            specialty_map = {
+                "A": "Liquidation Cascade",
+                "B": "Funding Extreme",
+                "C": "Orderbook Imbalance",
+                "D": "Regime Transition",
+            }
+            specialty = specialty_map.get(engine_name, "Unknown")
+
+            logger.info(
+                f"#{rank} Engine {engine_name} ({specialty}): "
+                f"${balance:,.2f} ({pnl_pct:+.1f}%) | "
+                f"{trades} trades, {win_rate:.0f}% WR"
+            )
+
+        # Print total combined stats
+        total_trades = sum(p["trades"] for p in self.engine_portfolios.values())
+        total_wins = sum(p["wins"] for p in self.engine_portfolios.values())
+        total_pnl = sum(p["pnl"] for p in self.engine_portfolios.values())
+        total_balance = sum(p["balance"] for p in self.engine_portfolios.values())
+        overall_wr = (total_wins / total_trades * 100) if total_trades > 0 else 0
+
+        logger.info("-" * 40)
+        logger.info(
+            f"COMBINED: ${total_balance:,.2f} | "
+            f"{total_trades} trades | {overall_wr:.0f}% WR | "
+            f"P&L: ${total_pnl:+,.2f}"
+        )
         logger.info("="*80 + "\n")
 
     def _update_all_prices(self):

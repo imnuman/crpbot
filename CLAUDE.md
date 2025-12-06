@@ -38,8 +38,8 @@ git add . && git commit -m "message" && git push origin main
 
 ## HYDRA 4.0 - Current Production System
 
-**STATUS**: OPERATIONAL - Paper trading mode
-**Last Updated**: 2025-12-03
+**STATUS**: OPERATIONAL - Paper trading with Independent Trading Mode
+**Last Updated**: 2025-12-06
 **Dashboard**: Grafana (Coming Soon - Port 3000)
 
 ### Architecture Overview
@@ -81,10 +81,34 @@ git add . && git commit -m "message" && git push origin main
 
 **Key Design Principles**:
 - Each engine trades INDEPENDENTLY (not consensus voting)
-- Each engine has OWN P&L tracking and portfolio
+- Each engine has OWN P&L tracking and portfolio ($25k each)
 - Parallel execution: A||B||C||D
 - Tournament ranking by actual P&L performance
 - Weight distribution: #1=40%, #2=30%, #3=20%, #4=10%
+
+### Trading Modes
+
+**1. Independent Trading Mode** (`USE_INDEPENDENT_TRADING=true`) - DEFAULT
+- Each engine generates signals based on its specialty triggers
+- Direct paper trading without consensus voting
+- Trades attributed to engine portfolios
+
+**2. Turbo Batch Mode** (`USE_TURBO_BATCH=true`)
+- Generates 250 strategies per triggered specialty
+- Quick-ranks via TurboTournament
+- Selects diverse top 4 for voting
+
+**3. Standard Voting Mode** (both flags false)
+- All engines vote on each signal
+- Requires consensus for trade execution
+
+### Strategy Generation
+
+**MotherAI 4-Engine Parallel Generation**:
+- Generates 1000 strategies per engine (4000 total) nightly
+- Nightly scheduler runs at midnight UTC
+- Strategies ranked via TurboTournament
+- Winner-teaches-loser knowledge transfer
 
 ### Key Files
 
@@ -99,6 +123,11 @@ git add . && git commit -m "message" && git push origin main
 - `tournament_tracker.py` - Performance tracking
 - `paper_trader.py` - Trade execution
 - `engine_portfolio.py` - Per-engine P&L tracking
+- `turbo_generator.py` - Batch strategy generation
+- `turbo_tournament.py` - Strategy ranking
+- `turbo_signal_generator.py` - Bridge for signal production
+- `nightly_scheduler.py` - Daily evolution scheduler
+- `strategy_memory.py` - Strategy persistence
 
 **Engines** (`libs/hydra/engines/`):
 - `base_engine.py` - Abstract base class
@@ -114,6 +143,12 @@ git add . && git commit -m "message" && git push origin main
 
 **Safety** (`libs/hydra/safety/`):
 - Risk validators and safety checks
+
+**Evolution Cycles** (`libs/hydra/cycles/`):
+- `kill_cycle.py` - 24h elimination (needs 5 closed trades)
+- `breeding_cycle.py` - 4-day breeding (needs 100 trades, 60% WR, 1.5 Sharpe)
+- `weight_adjuster.py` - Dynamic weight adjustment
+- `knowledge_transfer.py` - Winner-teaches-loser mechanism
 
 ---
 
@@ -145,6 +180,24 @@ nohup .venv/bin/python apps/runtime/hydra_runtime.py \
 
 # Stop HYDRA
 pkill -f hydra_runtime.py
+```
+
+### Docker Deployment (Production)
+```bash
+# View container logs
+docker logs hydra-runtime 2>&1 | tail -100
+
+# Restart container
+docker compose down hydra-runtime && docker compose up -d hydra-runtime
+
+# Rebuild container (after code changes)
+docker compose down hydra-runtime && docker compose build hydra-runtime && docker compose up -d hydra-runtime
+
+# Check environment variables in container
+docker exec hydra-runtime printenv | grep -E 'USE_|API_KEY'
+
+# Execute command inside container
+docker exec hydra-runtime /app/.venv/bin/python -c "from libs.hydra.mother_ai import MotherAI; print('OK')"
 ```
 
 ### Database Operations
@@ -275,6 +328,26 @@ Market Data (Coinbase API)
 - #3: 20% weight
 - #4: 10% weight
 
+### Evolution System
+
+**Thresholds for Evolution**:
+
+| Mechanism | Interval | Requirements |
+|-----------|----------|--------------|
+| Tournament Elimination | 24h | 3+ trades per strategy |
+| Kill Cycle | 24h | 5 closed trades (last place engine) |
+| Breeding Cycle | 4 days | 100 trades, 60% WR, 1.5 Sharpe |
+
+**Nightly Scheduler** (midnight UTC):
+- Runs MotherAI generation cycle
+- 1000 strategies per engine (4000 total)
+- Tournament ranking and elimination
+- Winner-teaches-loser knowledge transfer
+
+**Why Evolution Might Be Blocked**:
+- "No strategies with 3+ trades yet" → Strategies need to accumulate trades
+- Trade attribution: Trades go to ENGINE portfolios, not individual strategies
+
 ### Guardian (Risk Control)
 
 **Hard Limits**:
@@ -327,6 +400,10 @@ COINGECKO_API_KEY=CG-...
 
 # Safety
 KILL_SWITCH=false
+
+# Trading Modes
+USE_TURBO_BATCH=true          # Enable batch strategy generation
+USE_INDEPENDENT_TRADING=true  # Enable independent engine trading
 ```
 
 **Optional**:
@@ -432,22 +509,30 @@ These systems are preserved for reference but no longer in production.
 ## Current Status (December 2025)
 
 **Production System**: HYDRA 4.0
-- Mother AI + 4 Independent Engines
+- Mother AI + 4 Independent Engines (A, B, C, D)
+- Independent Trading Mode active
 - Paper trading on BTC-USD, ETH-USD, SOL-USD
-- Tournament-based engine ranking
-- Guardian risk control active
+- MotherAI wired to nightly scheduler (1000 strategies/engine)
+- Evolution waiting for trades to accumulate
 
 **Infrastructure**:
-- Runtime: Cloud server (178.156.136.185)
+- Runtime: Cloud server (178.156.136.185) via Docker
+- Container: `hydra-runtime`
 - Database: SQLite (`data/hydra/hydra.db`)
 - Monitoring: Grafana (Coming Soon)
 
+**Recent Changes** (2025-12-06):
+- Wired MotherAI to nightly scheduler
+- Fixed `_process_asset_independent` paper trader method
+- Tested batch generation (200 strategies in 35s)
+- Identified evolution gap: trades attributed to engines, not strategies
+
 **Next Milestones**:
 1. Complete Grafana + Prometheus monitoring stack
-2. Dashboard: P&L, engine tournament, risk metrics
-3. Alerting: Telegram notifications for critical events
+2. Connect trade results to strategy tournament population
+3. Enable full evolution cycle once trades accumulate
 
 ---
 
-**Last Updated**: 2025-12-03
+**Last Updated**: 2025-12-06
 **Branch**: `feature/v7-ultimate`

@@ -5,17 +5,15 @@ Rapidly backtests and ranks strategies on 30 days of historical data.
 Target: <2 seconds per strategy.
 """
 
-import logging
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from loguru import logger
 
 from libs.hydra.turbo_generator import GeneratedStrategy, StrategyType
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
