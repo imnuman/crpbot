@@ -647,8 +647,8 @@ class HydraRuntime:
                     gladiator=engine_name,
                     asset=asset,
                     vote=action,  # Engine's action IS its vote
-                    regime=regime,
-                    strategy_id=strategy_id
+                    confidence=vote_confidence,
+                    reasoning=f"Strategy: {strategy.get('strategy_name', 'Unknown')} | Regime: {regime}"
                 )
 
                 # Track in portfolio (for independent mode stats)
