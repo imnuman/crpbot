@@ -583,20 +583,38 @@ class HydraRuntime:
                     logger.debug(f"  Engine {engine_name}: Low confidence strategy (<30%), skipping")
                     continue
 
-                # Extract direction from strategy (use direction or preferred_direction field)
-                direction = strategy.get("direction") or strategy.get("preferred_direction", "HOLD")
-                if direction == "HOLD":
-                    logger.debug(f"  Engine {engine_name}: Strategy suggests HOLD")
+                # Get direction by calling vote_on_trade (strategy itself doesn't have direction)
+                # Create a placeholder signal for the vote
+                current_price = market_data[-1]["close"]
+                placeholder_signal = {
+                    "direction": "UNKNOWN",  # Engine will determine
+                    "entry_price": current_price,
+                    "confidence": strategy.get("confidence", 0.5)
+                }
+
+                vote_result = gladiator.vote_on_trade(
+                    asset=asset,
+                    asset_type=asset_type,
+                    regime=regime,
+                    strategy=strategy,
+                    signal=placeholder_signal,
+                    market_data=market_summary
+                )
+
+                direction = vote_result.get("vote", "HOLD") if vote_result else "HOLD"
+                vote_confidence = vote_result.get("confidence", 0) if vote_result else 0
+
+                if direction == "HOLD" or vote_confidence < 0.5:
+                    logger.debug(f"  Engine {engine_name}: Vote is HOLD or low confidence ({vote_confidence:.1%})")
                     continue
 
                 # Calculate position size (1% of engine portfolio)
                 position_size = portfolio["balance"] * 0.01
-                action = direction  # BUY or SELL from strategy
-                current_price = market_data[-1]["close"]
+                action = direction  # BUY or SELL from vote
 
                 logger.info(
                     f"  Engine {engine_name}: {action} {asset} "
-                    f"(conf: {strategy.get('confidence', 0):.1%}, "
+                    f"(vote_conf: {vote_confidence:.1%}, strategy_conf: {strategy.get('confidence', 0):.1%}, "
                     f"size: ${position_size:.2f})"
                 )
 
