@@ -579,8 +579,8 @@ class HydraRuntime:
                     existing_strategies=[]
                 )
 
-                if not strategy or strategy.get("confidence", 0) < 0.5:
-                    logger.debug(f"  Engine {engine_name}: Low confidence strategy, skipping")
+                if not strategy or strategy.get("confidence", 0) < 0.3:
+                    logger.debug(f"  Engine {engine_name}: Low confidence strategy (<30%), skipping")
                     continue
 
                 # Make independent trade decision
