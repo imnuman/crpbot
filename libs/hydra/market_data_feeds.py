@@ -45,37 +45,112 @@ class FundingRatesMonitor:
 
         logger.info("Funding Rates Monitor initialized")
 
-    def get_funding_rate(self, symbol: str) -> Dict:
+    def get_funding_rate(self, symbol: str, market_data: List[Dict] = None) -> Dict:
         """
         Get current funding rate for a symbol.
 
+        For spot markets without perp data, we synthesize funding rates from
+        price momentum - this correlates with real funding behavior:
+        - Strong uptrend = positive funding (longs pay shorts)
+        - Strong downtrend = negative funding (shorts pay longs)
+        - Extreme moves = extreme funding (reversal signal)
+
         Args:
             symbol: Perp symbol (e.g., "BTC-PERP", "ETH-PERP")
+            market_data: Optional OHLCV data for synthetic rate calculation
 
         Returns:
             Dict with funding rate analysis
         """
-        # Note: This is a framework for when perpetual futures are added
-        # Currently, Coinbase spot markets don't have funding rates
-
         # Check cache first
         cached = self._get_cached_funding(symbol)
         if cached:
             return cached
 
-        # In production, this would fetch from perpetuals API
-        # For now, return placeholder structure
+        # Calculate synthetic funding rate from price momentum
+        synthetic_rate = 0.0
+        direction = "neutral"
+        strength = "low"
+        bias = "Neutral market"
+        risk_level = "low"
+
+        if market_data and len(market_data) >= 24:
+            # Calculate momentum-based synthetic funding
+            # Use 24-period returns as proxy for market sentiment
+            current_price = market_data[-1].get("close", 0)
+            price_24h_ago = market_data[-24].get("close", current_price)
+            price_8h_ago = market_data[-8].get("close", current_price) if len(market_data) >= 8 else current_price
+
+            if price_24h_ago > 0:
+                # 24h return as sentiment proxy
+                return_24h = (current_price - price_24h_ago) / price_24h_ago
+                return_8h = (current_price - price_8h_ago) / price_8h_ago if price_8h_ago > 0 else 0
+
+                # Calculate volatility (standard deviation of returns)
+                if len(market_data) >= 24:
+                    closes = [c.get("close", 0) for c in market_data[-24:]]
+                    returns = [(closes[i] - closes[i-1]) / closes[i-1]
+                              for i in range(1, len(closes)) if closes[i-1] > 0]
+                    if returns:
+                        avg_return = sum(returns) / len(returns)
+                        variance = sum((r - avg_return) ** 2 for r in returns) / len(returns)
+                        volatility = variance ** 0.5
+                    else:
+                        volatility = 0.01
+                else:
+                    volatility = 0.01
+
+                # Synthetic funding = momentum * volatility_multiplier
+                # Base: 0.01% per 1% price move, amplified by volatility
+                volatility_mult = min(3.0, max(0.5, volatility / 0.01))
+                synthetic_rate = return_8h * 0.001 * volatility_mult  # 8h window for funding
+
+                # Cap at realistic extremes (±0.15%)
+                synthetic_rate = max(-0.0015, min(0.0015, synthetic_rate))
+
+                # Determine direction and strength
+                if synthetic_rate > self.extreme_positive_threshold:
+                    direction = "bullish"
+                    strength = "extreme"
+                    bias = "Overleveraged longs - reversal risk"
+                    risk_level = "high"
+                elif synthetic_rate > 0.0003:
+                    direction = "bullish"
+                    strength = "high"
+                    bias = "Strong bullish sentiment"
+                    risk_level = "medium"
+                elif synthetic_rate > 0.0001:
+                    direction = "bullish"
+                    strength = "moderate"
+                    bias = "Moderate bullish sentiment"
+                    risk_level = "low"
+                elif synthetic_rate < self.extreme_negative_threshold:
+                    direction = "bearish"
+                    strength = "extreme"
+                    bias = "Overleveraged shorts - reversal risk"
+                    risk_level = "high"
+                elif synthetic_rate < -0.0003:
+                    direction = "bearish"
+                    strength = "high"
+                    bias = "Strong bearish sentiment"
+                    risk_level = "medium"
+                elif synthetic_rate < -0.0001:
+                    direction = "bearish"
+                    strength = "moderate"
+                    bias = "Moderate bearish sentiment"
+                    risk_level = "low"
+
         analysis = {
             "symbol": symbol,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "current_rate": 0.0,
-            "rate_8h_annualized": 0.0,
-            "direction": "neutral",
-            "strength": "low",
-            "bias": "No funding rate (spot market)",
-            "risk_level": "low",
-            "arbitrage_opportunity": False,
-            "note": "Funding rates available when perps are integrated"
+            "current_rate": synthetic_rate,
+            "rate_8h_annualized": synthetic_rate * 3 * 365,  # Annualized from 8h rate
+            "direction": direction,
+            "strength": strength,
+            "bias": bias,
+            "risk_level": risk_level,
+            "arbitrage_opportunity": abs(synthetic_rate) > 0.0005,
+            "note": "Synthetic rate from price momentum (spot market proxy)"
         }
 
         self._cache_funding(symbol, analysis)

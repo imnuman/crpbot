@@ -73,9 +73,10 @@ class EngineB_Claude(BaseEngine):
         # Try funding_rate_pct first (runtime), then funding_rate (decimal)
         funding_rate_pct = market_data.get('funding_rate_pct', 0)
         funding_rate = market_data.get('funding_rate', funding_rate_pct / 100 if funding_rate_pct else 0)
-        # 0.05% threshold (very sensitive to catch funding extremes)
-        if abs(funding_rate_pct) < 0.05:  # 0.05% threshold
-            logger.info(f"[Engine B] Funding not extreme ({funding_rate_pct:.4f}% < 0.05%) - HOLD")
+        # 0.005% threshold (triggers on elevated funding - above normal ±0.001%)
+        # Normal funding: ±0.001%, Elevated: ±0.005%+, Extreme: ±0.03%+
+        if abs(funding_rate_pct) < 0.005:  # 0.005% threshold (lowered from 0.05%)
+            logger.info(f"[Engine B] Funding not elevated ({funding_rate_pct:.4f}% < 0.005%) - HOLD")
             return None
 
         # Get current stats for prompt injection

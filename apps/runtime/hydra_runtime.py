@@ -598,6 +598,7 @@ class HydraRuntime:
                 # Calculate position size (1% of engine portfolio)
                 position_size = portfolio["balance"] * 0.01
                 action = decision.get("action", "HOLD")
+                current_price = market_data[-1]["close"]
 
                 logger.info(
                     f"  Engine {engine_name}: {action} {asset} "
@@ -605,27 +606,45 @@ class HydraRuntime:
                     f"size: ${position_size:.2f})"
                 )
 
-                # Record trade in portfolio (paper trade simulation)
+                # Build signal dict for real paper trading
+                signal = {
+                    "action": action,
+                    "entry_price": current_price,
+                    "stop_loss_pct": strategy.get("stop_loss_pct", 0.015),
+                    "take_profit_pct": strategy.get("take_profit_pct", 0.025),
+                    "position_size_usd": position_size,
+                    "consensus_level": "INDEPENDENT"  # Mark as independent trade
+                }
+
+                # Create strategy_id for this independent trade
+                import time
+                strategy_id = f"IND_{engine_name}_{asset}_{int(time.time())}"
+
+                # Create REAL paper trade (monitored for SL/TP by _check_paper_trades)
+                trade = self.paper_trader.create_paper_trade(
+                    asset=asset,
+                    regime=regime,
+                    strategy_id=strategy_id,
+                    gladiator=engine_name,
+                    signal=signal
+                )
+
+                # Record vote for tournament tracker (so metrics work correctly)
+                self.vote_tracker.record_vote(
+                    trade_id=trade.trade_id,
+                    gladiator=engine_name,
+                    asset=asset,
+                    vote=action,  # Engine's action IS its vote
+                    regime=regime,
+                    strategy_id=strategy_id
+                )
+
+                # Track in portfolio (for independent mode stats)
                 portfolio["trades"] += 1
 
-                # TODO: Track open positions and resolve P&L later
-                # For now, simulate random outcome based on strategy confidence
-                import random
-                win_probability = strategy.get("confidence", 0.5)
-                is_win = random.random() < win_probability
-
-                if is_win:
-                    pnl = position_size * 0.015  # 1.5% win
-                    portfolio["wins"] += 1
-                else:
-                    pnl = -position_size * 0.01  # 1% loss
-
-                portfolio["balance"] += pnl
-                portfolio["pnl"] += pnl
-
                 logger.info(
-                    f"    -> {'WIN' if is_win else 'LOSS'}: ${pnl:+.2f} "
-                    f"(Balance: ${portfolio['balance']:.2f})"
+                    f"    -> Paper trade opened: {trade.trade_id} "
+                    f"(SL: {trade.stop_loss:.2f}, TP: {trade.take_profit:.2f})"
                 )
 
             except Exception as e:
