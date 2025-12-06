@@ -275,8 +275,8 @@
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 10 },
       "id": 21,
       "options": { "displayMode": "gradient", "minVizHeight": 10, "minVizWidth": 0, "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_engine_weight", "legendFormat": "{{engine}}", "refId": "A" }],
-      "title": "Engine Weights",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_engine_portfolio_trades", "legendFormat": "Engine {{engine}}", "refId": "A" }],
+      "title": "Engine Trades",
       "type": "bargauge"
     },
     {
@@ -307,8 +307,8 @@
       "gridPos": { "h": 6, "w": 6, "x": 12, "y": 10 },
       "id": 23,
       "options": { "displayMode": "gradient", "minVizHeight": 10, "minVizWidth": 0, "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_engine_win_rate", "legendFormat": "{{engine}}", "refId": "A" }],
-      "title": "Engine Win Rates",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "hydra_engine_portfolio_balance_usd", "legendFormat": "Engine {{engine}}", "refId": "A" }],
+      "title": "Engine Balance ($)",
       "type": "bargauge"
     },
     {
