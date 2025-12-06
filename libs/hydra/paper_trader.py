@@ -295,15 +295,27 @@ class PaperTradingSystem:
 
         trade = self.open_trades[trade_id]
 
-        # Apply slippage
+        # Validate entry price to prevent division by zero
+        if trade.entry_price <= 0:
+            logger.error(f"Invalid entry price {trade.entry_price} for trade {trade_id}")
+            del self.open_trades[trade_id]
+            return None
+
+        # Apply slippage (BOTH SL and TP - realistic trading)
         if exit_reason == "stop_loss":
             # Slippage works against you on SL
             if trade.direction == "BUY":
                 exit_price = exit_price * (1 - trade.slippage_est)
             else:  # SELL
                 exit_price = exit_price * (1 + trade.slippage_est)
+        elif exit_reason == "take_profit":
+            # Slippage also works against you on TP (you get slightly worse fill)
+            if trade.direction == "BUY":
+                exit_price = exit_price * (1 - trade.slippage_est)
+            else:  # SELL
+                exit_price = exit_price * (1 + trade.slippage_est)
 
-        # Calculate P&L
+        # Calculate P&L (entry_price validated above)
         if trade.direction == "BUY":
             pnl_percent = (exit_price - trade.entry_price) / trade.entry_price
         else:  # SELL
@@ -314,7 +326,7 @@ class PaperTradingSystem:
         # Determine outcome
         outcome = "win" if pnl_percent > 0 else "loss"
 
-        # Calculate actual R:R
+        # Calculate actual R:R with safe division
         if trade.direction == "BUY":
             risk = trade.entry_price - trade.stop_loss
             reward = exit_price - trade.entry_price
@@ -322,7 +334,8 @@ class PaperTradingSystem:
             risk = trade.stop_loss - trade.entry_price
             reward = trade.entry_price - exit_price
 
-        rr_actual = abs(reward / risk) if risk != 0 else 0
+        # Safe R:R calculation - avoid division by zero or tiny numbers
+        rr_actual = abs(reward / risk) if abs(risk) > 0.0001 else 0.0
 
         # Update trade
         trade.exit_price = exit_price

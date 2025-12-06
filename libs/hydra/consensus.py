@@ -138,11 +138,16 @@ class ConsensusEngine:
         else:
             agreeing_votes = sell_votes
 
-        # Sum weights of agreeing engines
-        agreeing_weight = sum(
-            self.engine_weights.get(v.get("gladiator", ""), 0.25)
-            for v in agreeing_votes
-        )
+        # Sum weights of agreeing engines (with warning for unknown engines)
+        agreeing_weight = 0.0
+        for v in agreeing_votes:
+            gladiator = v.get("gladiator", "")
+            if gladiator in self.engine_weights:
+                agreeing_weight += self.engine_weights[gladiator]
+            else:
+                # Unknown gladiator - log warning and use default
+                logger.warning(f"Unknown gladiator '{gladiator}' in vote - using default weight 0.25")
+                agreeing_weight += self.DEFAULT_WEIGHTS.get(gladiator, 0.25)
 
         # Position modifier = base_modifier * (agreeing_weight / 0.5)
         # If agreeing engines have >50% weight, boost position

@@ -140,7 +140,7 @@ def calculate_position_size(
     return position_size
 
 
-def check_daily_loss_limit(balance: float, daily_pnl: float, daily_loss_limit_pct: float = 0.05) -> bool:
+def check_daily_loss_limit(balance: float, daily_pnl: float, daily_loss_limit_pct: float = 0.045) -> bool:
     """Function wrapper to check daily loss limit using scalar inputs."""
     limit = balance * daily_loss_limit_pct
     if daily_pnl < -limit:
@@ -152,7 +152,7 @@ def check_daily_loss_limit(balance: float, daily_pnl: float, daily_loss_limit_pc
 
 
 def check_total_loss_limit(
-    initial_balance: float, current_balance: float, total_loss_limit_pct: float = 0.10
+    initial_balance: float, current_balance: float, total_loss_limit_pct: float = 0.09
 ) -> bool:
     """Function wrapper to check total loss limit."""
     total_loss = current_balance - initial_balance

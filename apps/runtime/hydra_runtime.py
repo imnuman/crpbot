@@ -329,25 +329,20 @@ class HydraRuntime:
         """
         logger.info(f"Processing {asset}...")
 
-        # Step 1: Fetch market data
-        try:
-            df = self.data_client.fetch_klines(
-                symbol=asset,
-                interval="1m",
-                limit=200
-            )
-            # Convert DataFrame to list of dicts for HYDRA components
-            market_data = df.to_dict('records')
-        except Exception as e:
-            logger.error(f"Failed to fetch data for {asset}: {e}")
+        # Step 1: Fetch market data (with retry logic for transient failures)
+        market_data = self._fetch_market_data_with_retry(asset, interval="1m", limit=200)
+        if market_data is None:
             return
 
         if not market_data or len(market_data) < 100:
             logger.warning(f"Insufficient data for {asset}")
             return
 
-        # Update price metrics for dashboard
-        current_price = market_data[-1]["close"]
+        # Update price metrics for dashboard (with validation)
+        current_price = market_data[-1].get("close", 0)
+        if current_price <= 0:
+            logger.error(f"Invalid price data for {asset}: {current_price}")
+            return
         HydraMetrics.set_price(asset, current_price)
 
         # Step 2: Detect regime
@@ -457,8 +452,11 @@ class HydraRuntime:
             logger.error(f"{asset} rejected by lesson memory: {lesson_id}")
             return
 
-        # Step 10: Guardian validation
-        entry_price = market_data[-1]["close"]
+        # Step 10: Guardian validation (with price validation)
+        entry_price = market_data[-1].get("close", 0)
+        if entry_price <= 0:
+            logger.error(f"Invalid entry price for {asset}: {entry_price}")
+            return
         sl_pct = signal.get("stop_loss_pct", 0.015)
         if signal["action"] == "BUY":
             sl_price = entry_price * (1 - sl_pct)
@@ -502,23 +500,20 @@ class HydraRuntime:
         """
         logger.info(f"[INDEPENDENT] Processing {asset}...")
 
-        # Fetch market data
-        try:
-            df = self.data_client.fetch_klines(
-                symbol=asset,
-                interval="1m",
-                limit=200
-            )
-            market_data = df.to_dict('records')
-        except Exception as e:
-            logger.error(f"Failed to fetch data for {asset}: {e}")
+        # Fetch market data (with retry logic for transient failures)
+        market_data = self._fetch_market_data_with_retry(asset, interval="1m", limit=200)
+        if market_data is None:
             return
 
         if not market_data or len(market_data) < 100:
             logger.warning(f"Insufficient data for {asset}")
             return
 
-        current_price = market_data[-1]["close"]
+        # Validate price data
+        current_price = market_data[-1].get("close", 0)
+        if current_price <= 0:
+            logger.error(f"Invalid price data for {asset}: {current_price}")
+            return
         HydraMetrics.set_price(asset, current_price)
 
         # Detect regime
@@ -587,7 +582,10 @@ class HydraRuntime:
 
                 # Get direction by calling vote_on_trade (strategy itself doesn't have direction)
                 # Create a placeholder signal for the vote
-                current_price = market_data[-1]["close"]
+                current_price = market_data[-1].get("close", 0)
+                if current_price <= 0:
+                    logger.error(f"Invalid price in market_data for {asset}")
+                    continue
                 placeholder_signal = {
                     "direction": "UNKNOWN",  # Engine will determine
                     "entry_price": current_price,
@@ -1109,6 +1107,53 @@ class HydraRuntime:
             }
         }
 
+    def _fetch_market_data_with_retry(
+        self,
+        asset: str,
+        interval: str = "1m",
+        limit: int = 200,
+        max_retries: int = 3,
+        base_delay: float = 1.0
+    ) -> Optional[List[Dict]]:
+        """
+        Fetch market data with exponential backoff retry logic.
+
+        Args:
+            asset: Trading symbol (e.g., "BTC-USD")
+            interval: Candle interval
+            limit: Number of candles to fetch
+            max_retries: Maximum retry attempts
+            base_delay: Base delay in seconds (doubles each retry)
+
+        Returns:
+            List of candle dicts, or None if all retries failed
+        """
+        import time as _time
+
+        for attempt in range(max_retries):
+            try:
+                df = self.data_client.fetch_klines(
+                    symbol=asset,
+                    interval=interval,
+                    limit=limit
+                )
+                return df.to_dict('records')
+            except Exception as e:
+                delay = base_delay * (2 ** attempt)  # Exponential backoff
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Data fetch failed for {asset} (attempt {attempt + 1}/{max_retries}): {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    _time.sleep(delay)
+                else:
+                    logger.error(
+                        f"Failed to fetch data for {asset} after {max_retries} attempts: {e}"
+                    )
+                    return None
+
+        return None
+
     def _execute_paper_trade(self, asset: str, signal: Dict, market_data: List[Dict]):
         """Execute paper trade (simulation only)."""
         # Extract regime from previous detection
@@ -1142,13 +1187,17 @@ class HydraRuntime:
 
         # Use execution optimizer (convert BUY/SELL → LONG/SHORT)
         asset_type = self._classify_asset(asset)
+        current_price = market_data[-1].get("close", 0) if market_data else 0
+        if current_price <= 0:
+            logger.error(f"Invalid price for live trade execution: {current_price}")
+            return
         execution_result = self.executor.optimize_entry(
             asset=asset,
             asset_type=asset_type,
             direction=self._convert_direction(signal["action"]),
             size=signal.get("position_size_usd", 100),
-            current_bid=market_data[-1]["close"] * 0.9995,  # Approximate
-            current_ask=market_data[-1]["close"] * 1.0005,
+            current_bid=current_price * 0.9995,  # Approximate
+            current_ask=current_price * 1.0005,
             spread_normal=0.001,
             spread_reject_multiplier=2.0,
             broker_api=None
@@ -1558,10 +1607,21 @@ Only trade when your specialty trigger activates. Patience beats aggression.
         self.paper_trader.check_open_trades(market_data)
 
         # For closed trades, update tournament and learn from losses
-        for trade in list(self.paper_trader.closed_trades[-10:]):  # Last 10 closed
+        # Thread-safe: create a snapshot copy of closed_trades to avoid
+        # concurrent modification issues during iteration
+        try:
+            closed_trades_snapshot = list(self.paper_trader.closed_trades)[-10:]
+        except (RuntimeError, IndexError) as e:
+            logger.warning(f"Thread safety issue accessing closed_trades: {e}")
+            return
+
+        for trade in closed_trades_snapshot:
             if trade.status == "CLOSED" and not hasattr(trade, "_processed"):
-                self._process_closed_paper_trade(trade)
-                trade._processed = True  # Mark as processed
+                try:
+                    self._process_closed_paper_trade(trade)
+                    trade._processed = True  # Mark as processed
+                except Exception as e:
+                    logger.error(f"Error processing closed trade {trade.trade_id}: {e}")
 
     def _process_closed_paper_trade(self, trade):
         """Process a closed paper trade - update tournament and learn from losses."""
@@ -1642,6 +1702,16 @@ Only trade when your specialty trigger activates. Patience beats aggression.
                 portfolio["wins"] += 1
             portfolio["pnl"] += pnl_amount
             portfolio["balance"] += pnl_amount
+
+            # FTMO SAFETY: Enforce balance floor (cannot go negative)
+            # If balance drops below floor, engine is "blown" and should stop trading
+            MIN_BALANCE_FLOOR = 100.0  # Minimum $100 to prevent negative equity
+            if portfolio["balance"] < MIN_BALANCE_FLOOR:
+                logger.critical(
+                    f"Engine {engine_name} balance ${portfolio['balance']:.2f} below floor ${MIN_BALANCE_FLOOR}! "
+                    "Engine should stop trading to preserve remaining capital."
+                )
+                portfolio["balance"] = max(0.0, portfolio["balance"])  # Floor at $0
 
             # Update Prometheus metrics for dashboard
             HydraMetrics.set_engine_portfolio(
