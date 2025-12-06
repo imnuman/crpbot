@@ -21,6 +21,7 @@ import json
 from collections import defaultdict
 
 from .config import HYDRA_DATA_DIR, TOURNAMENT_VOTES_FILE, TOURNAMENT_SCORES_FILE
+from libs.monitoring import HydraMetrics
 
 
 VoteDirection = Literal["BUY", "SELL", "HOLD"]
@@ -275,6 +276,23 @@ class TournamentTracker:
             stats['worst_asset'] = worst[0]
 
         stats['last_updated'] = datetime.utcnow().isoformat()
+
+        # Export to Prometheus for dashboard
+        try:
+            # Calculate weight based on total votes (simple equal weighting for now)
+            total_votes_all = sum(s.get('total_votes', 0) for s in self.scores.values())
+            weight = (stats['total_votes'] / total_votes_all * 100) if total_votes_all > 0 else 25.0
+
+            HydraMetrics.set_engine_tournament_stats(
+                engine=gladiator,
+                rank=1,  # Will be updated by leaderboard
+                weight=weight,
+                points=stats['total_points'],
+                win_rate=stats['win_rate'],
+                active=True
+            )
+        except Exception as e:
+            logger.debug(f"Failed to export metrics for {gladiator}: {e}")
 
         # Save to disk
         self._save_scores()
