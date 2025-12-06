@@ -198,6 +198,8 @@ class HydraRuntime:
             "C": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
             "D": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
         }
+        # Initialize Prometheus metrics with starting balances
+        HydraMetrics.set_all_engine_portfolios(self.engine_portfolios)
 
         # Initialize nightly scheduler
         self.nightly_scheduler = init_nightly_scheduler(
@@ -653,6 +655,15 @@ class HydraRuntime:
 
                 # Track in portfolio (for independent mode stats)
                 portfolio["trades"] += 1
+
+                # Update Prometheus metrics for dashboard
+                HydraMetrics.set_engine_portfolio(
+                    engine=engine_name,
+                    balance=portfolio["balance"],
+                    trades=portfolio["trades"],
+                    wins=portfolio["wins"],
+                    pnl=portfolio["pnl"]
+                )
 
                 logger.info(
                     f"    -> Paper trade opened: {trade.trade_id} "
@@ -1618,6 +1629,29 @@ Only trade when your specialty trigger activates. Patience beats aggression.
             outcome=trade.outcome
         )
         logger.debug(f"Strategy memory updated: {trade.gladiator} - {trade.strategy_id} ({trade.outcome})")
+
+        # Update engine portfolio for independent trading mode
+        engine_name = trade.gladiator
+        if engine_name in self.engine_portfolios:
+            portfolio = self.engine_portfolios[engine_name]
+            # Calculate pnl from position size and pnl_percent
+            position_size = trade.position_size_usd if hasattr(trade, 'position_size_usd') else 250  # Default 1% of 25k
+            pnl_amount = position_size * (trade.pnl_percent / 100) if trade.pnl_percent else 0
+
+            if trade.outcome == "win":
+                portfolio["wins"] += 1
+            portfolio["pnl"] += pnl_amount
+            portfolio["balance"] += pnl_amount
+
+            # Update Prometheus metrics for dashboard
+            HydraMetrics.set_engine_portfolio(
+                engine=engine_name,
+                balance=portfolio["balance"],
+                trades=portfolio["trades"],
+                wins=portfolio["wins"],
+                pnl=portfolio["pnl"]
+            )
+            logger.info(f"Engine {engine_name} portfolio updated: {trade.outcome}, PnL: ${pnl_amount:+.2f}")
 
     def _print_paper_trading_stats(self):
         """Print paper trading statistics."""
