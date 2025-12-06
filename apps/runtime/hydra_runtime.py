@@ -583,21 +583,15 @@ class HydraRuntime:
                     logger.debug(f"  Engine {engine_name}: Low confidence strategy (<30%), skipping")
                     continue
 
-                # Make independent trade decision
-                decision = gladiator.make_trade_decision(
-                    asset=asset,
-                    regime=regime,
-                    strategy=strategy,
-                    market_data=market_summary
-                )
-
-                if decision.get("action") == "HOLD":
-                    logger.debug(f"  Engine {engine_name}: HOLD decision")
+                # Extract direction from strategy (use direction or preferred_direction field)
+                direction = strategy.get("direction") or strategy.get("preferred_direction", "HOLD")
+                if direction == "HOLD":
+                    logger.debug(f"  Engine {engine_name}: Strategy suggests HOLD")
                     continue
 
                 # Calculate position size (1% of engine portfolio)
                 position_size = portfolio["balance"] * 0.01
-                action = decision.get("action", "HOLD")
+                action = direction  # BUY or SELL from strategy
                 current_price = market_data[-1]["close"]
 
                 logger.info(
