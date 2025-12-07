@@ -151,7 +151,7 @@ class EngineD_Gemini(BaseEngine):
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.5,
-            max_tokens=500,
+            max_tokens=2000,  # Increased for Gemini thinking model
             vote_mode=True  # Signal to use _mock_vote_response if API fails
         )
 
@@ -228,7 +228,7 @@ class EngineD_Gemini(BaseEngine):
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.5,  # Balanced (between A's aggressive 0.6 and C's conservative 0.3)
-            max_tokens=1000
+            max_tokens=3000  # Increased for Gemini thinking model (uses ~1500 tokens for thinking)
         )
 
         # Parse decision
@@ -700,7 +700,7 @@ ATR: {market_data.get('atr', 'N/A')}"""
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.4,
-            max_tokens=1500
+            max_tokens=4000  # Increased for Gemini thinking model
         )
 
         strategy = self._parse_json_response(response)
@@ -804,9 +804,19 @@ ATR: {market_data.get('atr', 'N/A')}"""
                 data = response.json()
                 # Handle cases where response doesn't have expected structure
                 try:
+                    # Check for MAX_TOKENS truncation
+                    finish_reason = data.get("candidates", [{}])[0].get("finishReason", "")
+                    if finish_reason == "MAX_TOKENS":
+                        logger.warning(f"Gemini response truncated (MAX_TOKENS) - increase max_tokens parameter")
+
                     return data["candidates"][0]["content"]["parts"][0]["text"]
                 except (KeyError, IndexError) as e:
-                    logger.warning(f"Gemini response missing expected fields: {e}")
+                    # Check if response was truncated
+                    finish_reason = data.get("candidates", [{}])[0].get("finishReason", "UNKNOWN")
+                    if finish_reason == "MAX_TOKENS":
+                        logger.warning(f"Gemini MAX_TOKENS: response truncated, no content returned")
+                    else:
+                        logger.warning(f"Gemini response missing expected fields: {e} (finishReason: {finish_reason})")
                     logger.debug(f"Response data: {data}")
                     return self._mock_vote_response() if vote_mode else self._mock_response()
 
