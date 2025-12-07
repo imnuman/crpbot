@@ -684,6 +684,9 @@ class HydraMetrics:
         cls.engine_win_rate.labels(engine=engine).set(win_rate)
         cls.engine_active.labels(engine=engine).set(1 if active else 0)
 
+    # Alias for tournament_tracker compatibility
+    set_engine_tournament_stats = set_engine_stats
+
     @classmethod
     def set_risk_metrics(
         cls,
@@ -1031,7 +1034,7 @@ class HydraMetrics:
         for engine, portfolio in portfolios.items():
             cls.set_engine_portfolio(
                 engine=engine,
-                balance=portfolio.get('balance', 25000.0),
+                balance=portfolio.get('balance', 3750.0),  # FTMO $15K / 4 engines
                 trades=portfolio.get('trades', 0),
                 wins=portfolio.get('wins', 0),
                 pnl=portfolio.get('pnl', 0.0)
@@ -1118,9 +1121,10 @@ class HydraMetrics:
         """Initialize HYDRA 4.0 specific metrics."""
         # Initialize independent mode metrics
         cls.independent_mode_active.set(0)
+        # FTMO $15K challenge: $3,750 per engine ($15K / 4)
         for engine in ['A', 'B', 'C', 'D']:
             cls.specialty_trigger.labels(engine=engine).set(0)
-            cls.engine_portfolio_balance.labels(engine=engine).set(25000.0)
+            cls.engine_portfolio_balance.labels(engine=engine).set(3750.0)
             cls.engine_portfolio_trades.labels(engine=engine).set(0)
             cls.engine_portfolio_wins.labels(engine=engine).set(0)
             cls.engine_portfolio_pnl.labels(engine=engine).set(0.0)
