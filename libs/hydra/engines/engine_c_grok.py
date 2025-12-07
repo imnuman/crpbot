@@ -50,6 +50,10 @@ class EngineC_Grok(BaseEngine):
     MAX_CALLS_PER_HOUR = 60  # ~$10/day max
     MIN_CALL_INTERVAL = 60.0  # Minimum 60 seconds between calls
 
+    # Retry configuration for resilience
+    MAX_RETRIES = 3
+    BASE_RETRY_DELAY = 3  # Exponential backoff: 3s, 6s, 12s
+
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
             name="C",
@@ -579,7 +583,7 @@ Output JSON:
         max_tokens: int = 1500
     ) -> str:
         """
-        Call Grok (X.AI) API with rate limiting.
+        Call Grok (X.AI) API with rate limiting and exponential backoff retry logic.
 
         Rate limits:
         - Max 60 calls per hour
@@ -609,28 +613,66 @@ Output JSON:
             "max_tokens": max_tokens
         }
 
-        try:
-            # Update rate limit tracking BEFORE call
-            self._last_call_time = time.time()
-            self._calls_this_hour += 1
+        # Update rate limit tracking BEFORE call
+        self._last_call_time = time.time()
+        self._calls_this_hour += 1
 
-            logger.debug(f"[Grok] API call {self._calls_this_hour}/{self.MAX_CALLS_PER_HOUR} this hour")
+        logger.debug(f"[Grok] API call {self._calls_this_hour}/{self.MAX_CALLS_PER_HOUR} this hour")
 
-            response = requests.post(
-                self.GROK_API_URL,
-                headers=headers,
-                json=payload,
-                timeout=30
-            )
-            response.raise_for_status()
+        # Exponential backoff retry loop
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                response = requests.post(
+                    self.GROK_API_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=45  # Increased from 30s
+                )
+                response.raise_for_status()
 
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Grok API error: {e}")
-            logger.error(f"Response: {response.text if 'response' in locals() else 'No response'}")
-            return self._mock_response()
+            except requests.exceptions.HTTPError as e:
+                # Check for rate limit (429) or server errors (5xx)
+                if hasattr(response, 'status_code'):
+                    if response.status_code == 429 or response.status_code >= 500:
+                        if attempt < self.MAX_RETRIES - 1:
+                            delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                            logger.warning(
+                                f"[Grok] HTTP {response.status_code} - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                            )
+                            time.sleep(delay)
+                            continue
+                logger.error(f"Grok API HTTP error: {e}")
+                logger.error(f"Response: {response.text if 'response' in locals() else 'No response'}")
+                return self._mock_response()
+
+            except requests.exceptions.Timeout as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"[Grok] Timeout - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"Grok API timeout after {self.MAX_RETRIES} attempts: {e}")
+                return self._mock_response()
+
+            except requests.exceptions.RequestException as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"[Grok] Connection error - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"Grok API error after {self.MAX_RETRIES} attempts: {e}")
+                return self._mock_response()
+
+        # All retries exhausted
+        logger.error("[Grok] All retries exhausted")
+        return self._mock_response()
 
     def _mock_response(self) -> str:
         """Mock response for testing."""

@@ -22,6 +22,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 import requests
 import os
+import time
 from datetime import datetime, timezone
 
 from .base_engine import BaseGladiator as BaseEngine
@@ -37,6 +38,10 @@ class EngineA_DeepSeek(BaseEngine):
 
     DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
     MODEL = "deepseek-chat"  # Latest DeepSeek model
+
+    # Retry configuration for resilience
+    MAX_RETRIES = 3
+    BASE_RETRY_DELAY = 3  # Exponential backoff: 3s, 6s, 12s
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
@@ -655,7 +660,7 @@ Output JSON:
         max_tokens: int = 2000
     ) -> str:
         """
-        Call DeepSeek API.
+        Call DeepSeek API with exponential backoff retry logic.
         """
         if not self.api_key:
             logger.warning("DeepSeek API key not set - using mock response")
@@ -676,21 +681,59 @@ Output JSON:
             "max_tokens": max_tokens
         }
 
-        try:
-            response = requests.post(
-                self.DEEPSEEK_API_URL,
-                headers=headers,
-                json=payload,
-                timeout=60  # FIX BUG #2: Increased from 30s to 60s
-            )
-            response.raise_for_status()
+        # Exponential backoff retry loop
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                response = requests.post(
+                    self.DEEPSEEK_API_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+                response.raise_for_status()
 
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"DeepSeek API error: {e}")
-            return self._mock_response()
+            except requests.exceptions.HTTPError as e:
+                # Check for rate limit (429) or server errors (5xx)
+                if hasattr(response, 'status_code'):
+                    if response.status_code == 429 or response.status_code >= 500:
+                        if attempt < self.MAX_RETRIES - 1:
+                            delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                            logger.warning(
+                                f"[DeepSeek] HTTP {response.status_code} - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                            )
+                            time.sleep(delay)
+                            continue
+                logger.error(f"DeepSeek API HTTP error: {e}")
+                return self._mock_response()
+
+            except requests.exceptions.Timeout as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"[DeepSeek] Timeout - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"DeepSeek API timeout after {self.MAX_RETRIES} attempts: {e}")
+                return self._mock_response()
+
+            except requests.exceptions.RequestException as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"[DeepSeek] Connection error - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"DeepSeek API error after {self.MAX_RETRIES} attempts: {e}")
+                return self._mock_response()
+
+        # All retries exhausted
+        logger.error("[DeepSeek] All retries exhausted")
+        return self._mock_response()
 
     def _mock_response(self) -> str:
         """Mock response for testing without API key."""

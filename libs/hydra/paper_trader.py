@@ -19,6 +19,10 @@ from dataclasses import dataclass, field
 from loguru import logger
 from pathlib import Path
 import json
+import os
+import tempfile
+import shutil
+import threading
 
 
 @dataclass
@@ -134,6 +138,9 @@ class PaperTradingSystem:
         self.storage_path = storage_path
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Backup path for recovery
+        self.backup_path = Path(str(storage_path) + ".backup")
+
         # In-memory tracking
         self.open_trades: Dict[str, PaperTrade] = {}
         self.closed_trades: List[PaperTrade] = []
@@ -142,6 +149,9 @@ class PaperTradingSystem:
         self.total_trades = 0
         self.wins = 0
         self.losses = 0
+
+        # Thread safety for file operations
+        self._file_lock = threading.Lock()
 
         # Load existing trades
         self._load_trades()
@@ -498,22 +508,138 @@ class PaperTradingSystem:
     # ==================== PERSISTENCE ====================
 
     def _save_trades(self):
-        """Save trades to JSONL file."""
-        with open(self.storage_path, "w") as f:
-            # Save closed trades
-            for trade in self.closed_trades:
-                f.write(json.dumps(trade.to_dict()) + "\n")
+        """
+        Save trades to JSONL file using atomic write pattern.
 
-            # Save open trades
-            for trade in self.open_trades.values():
-                f.write(json.dumps(trade.to_dict()) + "\n")
+        This ensures data integrity even if process crashes mid-write:
+        1. Write to temporary file
+        2. Sync to disk (fsync)
+        3. Atomically rename temp -> target
+        4. Create backup copy for recovery
+        """
+        with self._file_lock:
+            try:
+                # Get directory of storage path
+                storage_dir = self.storage_path.parent
+
+                # Create temp file in same directory (required for atomic rename)
+                fd, temp_path = tempfile.mkstemp(
+                    dir=storage_dir,
+                    prefix=".paper_trades_",
+                    suffix=".tmp"
+                )
+
+                try:
+                    # Write all trades to temp file
+                    with os.fdopen(fd, 'w') as f:
+                        # Save closed trades
+                        for trade in self.closed_trades:
+                            f.write(json.dumps(trade.to_dict()) + "\n")
+
+                        # Save open trades
+                        for trade in self.open_trades.values():
+                            f.write(json.dumps(trade.to_dict()) + "\n")
+
+                        # Flush Python buffers
+                        f.flush()
+                        # Sync to disk (ensure data hits storage)
+                        os.fsync(f.fileno())
+
+                    # Create backup of current file before replacing
+                    if self.storage_path.exists():
+                        shutil.copy2(self.storage_path, self.backup_path)
+
+                    # Atomic rename (POSIX guarantees atomicity)
+                    shutil.move(temp_path, self.storage_path)
+
+                    logger.debug(
+                        f"Saved {len(self.closed_trades)} closed + "
+                        f"{len(self.open_trades)} open trades (atomic)"
+                    )
+
+                except Exception as e:
+                    # Clean up temp file on error
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                    raise
+
+            except Exception as e:
+                logger.error(f"Failed to save trades atomically: {e}")
+                # Fall back to non-atomic write as last resort
+                self._save_trades_fallback()
+
+    def _save_trades_fallback(self):
+        """
+        Fallback non-atomic save for when atomic save fails.
+
+        Only used as last resort - better to lose in-progress data
+        than crash entirely.
+        """
+        try:
+            with open(self.storage_path, "w") as f:
+                for trade in self.closed_trades:
+                    f.write(json.dumps(trade.to_dict()) + "\n")
+                for trade in self.open_trades.values():
+                    f.write(json.dumps(trade.to_dict()) + "\n")
+            logger.warning("Used fallback (non-atomic) save")
+        except Exception as e:
+            logger.error(f"Fallback save also failed: {e}")
 
     def _load_trades(self):
-        """Load trades from JSONL file."""
-        if not self.storage_path.exists():
-            return
+        """
+        Load trades from JSONL file with backup recovery.
 
-        with open(self.storage_path, "r") as f:
+        If main file is corrupted, attempts to recover from backup.
+        """
+        loaded_from_backup = False
+
+        # Try main file first
+        if self.storage_path.exists():
+            try:
+                self._load_trades_from_file(self.storage_path)
+                return
+            except Exception as e:
+                logger.error(f"Failed to load from main file: {e}")
+
+                # Try backup if main file failed
+                if self.backup_path.exists():
+                    logger.warning("Attempting recovery from backup...")
+                    try:
+                        self._load_trades_from_file(self.backup_path)
+                        loaded_from_backup = True
+                        logger.success("Recovered trades from backup!")
+                    except Exception as backup_e:
+                        logger.error(f"Backup recovery also failed: {backup_e}")
+        elif self.backup_path.exists():
+            # Main file doesn't exist but backup does
+            logger.warning("Main file missing, loading from backup...")
+            try:
+                self._load_trades_from_file(self.backup_path)
+                loaded_from_backup = True
+            except Exception as e:
+                logger.error(f"Failed to load backup: {e}")
+
+        if loaded_from_backup:
+            # Restore main file from backup
+            try:
+                shutil.copy2(self.backup_path, self.storage_path)
+                logger.info("Restored main file from backup")
+            except Exception as e:
+                logger.error(f"Failed to restore main file: {e}")
+
+        logger.info(
+            f"Loaded {len(self.closed_trades)} closed trades, "
+            f"{len(self.open_trades)} open trades"
+        )
+
+    def _load_trades_from_file(self, file_path: Path):
+        """
+        Load trades from specific file path.
+
+        Args:
+            file_path: Path to JSONL file
+        """
+        with open(file_path, "r") as f:
             for line in f:
                 if line.strip():
                     try:
@@ -534,8 +660,6 @@ class PaperTradingSystem:
 
                     except Exception as e:
                         logger.error(f"Failed to load trade: {e}")
-
-        logger.info(f"Loaded {len(self.closed_trades)} closed trades, {len(self.open_trades)} open trades")
 
 
 # Global singleton instance

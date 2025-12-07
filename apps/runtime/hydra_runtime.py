@@ -60,6 +60,11 @@ from libs.hydra.confidence_gate import get_confidence_gate
 from libs.hydra.daily_evolution import get_daily_evolution
 from libs.hydra.turbo_config import get_turbo_config
 from libs.hydra.nightly_scheduler import init_nightly_scheduler
+from libs.hydra.state_checkpoint import get_checkpoint_manager
+from libs.hydra.duplicate_order_guard import get_duplicate_guard
+
+# Live Trading Components
+from libs.brokers.live_executor import get_live_executor, ExecutionMode
 
 # Engines (4 AI competitors)
 from libs.hydra.engines.engine_a_deepseek import EngineA_DeepSeek
@@ -115,6 +120,12 @@ class HydraRuntime:
         self.last_breeding_check = None
         self.open_positions = {}  # Track open positions: {asset: position_data}
 
+        # Additional state for checkpoint resume
+        self.session_start = datetime.now(timezone.utc).isoformat()
+        self.total_signals_generated = 0
+        self.total_trades_executed = 0
+        self.last_signal_time = ""
+
         # Start Prometheus metrics exporter
         self.metrics_exporter = MetricsExporter(port=9100)
         self.metrics_exporter.start()
@@ -125,6 +136,12 @@ class HydraRuntime:
         self._price_thread.start()
 
         logger.success("HYDRA 3.0 initialized successfully")
+
+        # Start auto-checkpoint (saves state every 60 seconds)
+        # Note: Must be after _init_layers() completes and checkpoint_manager is available
+        if hasattr(self, 'checkpoint_manager'):
+            self.checkpoint_manager.start_auto_checkpoint(self, interval_seconds=60)
+            logger.info("[CHECKPOINT] Auto-checkpoint enabled (60s interval)")
 
     def _init_layers(self):
         """Initialize all 10 layers + 4 upgrades."""
@@ -198,6 +215,18 @@ class HydraRuntime:
             "C": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
             "D": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
         }
+
+        # State checkpoint manager for crash recovery
+        self.checkpoint_manager = get_checkpoint_manager()
+
+        # Try to restore from checkpoint
+        checkpoint = self.checkpoint_manager.load_checkpoint()
+        if checkpoint:
+            logger.info("[CHECKPOINT] Found previous state - restoring...")
+            self.checkpoint_manager.apply_checkpoint_to_runtime(self, checkpoint)
+        else:
+            logger.info("[CHECKPOINT] No previous state found - starting fresh")
+
         # Initialize Prometheus metrics with starting balances
         HydraMetrics.set_all_engine_portfolios(self.engine_portfolios)
 
@@ -628,9 +657,30 @@ class HydraRuntime:
                     "consensus_level": "INDEPENDENT"  # Mark as independent trade
                 }
 
+                # Check duplicate order guard BEFORE creating trade
+                duplicate_guard = get_duplicate_guard()
+                can_place, guard_reason = duplicate_guard.can_place_order(
+                    symbol=asset,
+                    direction=action,
+                    engine=engine_name,
+                    entry_price=current_price
+                )
+
+                if not can_place:
+                    logger.warning(f"  Engine {engine_name}: Order blocked - {guard_reason}")
+                    continue
+
                 # Create strategy_id for this independent trade
                 import time
                 strategy_id = f"IND_{engine_name}_{asset}_{int(time.time())}"
+
+                # Record order with duplicate guard
+                duplicate_guard.record_order(
+                    symbol=asset,
+                    direction=action,
+                    engine=engine_name,
+                    entry_price=current_price
+                )
 
                 # Create REAL paper trade (monitored for SL/TP by _check_paper_trades)
                 trade = self.paper_trader.create_paper_trade(
@@ -654,6 +704,10 @@ class HydraRuntime:
                 # Track in portfolio (for independent mode stats)
                 portfolio["trades"] += 1
 
+                # Update global counters for checkpoint
+                self.total_trades_executed += 1
+                self.last_signal_time = datetime.now(timezone.utc).isoformat()
+
                 # Update Prometheus metrics for dashboard
                 HydraMetrics.set_engine_portfolio(
                     engine=engine_name,
@@ -667,6 +721,11 @@ class HydraRuntime:
                     f"    -> Paper trade opened: {trade.trade_id} "
                     f"(SL: {trade.stop_loss:.2f}, TP: {trade.take_profit:.2f})"
                 )
+
+                # Force checkpoint save after trade (critical state change)
+                if hasattr(self, 'checkpoint_manager'):
+                    checkpoint = self.checkpoint_manager.create_checkpoint_from_runtime(self)
+                    self.checkpoint_manager.save_checkpoint(checkpoint)
 
             except Exception as e:
                 logger.error(f"  Engine {engine_name} error: {e}")
@@ -1179,31 +1238,66 @@ class HydraRuntime:
         )
 
     def _execute_live_trade(self, asset: str, signal: Dict, market_data: List[Dict]):
-        """Execute live trade."""
+        """
+        Execute live trade via MT5 broker.
+
+        Uses LiveExecutor for full integration with:
+        - FTMO-compliant risk management
+        - Duplicate order prevention
+        - Position sizing by risk
+        - Trade alerts
+        """
         logger.critical(
             f"LIVE TRADE: {signal['action']} {asset} @ {signal['entry_price']} "
             f"(consensus: {signal['consensus_level']})"
         )
 
-        # Use execution optimizer (convert BUY/SELL → LONG/SHORT)
-        asset_type = self._classify_asset(asset)
+        # Validate price
         current_price = market_data[-1].get("close", 0) if market_data else 0
         if current_price <= 0:
             logger.error(f"Invalid price for live trade execution: {current_price}")
             return
-        execution_result = self.executor.optimize_entry(
-            asset=asset,
-            asset_type=asset_type,
-            direction=self._convert_direction(signal["action"]),
-            size=signal.get("position_size_usd", 100),
-            current_bid=current_price * 0.9995,  # Approximate
-            current_ask=current_price * 1.0005,
-            spread_normal=0.001,
-            spread_reject_multiplier=2.0,
-            broker_api=None
+
+        # Get live executor
+        live_executor = get_live_executor()
+
+        # Extract strategy info
+        strategy = signal.get("strategy", {})
+        strategy_id = strategy.get("strategy_id", "UNKNOWN")
+        engine = strategy.get("gladiator", "UNKNOWN")
+
+        # Execute via LiveExecutor
+        execution_result = live_executor.execute_signal(
+            symbol=asset,
+            direction=signal["action"],
+            entry_price=signal["entry_price"],
+            stop_loss_pct=signal.get("stop_loss_pct", 0.015),
+            take_profit_pct=signal.get("take_profit_pct", 0.025),
+            engine=engine,
+            strategy_id=strategy_id,
+            confidence=signal.get("confidence", 0.5),
+            position_size_modifier=signal.get("position_size_modifier", 1.0)
         )
 
-        logger.info(f"Execution result: {execution_result}")
+        if execution_result.success:
+            logger.success(
+                f"LIVE TRADE EXECUTED: {signal['action']} {asset} "
+                f"(trade_id: {execution_result.trade_id}, "
+                f"time: {execution_result.execution_time_ms:.0f}ms)"
+            )
+
+            # Track trade for performance monitoring
+            self.total_trades_executed += 1
+            self.last_signal_time = datetime.now(timezone.utc).isoformat()
+
+            # Update checkpoint
+            if hasattr(self, 'checkpoint_manager'):
+                checkpoint = self.checkpoint_manager.create_checkpoint_from_runtime(self)
+                self.checkpoint_manager.save_checkpoint(checkpoint)
+        else:
+            logger.error(
+                f"LIVE TRADE FAILED: {execution_result.rejection_reason}"
+            )
 
     def _log_trade_decision(
         self,
@@ -1722,6 +1816,15 @@ Only trade when your specialty trigger activates. Patience beats aggression.
                 pnl=portfolio["pnl"]
             )
             logger.info(f"Engine {engine_name} portfolio updated: {trade.outcome}, PnL: ${pnl_amount:+.2f}")
+
+            # Notify duplicate order guard that position is closed
+            duplicate_guard = get_duplicate_guard()
+            duplicate_guard.record_position_closed(trade.asset, engine_name)
+
+            # Force checkpoint save after P&L update (critical state change)
+            if hasattr(self, 'checkpoint_manager'):
+                checkpoint = self.checkpoint_manager.create_checkpoint_from_runtime(self)
+                self.checkpoint_manager.save_checkpoint(checkpoint)
 
     def _print_paper_trading_stats(self):
         """Print paper trading statistics."""

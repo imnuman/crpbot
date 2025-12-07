@@ -22,8 +22,9 @@ INDEPENDENCE:
 from typing import Dict, List, Optional
 from loguru import logger
 import os
+import time
 from datetime import datetime, timezone
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError, APIConnectionError, RateLimitError, APITimeoutError
 
 from .base_engine import BaseGladiator as BaseEngine
 from ..engine_portfolio import get_tournament_manager, EngineTrade
@@ -38,6 +39,10 @@ class EngineB_Claude(BaseEngine):
 
     CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
     MODEL = "claude-3-haiku-20240307"  # Claude 3 Haiku (fast & stable)
+
+    # Retry configuration for resilience
+    MAX_RETRIES = 3
+    BASE_RETRY_DELAY = 3  # Exponential backoff: 3s, 6s, 12s
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(
@@ -647,30 +652,82 @@ Output JSON:
         max_tokens: int = 2000
     ) -> str:
         """
-        Call Claude API (Anthropic SDK).
+        Call Claude API (Anthropic SDK) with exponential backoff retry logic.
         """
         if not self.api_key:
             logger.warning("Claude API key not set - using mock response")
             return self._mock_response()
 
-        try:
-            client = Anthropic(api_key=self.api_key)
+        client = Anthropic(api_key=self.api_key)
 
-            message = client.messages.create(
-                model=self.MODEL,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_prompt}
-                ]
-            )
+        # Exponential backoff retry loop
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                message = client.messages.create(
+                    model=self.MODEL,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system=system_prompt,
+                    messages=[
+                        {"role": "user", "content": user_prompt}
+                    ]
+                )
 
-            return message.content[0].text
+                return message.content[0].text
 
-        except Exception as e:
-            logger.error(f"Claude API error: {e}")
-            return self._mock_response()
+            except RateLimitError as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"[Claude] Rate limit - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"Claude API rate limit after {self.MAX_RETRIES} attempts: {e}")
+                return self._mock_response()
+
+            except APITimeoutError as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"[Claude] Timeout - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"Claude API timeout after {self.MAX_RETRIES} attempts: {e}")
+                return self._mock_response()
+
+            except APIConnectionError as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"[Claude] Connection error - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"Claude API connection error after {self.MAX_RETRIES} attempts: {e}")
+                return self._mock_response()
+
+            except APIError as e:
+                # Server errors (5xx) are retryable
+                if hasattr(e, 'status_code') and e.status_code >= 500:
+                    if attempt < self.MAX_RETRIES - 1:
+                        delay = self.BASE_RETRY_DELAY * (2 ** attempt)
+                        logger.warning(
+                            f"[Claude] Server error {e.status_code} - retry {attempt + 1}/{self.MAX_RETRIES} after {delay}s"
+                        )
+                        time.sleep(delay)
+                        continue
+                logger.error(f"Claude API error: {e}")
+                return self._mock_response()
+
+            except Exception as e:
+                logger.error(f"Claude unexpected error: {e}")
+                return self._mock_response()
+
+        # All retries exhausted
+        logger.error("[Claude] All retries exhausted")
+        return self._mock_response()
 
     def _mock_response(self) -> str:
         """Mock response for testing."""

@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 class CoinbaseWebSocketClient:
     """Client for Coinbase WebSocket (real-time ticker + order book)"""
 
+    # Reconnection settings
+    MAX_RECONNECT_ATTEMPTS = 10
+    BASE_RECONNECT_DELAY = 2  # seconds
+    MAX_RECONNECT_DELAY = 300  # 5 minutes max
+
     def __init__(self, symbols: List[str] = None):
         """
         Initialize Coinbase WebSocket client
@@ -36,6 +41,11 @@ class CoinbaseWebSocketClient:
         # Internal state
         self.websocket = None
         self.running = False
+        self.connected = False
+
+        # Reconnection state
+        self._reconnect_attempts = 0
+        self._last_message_time = None
 
         # Data storage (last 100 ticks per symbol)
         self.tickers: Dict[str, deque] = {symbol: deque(maxlen=100) for symbol in self.symbols}
@@ -44,14 +54,22 @@ class CoinbaseWebSocketClient:
         # Callbacks for real-time data
         self.on_ticker_callback: Optional[Callable] = None
         self.on_orderbook_callback: Optional[Callable] = None
+        self.on_reconnect_callback: Optional[Callable] = None
 
         logger.info(f"CoinbaseWebSocket initialized for {len(self.symbols)} symbols")
 
     async def connect(self):
         """Establish WebSocket connection and subscribe to channels"""
         try:
-            self.websocket = await websockets.connect(self.ws_url)
+            self.websocket = await websockets.connect(
+                self.ws_url,
+                ping_interval=30,
+                ping_timeout=10,
+                close_timeout=5
+            )
             self.running = True
+            self.connected = True
+            self._last_message_time = datetime.now()
             logger.info(f"Connected to {self.ws_url}")
 
             # Subscribe to ticker and level2 channels
@@ -67,22 +85,78 @@ class CoinbaseWebSocketClient:
             await self.websocket.send(json.dumps(subscribe_message))
             logger.info(f"Subscribed to channels: ticker, level2 for {self.symbols}")
 
+            # Reset reconnection counter on successful connection
+            self._reconnect_attempts = 0
+
         except Exception as e:
             logger.error(f"Failed to connect to WebSocket: {e}")
             self.running = False
+            self.connected = False
             raise
 
     async def listen(self):
         """Listen for incoming WebSocket messages"""
         try:
             async for message in self.websocket:
+                self._last_message_time = datetime.now()
                 await self._handle_message(json.loads(message))
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning("WebSocket connection closed")
-            self.running = False
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.warning(f"WebSocket connection closed: {e}")
+            self.connected = False
         except Exception as e:
             logger.error(f"Error in WebSocket listener: {e}")
-            self.running = False
+            self.connected = False
+
+    async def _reconnect(self) -> bool:
+        """
+        Attempt to reconnect with exponential backoff.
+
+        Returns:
+            True if reconnection successful, False if max attempts exceeded
+        """
+        while self._reconnect_attempts < self.MAX_RECONNECT_ATTEMPTS:
+            self._reconnect_attempts += 1
+
+            # Calculate delay with exponential backoff (capped)
+            delay = min(
+                self.BASE_RECONNECT_DELAY * (2 ** (self._reconnect_attempts - 1)),
+                self.MAX_RECONNECT_DELAY
+            )
+
+            logger.warning(
+                f"[WebSocket] Reconnection attempt {self._reconnect_attempts}/{self.MAX_RECONNECT_ATTEMPTS} "
+                f"in {delay}s..."
+            )
+            await asyncio.sleep(delay)
+
+            try:
+                # Close existing connection if any
+                if self.websocket:
+                    try:
+                        await self.websocket.close()
+                    except Exception:
+                        pass
+
+                # Attempt new connection
+                await self.connect()
+
+                logger.info(f"[WebSocket] Reconnected successfully after {self._reconnect_attempts} attempts")
+
+                # Execute callback if set
+                if self.on_reconnect_callback:
+                    await self.on_reconnect_callback()
+
+                return True
+
+            except Exception as e:
+                logger.error(f"[WebSocket] Reconnection attempt {self._reconnect_attempts} failed: {e}")
+
+        logger.critical(
+            f"[WebSocket] Failed to reconnect after {self.MAX_RECONNECT_ATTEMPTS} attempts. "
+            "Data feed is OFFLINE. Manual intervention required."
+        )
+        self.running = False
+        return False
 
     async def _handle_message(self, data: dict):
         """Process incoming WebSocket message"""
@@ -289,14 +363,57 @@ class CoinbaseWebSocketClient:
         await self.listen()
 
     async def run_forever(self):
-        """Run WebSocket client with auto-reconnect"""
-        while True:
+        """
+        Run WebSocket client with auto-reconnect and exponential backoff.
+
+        This method will:
+        1. Attempt initial connection
+        2. Listen for messages
+        3. On disconnect, attempt reconnection with exponential backoff
+        4. Continue until MAX_RECONNECT_ATTEMPTS exceeded or manual stop
+        """
+        self.running = True
+        logger.info("[WebSocket] Starting run_forever loop...")
+
+        while self.running:
             try:
-                await self.start()
+                if not self.connected:
+                    await self.connect()
+
+                await self.listen()
+
+                # listen() returned - connection was lost
+                if self.running and not self.connected:
+                    logger.warning("[WebSocket] Connection lost, attempting reconnect...")
+                    success = await self._reconnect()
+                    if not success:
+                        logger.critical("[WebSocket] Reconnection failed, exiting run_forever")
+                        break
+
             except Exception as e:
-                logger.error(f"WebSocket error: {e}")
-                logger.info("Reconnecting in 5 seconds...")
-                await asyncio.sleep(5)
+                logger.error(f"[WebSocket] Error in run_forever: {e}")
+
+                if self.running:
+                    success = await self._reconnect()
+                    if not success:
+                        logger.critical("[WebSocket] Reconnection failed, exiting run_forever")
+                        break
+
+        logger.info("[WebSocket] run_forever loop ended")
+
+    def is_connected(self) -> bool:
+        """Check if WebSocket is currently connected and receiving data."""
+        if not self.connected or not self.websocket:
+            return False
+
+        # Check if we've received a message in the last 60 seconds
+        if self._last_message_time:
+            time_since_last = (datetime.now() - self._last_message_time).total_seconds()
+            if time_since_last > 60:
+                logger.warning(f"[WebSocket] No message received in {time_since_last:.0f}s - connection may be stale")
+                return False
+
+        return True
 
 
 # Convenience function for V7 runtime
