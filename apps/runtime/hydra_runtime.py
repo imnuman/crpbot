@@ -251,6 +251,9 @@ class HydraRuntime:
         logger.info(f"[HYDRA 4.0] Turbo Batch: {'ENABLED' if self.USE_TURBO_BATCH else 'DISABLED'}")
         logger.info(f"[HYDRA 4.0] Independent Trading: {'ENABLED' if self.USE_INDEPENDENT_TRADING else 'DISABLED'}")
 
+        # Sync tournament weights at startup from historical data
+        self._sync_tournament_rankings_at_startup()
+
     def _init_engines(self):
         """Initialize 4 gladiators with API keys."""
         logger.info("Initializing Gladiators...")
@@ -1122,50 +1125,40 @@ class HydraRuntime:
                     winning_strategy = s
                     break
 
-        # Calculate consensus
+        # Calculate WEIGHTED consensus using ConsensusEngine
+        # This ensures turbo batch mode uses the same weighted voting as regular mode
         if not votes:
             return None
 
-        buy_votes = sum(1 for v in votes if v.get('vote') == 'BUY')
-        sell_votes = sum(1 for v in votes if v.get('vote') == 'SELL')
-        hold_votes = sum(1 for v in votes if v.get('vote') == 'HOLD')
+        # Pad votes to 4 if needed (consensus engine expects exactly 4 votes)
+        while len(votes) < 4:
+            votes.append({
+                'gladiator': ['A', 'B', 'C', 'D'][len(votes)],
+                'vote': 'HOLD',
+                'confidence': 0.0,
+                'reasoning': 'No vote from engine'
+            })
 
-        total_votes = len(votes)
+        # Sync engine weights from tournament to consensus engine
+        self.consensus.update_weights(self.tournament.engine_weights)
 
-        if hold_votes >= 3:
-            return None  # Strong HOLD consensus
+        # Get weighted consensus (same as regular mode)
+        consensus_result = self.consensus.get_consensus(votes)
 
-        if buy_votes > sell_votes:
-            action = 'BUY'
-            action_votes = buy_votes
-        elif sell_votes > buy_votes:
-            action = 'SELL'
-            action_votes = sell_votes
-        else:
-            return None  # Tie
-
-        if action_votes == 4:
-            consensus = 'UNANIMOUS'
-            size_mod = 1.0
-        elif action_votes >= 3:
-            consensus = 'STRONG'
-            size_mod = 0.75
-        else:
-            consensus = 'WEAK'
-            size_mod = 0.5
-
-        avg_confidence = sum(v.get('confidence', 0.5) for v in votes) / total_votes
+        if consensus_result['action'] == 'HOLD' or consensus_result['consensus_level'] == 'NO_CONSENSUS':
+            return None
 
         return {
-            'action': action,
-            'consensus_level': consensus,
-            'position_size_modifier': size_mod,
+            'action': consensus_result['action'],
+            'consensus_level': consensus_result['consensus_level'],
+            'position_size_modifier': consensus_result['position_size_modifier'],
             'strategy': winning_strategy,
             'entry_price': current_price,
             'stop_loss_pct': winning_strategy.get('stop_loss_pct', 0.015),
             'take_profit_pct': winning_strategy.get('take_profit_pct', 0.025),
-            'confidence': avg_confidence,
+            'confidence': consensus_result['avg_confidence'],
             'votes': votes,
+            'agreeing_weight': consensus_result.get('agreeing_weight', 0.5),
             'turbo_stats': {
                 'total_generated': turbo_result.total_generated,
                 'total_survivors': turbo_result.total_survivors,
@@ -1470,6 +1463,32 @@ class HydraRuntime:
         # Sync TournamentTracker rankings to TournamentManager weights
         self._sync_tournament_rankings()
 
+    def _sync_tournament_rankings_at_startup(self):
+        """
+        Sync tournament weights at startup from historical data.
+
+        If no historical data exists, uses equal weights (25% each).
+        This ensures consensus engine has correct weights from the start.
+        """
+        leaderboard = self.vote_tracker.get_leaderboard(sort_by="win_rate")
+
+        if len(leaderboard) >= 4:
+            # We have enough data - use performance-based weights
+            rank_weights = [0.40, 0.30, 0.20, 0.10]
+            for rank, entry in enumerate(leaderboard[:4]):
+                engine = entry.get("gladiator", "?")
+                new_weight = rank_weights[rank]
+                self.tournament.update_weight(engine, new_weight)
+            logger.info(f"[STARTUP] Tournament weights from history: {self.tournament.engine_weights}")
+        else:
+            # Not enough data - use equal weights
+            for engine in ["A", "B", "C", "D"]:
+                self.tournament.update_weight(engine, 0.25)
+            logger.info(f"[STARTUP] Tournament weights (equal): {self.tournament.engine_weights}")
+
+        # Sync to consensus engine
+        self.consensus.update_weights(self.tournament.engine_weights)
+
     def _sync_tournament_rankings(self):
         """
         Sync TournamentTracker (vote-level) rankings to TournamentManager (engine weights).
@@ -1491,6 +1510,9 @@ class HydraRuntime:
 
             # Update TournamentManager
             self.tournament.update_weight(engine, new_weight)
+
+        # Also sync to consensus engine
+        self.consensus.update_weights(self.tournament.engine_weights)
 
         logger.debug(f"Tournament weights synced: {self.tournament.engine_weights}")
 
