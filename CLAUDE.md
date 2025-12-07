@@ -144,6 +144,21 @@ git add . && git commit -m "message" && git push origin main
 **Safety** (`libs/hydra/safety/`):
 - Risk validators and safety checks
 
+**Production Safety** (`libs/hydra/`):
+- `duplicate_order_guard.py` - Prevents duplicate/conflicting orders (5min cooldown, rate limits)
+- `state_checkpoint.py` - Auto-checkpoint every 60s for crash recovery
+
+**Notifications** (`libs/notifications/`):
+- `alert_manager.py` - Unified alert routing (INFO→Telegram, CRITICAL→All channels)
+- `telegram_bot.py` - Primary notification channel
+- `twilio_sms.py` - SMS for critical alerts (kill switch, loss limits)
+- `email_notifier.py` - Email backup with HTML summaries
+
+**Broker Integration** (`libs/brokers/`):
+- `broker_interface.py` - Abstract broker interface
+- `mt5_broker.py` - MetaTrader 5 integration for FTMO
+- `live_executor.py` - Full execution with Guardian integration
+
 **Evolution Cycles** (`libs/hydra/cycles/`):
 - `kill_cycle.py` - 24h elimination (needs 5 closed trades)
 - `breeding_cycle.py` - 4-day breeding (needs 100 trades, 60% WR, 1.5 Sharpe)
@@ -245,13 +260,22 @@ crpbot/
 │   │   ├── mother_ai.py          # L1 orchestrator
 │   │   ├── guardian.py           # Risk control
 │   │   ├── tournament_manager.py # Rankings
-│   │   ├── tournament_tracker.py # Performance tracking
 │   │   ├── paper_trader.py       # Trade execution
-│   │   ├── engine_portfolio.py   # Per-engine P&L
+│   │   ├── duplicate_order_guard.py # Order deduplication
+│   │   ├── state_checkpoint.py   # Crash recovery
 │   │   ├── engines/              # 4 gladiator engines
 │   │   ├── data_feeds/           # Market data
 │   │   ├── safety/               # Validators
 │   │   └── cycles/               # Kill cycle, breeding
+│   ├── brokers/                  # MT5/FTMO integration
+│   │   ├── broker_interface.py   # Abstract interface
+│   │   ├── mt5_broker.py         # MetaTrader 5
+│   │   └── live_executor.py      # Full execution
+│   ├── notifications/            # Multi-channel alerts
+│   │   ├── alert_manager.py      # Unified routing
+│   │   ├── telegram_bot.py       # Telegram
+│   │   ├── twilio_sms.py         # SMS (critical)
+│   │   └── email_notifier.py     # Email backup
 │   ├── data/                     # Data clients
 │   │   ├── coinbase_client.py
 │   │   └── coingecko_client.py
@@ -411,6 +435,28 @@ USE_INDEPENDENT_TRADING=true  # Enable independent engine trading
 # Telegram (notifications)
 TELEGRAM_TOKEN=...
 TELEGRAM_CHAT_ID=...
+
+# SMS Alerts (Twilio) - Critical alerts only
+TWILIO_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_FROM_NUMBER=+1...
+TWILIO_TO_NUMBER=+1...
+
+# Email Backup Alerts
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM_EMAIL=...
+SMTP_TO_EMAILS=...
+
+# MT5/FTMO (for live trading)
+FTMO_LOGIN=12345678
+FTMO_PASS=your_password
+FTMO_SERVER=FTMO-Demo
+
+# Execution Mode
+EXECUTION_MODE=paper  # paper, live, or shadow
 ```
 
 ---
@@ -521,18 +567,24 @@ These systems are preserved for reference but no longer in production.
 - Database: SQLite (`data/hydra/hydra.db`)
 - Monitoring: Grafana (Coming Soon)
 
-**Recent Changes** (2025-12-06):
-- Wired MotherAI to nightly scheduler
-- Fixed `_process_asset_independent` paper trader method
-- Tested batch generation (200 strategies in 35s)
-- Identified evolution gap: trades attributed to engines, not strategies
+**Recent Changes** (2025-12-07):
+- **Production-Ready FTMO Features**:
+  - MT5 broker integration (`libs/brokers/`) with auto-reconnect
+  - Live executor with Guardian integration
+  - SMS alerts via Twilio (critical only)
+  - Email backup alerts with HTML summaries
+  - Unified alert manager (routes by severity)
+  - Duplicate order guard (5min cooldown, rate limits)
+  - State checkpoint system (auto-save every 60s)
+  - Atomic file writes for crash safety
+  - LLM retry logic with exponential backoff
 
 **Next Milestones**:
 1. Complete Grafana + Prometheus monitoring stack
-2. Connect trade results to strategy tournament population
+2. FTMO Challenge live trading when ready
 3. Enable full evolution cycle once trades accumulate
 
 ---
 
-**Last Updated**: 2025-12-06
-**Branch**: `feature/v7-ultimate`
+**Last Updated**: 2025-12-07
+**Branch**: `main`
