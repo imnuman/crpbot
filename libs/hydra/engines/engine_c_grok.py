@@ -198,14 +198,16 @@ class EngineC_Grok(BaseEngine):
         existing_strategies: Optional[List[Dict]] = None
     ) -> Dict:
         """
-        Backtest existing strategies mentally.
+        Generate or backtest strategies.
 
-        Gladiator C doesn't create strategies - it BACKTESTS them.
+        In INDEPENDENT MODE: Generate orderbook-imbalance based strategies directly.
+        In CONSENSUS MODE: Backtest existing strategies from other engines.
         """
         logger.info(f"Gladiator C backtesting strategies for {asset}")
 
+        # INDEPENDENT MODE: Generate orderbook imbalance strategy directly
         if not existing_strategies:
-            return self._no_strategy_to_backtest(asset)
+            return self._generate_orderbook_strategy(asset, asset_type, regime, regime_confidence, market_data)
 
         # Backtest the latest strategy
         strategy_to_test = existing_strategies[-1]
@@ -526,6 +528,87 @@ Output JSON:
   "reasoning": "Historical pattern analysis (mention regime alignment)",
   "concerns": ["Deviations from past successful setups"]
 }}"""
+
+    def _generate_orderbook_strategy(
+        self,
+        asset: str,
+        asset_type: str,
+        regime: str,
+        regime_confidence: float,
+        market_data: Dict
+    ) -> Dict:
+        """
+        Generate independent orderbook-imbalance strategy (INDEPENDENT MODE).
+
+        Engine C specializes in orderbook imbalances - one-sided pressure signals.
+        """
+        bid_ask_ratio = market_data.get('bid_ask_ratio', 1.0)
+
+        system_prompt = f"""You are Engine C, an AI trading system specializing in ORDERBOOK ANALYSIS.
+
+CONTEXT:
+You compete against 3 other engines in a trading tournament. Performance = weight in portfolio.
+This is FTMO challenge money ($15K) - every trade matters.
+
+YOUR SPECIALTY: ORDERBOOK IMBALANCE
+- Bid/Ask ratio > 1.1 = More buy pressure = Favor BUY/LONG
+- Bid/Ask ratio < 0.9 = More sell pressure = Favor SELL/SHORT
+- Current ratio: {bid_ask_ratio:.2f}:1
+
+REGIME: {regime} (confidence: {regime_confidence:.1%})
+
+STRATEGY RULES:
+1. HIGH bid pressure (ratio > 1.1) = Demand exceeds supply = Favor BUY
+2. HIGH ask pressure (ratio < 0.9) = Supply exceeds demand = Favor SELL
+3. Align with regime - imbalance + trend = stronger signal
+4. Watch for spoofing (fake large orders)
+
+Output JSON:
+{{
+  "strategy_name": "Orderbook [Bid/Ask] Pressure - {asset}",
+  "structural_edge": "Describe the orderbook edge",
+  "entry_rules": "Specific entry conditions",
+  "exit_rules": "Specific exit conditions",
+  "filters": ["List filters"],
+  "risk_per_trade": 0.01,
+  "expected_wr": 0.55,
+  "expected_rr": 1.5,
+  "why_it_works": "Supply/demand imbalance explanation",
+  "weaknesses": ["Known failure modes like spoofing"],
+  "confidence": 0.6
+}}
+
+Be realistic with confidence. Only output >60% confidence if imbalance is clear."""
+
+        user_prompt = f"""Generate an orderbook-imbalance strategy for {asset}.
+
+Current bid/ask ratio: {bid_ask_ratio:.2f}:1
+Regime: {regime}
+Price: {market_data.get('close', 'N/A')}
+ATR: {market_data.get('atr', 'N/A')}"""
+
+        response = self._call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.3,
+            max_tokens=1500
+        )
+
+        strategy = self._parse_json_response(response)
+
+        if strategy:
+            strategy["strategy_id"] = f"GLADIATOR_C_{self.strategy_count:04d}_ORDERBOOK"
+            strategy["gladiator"] = "C"
+            strategy["mode"] = "independent"
+            self.strategy_count += 1
+
+            logger.success(
+                f"Gladiator C generated: {strategy.get('strategy_name', 'Unknown')} "
+                f"(confidence: {strategy.get('confidence', 0):.1%})"
+            )
+            return strategy
+        else:
+            return self._no_strategy_to_backtest(asset)
 
     def _no_strategy_to_backtest(self, asset: str) -> Dict:
         """Fallback when no strategy to backtest."""

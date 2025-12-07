@@ -251,14 +251,14 @@ class EngineB_Claude(BaseEngine):
         """
         Generate strategy focused on logical robustness.
 
-        Gladiator B doesn't generate new strategies from scratch.
-        Instead, it VALIDATES and IMPROVES strategies from Gladiator A.
+        In INDEPENDENT MODE: Generate funding-rate based strategies directly.
+        In CONSENSUS MODE: Validate and improve strategies from Gladiator A.
         """
         logger.info(f"Gladiator B reviewing strategies for {asset}")
 
-        # If no existing strategies, create a conservative fallback
+        # INDEPENDENT MODE: Generate funding-rate strategy directly
         if not existing_strategies:
-            return self._create_conservative_strategy(asset, regime)
+            return self._generate_funding_strategy(asset, asset_type, regime, regime_confidence, market_data)
 
         # Review the latest strategy from Gladiator A
         strategy_to_review = existing_strategies[-1]
@@ -620,6 +620,87 @@ Output JSON:
   "reasoning": "Logical analysis (mention regime alignment)",
   "concerns": ["Any flaws you see"]
 }}"""
+
+    def _generate_funding_strategy(
+        self,
+        asset: str,
+        asset_type: str,
+        regime: str,
+        regime_confidence: float,
+        market_data: Dict
+    ) -> Dict:
+        """
+        Generate independent funding-rate strategy (INDEPENDENT MODE).
+
+        Engine B specializes in funding rate extremes - crowded trades about to reverse.
+        """
+        funding_rate_pct = market_data.get('funding_rate_pct', 0)
+
+        system_prompt = f"""You are Engine B, an AI trading system specializing in FUNDING RATE analysis.
+
+CONTEXT:
+You compete against 3 other engines in a trading tournament. Performance = weight in portfolio.
+This is FTMO challenge money ($15K) - every trade matters.
+
+YOUR SPECIALTY: FUNDING RATE EXTREMES
+- Positive funding = longs pay shorts = market overleveraged long = contrarian SHORT
+- Negative funding = shorts pay longs = market overleveraged short = contrarian LONG
+- Current funding rate: {funding_rate_pct:.4f}%
+
+REGIME: {regime} (confidence: {regime_confidence:.1%})
+
+STRATEGY RULES:
+1. HIGH positive funding (>0.01%) = Market too bullish = Favor SELL/SHORT
+2. HIGH negative funding (<-0.01%) = Market too bearish = Favor BUY/LONG
+3. Consider regime alignment - don't fight strong trends blindly
+4. Set tight stops (funding trades are mean-reversion)
+
+Output JSON:
+{{
+  "strategy_name": "Funding Rate [Contrarian/Aligned] - {asset}",
+  "structural_edge": "Describe the funding rate edge",
+  "entry_rules": "Specific entry conditions",
+  "exit_rules": "Specific exit conditions",
+  "filters": ["List filters"],
+  "risk_per_trade": 0.01,
+  "expected_wr": 0.55,
+  "expected_rr": 1.5,
+  "why_it_works": "First-principles explanation of funding arbitrage",
+  "weaknesses": ["Known failure modes"],
+  "confidence": 0.6
+}}
+
+Be realistic with confidence. Only output >60% confidence if edge is clear."""
+
+        user_prompt = f"""Generate a funding-rate based strategy for {asset}.
+
+Current funding: {funding_rate_pct:.4f}%
+Regime: {regime}
+Price: {market_data.get('close', 'N/A')}
+ATR: {market_data.get('atr', 'N/A')}"""
+
+        response = self._call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.4,
+            max_tokens=1500
+        )
+
+        strategy = self._parse_json_response(response)
+
+        if strategy:
+            strategy["strategy_id"] = f"GLADIATOR_B_{self.strategy_count:04d}_FUNDING"
+            strategy["gladiator"] = "B"
+            strategy["mode"] = "independent"
+            self.strategy_count += 1
+
+            logger.success(
+                f"Gladiator B generated: {strategy.get('strategy_name', 'Unknown')} "
+                f"(confidence: {strategy.get('confidence', 0):.1%})"
+            )
+            return strategy
+        else:
+            return self._create_conservative_strategy(asset, regime)
 
     def _create_conservative_strategy(self, asset: str, regime: str) -> Dict:
         """Create a conservative fallback strategy."""

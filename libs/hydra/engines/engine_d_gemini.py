@@ -69,14 +69,16 @@ class EngineD_Gemini(BaseEngine):
         existing_strategies: Optional[List[Dict]] = None
     ) -> Dict:
         """
-        Synthesize best strategy from all engines' outputs.
+        Synthesize strategies or generate independently.
 
-        Gladiator D reviews A/B/C outputs and creates final recommendation.
+        In INDEPENDENT MODE: Generate regime-transition based strategies directly.
+        In CONSENSUS MODE: Synthesize best strategy from all engines' outputs.
         """
         logger.info(f"Gladiator D synthesizing strategies for {asset}")
 
+        # INDEPENDENT MODE: Generate regime-transition strategy directly
         if not existing_strategies or len(existing_strategies) < 3:
-            return self._no_synthesis_possible(asset)
+            return self._generate_regime_strategy(asset, asset_type, regime, regime_confidence, market_data)
 
         # Get last 3 strategies (from A, B, C)
         strategy_a = existing_strategies[-3] if len(existing_strategies) >= 3 else None
@@ -635,6 +637,87 @@ Output JSON:
   "reasoning": "Final synthesis of all factors (mention regime alignment)",
   "concerns": ["Final concerns"]
 }}"""
+
+    def _generate_regime_strategy(
+        self,
+        asset: str,
+        asset_type: str,
+        regime: str,
+        regime_confidence: float,
+        market_data: Dict
+    ) -> Dict:
+        """
+        Generate independent regime-transition strategy (INDEPENDENT MODE).
+
+        Engine D specializes in regime transitions - volatility changes signaling trend shifts.
+        """
+        atr_multiplier = market_data.get('atr_multiplier', 1.0)
+
+        system_prompt = f"""You are Engine D, an AI trading system specializing in REGIME TRANSITIONS.
+
+CONTEXT:
+You compete against 3 other engines in a trading tournament. Performance = weight in portfolio.
+This is FTMO challenge money ($15K) - every trade matters.
+
+YOUR SPECIALTY: REGIME TRANSITIONS (ATR/Volatility Changes)
+- ATR expansion (>1.2x) = Volatility increasing = Trend starting or accelerating
+- ATR contraction (<0.8x) = Volatility decreasing = Trend ending or consolidating
+- Current ATR multiplier: {atr_multiplier:.2f}x (vs baseline)
+
+CURRENT REGIME: {regime} (confidence: {regime_confidence:.1%})
+
+STRATEGY RULES:
+1. ATR EXPANSION in TRENDING regime = Ride the trend
+2. ATR EXPANSION in RANGING regime = Breakout imminent, pick direction
+3. ATR CONTRACTION after trend = Reversal possible, tighten stops
+4. Match direction with regime (TRENDING_UP = BUY, TRENDING_DOWN = SELL)
+
+Output JSON:
+{{
+  "strategy_name": "Regime Transition [Expansion/Contraction] - {asset}",
+  "structural_edge": "Describe the volatility/regime edge",
+  "entry_rules": "Specific entry conditions",
+  "exit_rules": "Specific exit conditions",
+  "filters": ["List filters"],
+  "risk_per_trade": 0.01,
+  "expected_wr": 0.55,
+  "expected_rr": 1.5,
+  "why_it_works": "Regime transition mechanics",
+  "weaknesses": ["Known failure modes"],
+  "confidence": 0.6
+}}
+
+Be realistic with confidence. Only output >60% confidence if regime signal is clear."""
+
+        user_prompt = f"""Generate a regime-transition strategy for {asset}.
+
+Current ATR multiplier: {atr_multiplier:.2f}x
+Regime: {regime} (confidence: {regime_confidence:.1%})
+Price: {market_data.get('close', 'N/A')}
+ATR: {market_data.get('atr', 'N/A')}"""
+
+        response = self._call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.4,
+            max_tokens=1500
+        )
+
+        strategy = self._parse_json_response(response)
+
+        if strategy:
+            strategy["strategy_id"] = f"GLADIATOR_D_{self.strategy_count:04d}_REGIME"
+            strategy["gladiator"] = "D"
+            strategy["mode"] = "independent"
+            self.strategy_count += 1
+
+            logger.success(
+                f"Gladiator D generated: {strategy.get('strategy_name', 'Unknown')} "
+                f"(confidence: {strategy.get('confidence', 0):.1%})"
+            )
+            return strategy
+        else:
+            return self._no_synthesis_possible(asset)
 
     def _no_synthesis_possible(self, asset: str) -> Dict:
         """Fallback when synthesis not possible."""
