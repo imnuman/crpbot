@@ -547,6 +547,54 @@ class HydraMetrics:
         'Specialty that produced winning strategy: 1=liquidation, 2=funding, 3=orderbook, 4=regime'
     )
 
+    # ========== Bug Detection & Monitoring ==========
+
+    # Engine errors counter (for bug detection)
+    engine_errors_total = Counter(
+        'hydra_engine_errors_total',
+        'Total errors by engine',
+        ['engine']
+    )
+
+    # Low confidence strategy counter
+    engine_low_confidence_total = Counter(
+        'hydra_engine_low_confidence_total',
+        'Total low confidence (<55%) strategies by engine',
+        ['engine']
+    )
+
+    # Data feed errors counter
+    data_feed_errors_total = Counter(
+        'hydra_data_feed_errors_total',
+        'Total data feed errors by source',
+        ['source']
+    )
+
+    # Duplicate orders blocked
+    duplicate_orders_blocked_total = Counter(
+        'hydra_duplicate_orders_blocked_total',
+        'Total duplicate orders blocked by guard'
+    )
+
+    # Last checkpoint timestamp
+    last_checkpoint_timestamp = Gauge(
+        'hydra_last_checkpoint_timestamp',
+        'Unix timestamp of last successful state checkpoint'
+    )
+
+    # Iterations counter
+    iterations_total = Counter(
+        'hydra_iterations_total',
+        'Total trading iterations completed'
+    )
+
+    # Trades closed counter (with outcome)
+    trades_closed_total = Counter(
+        'hydra_trades_closed_total',
+        'Total trades closed by outcome',
+        ['outcome']
+    )
+
     # ========== System Health ==========
 
     # Runtime uptime
@@ -710,6 +758,44 @@ class HydraMetrics:
     def record_error(cls, error_type: str, component: str):
         """Record an error occurrence."""
         cls.errors_total.labels(type=error_type, component=component).inc()
+
+    # ========== Bug Detection Convenience Methods ==========
+
+    @classmethod
+    def record_engine_error(cls, engine: str):
+        """Record an engine error for bug detection."""
+        cls.engine_errors_total.labels(engine=engine).inc()
+
+    @classmethod
+    def record_low_confidence(cls, engine: str):
+        """Record a low confidence strategy generation."""
+        cls.engine_low_confidence_total.labels(engine=engine).inc()
+
+    @classmethod
+    def record_data_feed_error(cls, source: str):
+        """Record a data feed error."""
+        cls.data_feed_errors_total.labels(source=source).inc()
+
+    @classmethod
+    def record_duplicate_blocked(cls):
+        """Record a blocked duplicate order."""
+        cls.duplicate_orders_blocked_total.inc()
+
+    @classmethod
+    def update_checkpoint_timestamp(cls):
+        """Update the last checkpoint timestamp."""
+        import time
+        cls.last_checkpoint_timestamp.set(time.time())
+
+    @classmethod
+    def record_iteration(cls):
+        """Record a completed trading iteration."""
+        cls.iterations_total.inc()
+
+    @classmethod
+    def record_trade_closed(cls, outcome: str):
+        """Record a closed trade with its outcome (win/loss)."""
+        cls.trades_closed_total.labels(outcome=outcome).inc()
 
     @classmethod
     def record_cycle(cls, duration: float):

@@ -88,6 +88,79 @@ groups:
           summary: "Low 24h win rate: {{ $value }}%"
           description: "The 24-hour win rate has dropped to {{ $value }}%. Consider reviewing strategy parameters."
 
+  - name: hydra_bug_detection
+    interval: 30s
+    rules:
+      # Engine Error Rate High
+      - alert: EngineErrorRateHigh
+        expr: increase(hydra_engine_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Engine {{ $labels.engine }} error rate high"
+          description: "Engine {{ $labels.engine }} has had {{ $value }} errors in the last 5 minutes. Check API connectivity and logs."
+
+      # No Trades Generated
+      - alert: NoTradesGenerated
+        expr: increase(hydra_trades_total[1h]) == 0 and hydra_iterations_total > 12
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No trades generated in 1 hour"
+          description: "HYDRA has been running but generated no trades in the past hour. Check engine triggers and thresholds."
+
+      # Engine Low Confidence Spam
+      - alert: EngineLowConfidenceSpam
+        expr: increase(hydra_engine_low_confidence_total[15m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Engine {{ $labels.engine }} producing low confidence strategies"
+          description: "Engine {{ $labels.engine }} has produced {{ $value }} low confidence (<55%) strategies in 15 min. Check prompts/data feeds."
+
+      # Portfolio Blown
+      - alert: PortfolioBlown
+        expr: hydra_engine_portfolio_balance < 100
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Engine {{ $labels.engine }} portfolio blown"
+          description: "Engine {{ $labels.engine }} portfolio balance is ${{ $value }}, below $100 minimum. Engine should be disabled."
+
+      # Data Feed Errors
+      - alert: DataFeedErrors
+        expr: increase(hydra_data_feed_errors_total[10m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data feed errors detected"
+          description: "{{ $value }} data feed errors in the last 10 minutes. Check Coinbase/exchange API connectivity."
+
+      # Checkpoint Failed
+      - alert: CheckpointFailed
+        expr: time() - hydra_last_checkpoint_timestamp > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "State checkpoint stale"
+          description: "No checkpoint saved in {{ $value }}s. Check disk space and write permissions."
+
+      # Duplicate Order Blocked
+      - alert: DuplicateOrdersBlocked
+        expr: increase(hydra_duplicate_orders_blocked_total[1h]) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent duplicate orders blocked"
+          description: "{{ $value }} duplicate orders blocked in 1 hour. Check for runaway engine or logic bugs."
+
   - name: hydra_info
     interval: 1m
     rules:
@@ -110,3 +183,13 @@ groups:
         annotations:
           summary: "Engine tournament weights updated"
           description: "The tournament manager has updated engine weights based on performance."
+
+      # Trade Closed
+      - alert: TradeClosed
+        expr: increase(hydra_trades_closed_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: info
+        annotations:
+          summary: "Trade closed: {{ $labels.outcome }}"
+          description: "A trade has been closed with outcome: {{ $labels.outcome }}."
