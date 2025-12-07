@@ -605,8 +605,8 @@ class HydraRuntime:
                     existing_strategies=[]
                 )
 
-                if not strategy or strategy.get("confidence", 0) < 0.3:
-                    logger.debug(f"  Engine {engine_name}: Low confidence strategy (<30%), skipping")
+                if not strategy or strategy.get("confidence", 0) < 0.2:
+                    logger.debug(f"  Engine {engine_name}: Low confidence strategy (<20%), skipping")
                     continue
 
                 # Get direction by calling vote_on_trade (strategy itself doesn't have direction)
@@ -633,7 +633,7 @@ class HydraRuntime:
                 direction = vote_result.get("vote", "HOLD") if vote_result else "HOLD"
                 vote_confidence = vote_result.get("confidence", 0) if vote_result else 0
 
-                if direction == "HOLD" or vote_confidence < 0.5:
+                if direction == "HOLD" or vote_confidence < 0.4:
                     logger.debug(f"  Engine {engine_name}: Vote is HOLD or low confidence ({vote_confidence:.1%})")
                     continue
 

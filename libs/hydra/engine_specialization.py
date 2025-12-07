@@ -65,7 +65,7 @@ ENGINE_SPECIALTIES = {
         specialty=Specialty.FUNDING_EXTREME,
         engine_id="B",
         description="Funding rate extremes - crowded trades about to reverse",
-        trigger_threshold=0.05,  # >0.05% funding rate (was 0.5%)
+        trigger_threshold=0.01,  # >0.01% funding rate (lowered for more trades)
         trigger_unit="percent",
     ),
     "C": SpecialtyConfig(
@@ -79,7 +79,7 @@ ENGINE_SPECIALTIES = {
         specialty=Specialty.REGIME_TRANSITION,
         engine_id="D",
         description="Regime transitions - volatility changes signaling trend shifts",
-        trigger_threshold=1.2,  # ATR 1.2× expansion (was 2×)
+        trigger_threshold=0.95,  # ATR 0.95× (lowered - triggers on volatility changes)
         trigger_unit="multiplier",
     ),
 }
