@@ -220,12 +220,15 @@ EXECUTION_MODE=paper     # paper, live, or shadow
 
 ## Monitoring Stack
 
-**Ports**: Grafana `:3000`, Prometheus `:9090`, Metrics `:9100`, Alertmanager `:9093`
+**Ports**: Grafana `:3001`, Prometheus `:9090`, Metrics `:9100`, Alertmanager `:9093`
 
 ```bash
 # Access (when running)
-http://178.156.136.185:3000   # Grafana dashboards
+http://178.156.136.185:3001   # Grafana dashboards (admin/hydra4admin)
 http://178.156.136.185:9090   # Prometheus queries
+
+# Start monitoring stack
+cd /root/crpbot/monitoring && docker compose up -d
 ```
 
 ---
