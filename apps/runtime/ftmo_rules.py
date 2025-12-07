@@ -9,10 +9,10 @@ from loguru import logger
 class FTMOState:
     """FTMO account state tracking."""
 
-    account_balance: float = 10000.0
+    account_balance: float = 15000.0  # FTMO $15K challenge
     daily_loss: float = 0.0
     total_loss: float = 0.0
-    daily_start_balance: float = 10000.0
+    daily_start_balance: float = 15000.0  # FTMO $15K challenge
     daily_start_time: datetime | None = None
     daily_loss_limit: float = 0.045  # 4.5% of account
     total_loss_limit: float = 0.09  # 9% of account
@@ -40,7 +40,7 @@ class FTMOState:
         self.account_balance = new_balance
 
         daily_change = self.account_balance - self.daily_start_balance
-        total_change = self.account_balance - 10000.0  # Assuming 10K starting balance
+        total_change = self.account_balance - 15000.0  # FTMO $15K challenge starting balance
 
         self.daily_loss = abs(daily_change) if daily_change < 0 else 0.0
         self.total_loss = abs(total_change) if total_change < 0 else 0.0
@@ -89,7 +89,7 @@ def check_total_loss(state: FTMOState, account_balance: float | None = None) -> 
     if account_balance is not None:
         state.update_balance(account_balance)
 
-    initial_balance = 10000.0
+    initial_balance = 15000.0  # FTMO $15K challenge
     total_loss_pct = state.total_loss / initial_balance if initial_balance > 0 else 0.0
 
     if total_loss_pct >= state.total_loss_limit:

@@ -311,19 +311,15 @@ class PaperTradingSystem:
             del self.open_trades[trade_id]
             return None
 
-        # Apply slippage (BOTH SL and TP - realistic trading)
+        # Apply slippage ONLY to SL (market order)
+        # TP orders are limit orders and execute at exact price
         if exit_reason == "stop_loss":
-            # Slippage works against you on SL
+            # Slippage works against you on SL (market order)
             if trade.direction == "BUY":
                 exit_price = exit_price * (1 - trade.slippage_est)
             else:  # SELL
                 exit_price = exit_price * (1 + trade.slippage_est)
-        elif exit_reason == "take_profit":
-            # Slippage also works against you on TP (you get slightly worse fill)
-            if trade.direction == "BUY":
-                exit_price = exit_price * (1 - trade.slippage_est)
-            else:  # SELL
-                exit_price = exit_price * (1 + trade.slippage_est)
+        # TP: No slippage - limit orders fill at exact price
 
         # Calculate P&L (entry_price validated above)
         if trade.direction == "BUY":

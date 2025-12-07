@@ -236,10 +236,10 @@ class EngineD_Gemini(BaseEngine):
             logger.info(f"[Gladiator D] HOLD decision for {asset}")
             return None
 
-        # STEP 5: 70% CONFIDENCE THRESHOLD
+        # STEP 5: 55% CONFIDENCE THRESHOLD (lowered from 70% for more trades)
         confidence = decision.get("confidence", 0)
-        if confidence < 0.70:
-            logger.info(f"[Engine D] Confidence {confidence:.1%} < 70% - HOLD")
+        if confidence < 0.55:
+            logger.info(f"[Engine D] Confidence {confidence:.1%} < 55% - HOLD")
             return None
 
         # Calculate position size based on confidence

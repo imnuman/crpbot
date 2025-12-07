@@ -114,10 +114,10 @@ class EngineC_Grok(BaseEngine):
         if not all(k in decision for k in ["entry_price", "stop_loss", "take_profit", "confidence"]):
             return None
 
-        # STEP 5: 70% CONFIDENCE THRESHOLD
+        # STEP 5: 55% CONFIDENCE THRESHOLD (lowered from 70% for more trades)
         confidence = decision.get("confidence", 0)
-        if confidence < 0.70:
-            logger.info(f"[Engine C] Confidence {confidence:.1%} < 70% - HOLD")
+        if confidence < 0.55:
+            logger.info(f"[Engine C] Confidence {confidence:.1%} < 55% - HOLD")
             return None
 
         trade_params = {

@@ -38,7 +38,7 @@ class SpecialtyConfig:
     trigger_unit: str
 
     # Validation rules
-    min_confidence: float = 0.70  # 70% minimum
+    min_confidence: float = 0.55  # 55% minimum (lowered from 70% for more trades)
 
     def to_dict(self) -> dict:
         return {

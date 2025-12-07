@@ -209,11 +209,13 @@ class HydraRuntime:
         self.turbo_signal_generator = get_turbo_signal_generator(use_mock=False)
 
         # Independent trading portfolios (each engine starts with $25k)
+        # FTMO $15K challenge: Each engine gets $3,750 (15000/4)
+        STARTING_BALANCE_PER_ENGINE = 3750.0  # $15,000 / 4 engines
         self.engine_portfolios = {
-            "A": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
-            "B": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
-            "C": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
-            "D": {"balance": 25000.0, "trades": 0, "wins": 0, "pnl": 0.0},
+            "A": {"balance": STARTING_BALANCE_PER_ENGINE, "trades": 0, "wins": 0, "pnl": 0.0, "halted": False},
+            "B": {"balance": STARTING_BALANCE_PER_ENGINE, "trades": 0, "wins": 0, "pnl": 0.0, "halted": False},
+            "C": {"balance": STARTING_BALANCE_PER_ENGINE, "trades": 0, "wins": 0, "pnl": 0.0, "halted": False},
+            "D": {"balance": STARTING_BALANCE_PER_ENGINE, "trades": 0, "wins": 0, "pnl": 0.0, "halted": False},
         }
 
         # State checkpoint manager for crash recovery
@@ -585,6 +587,11 @@ class HydraRuntime:
 
         for engine_name, gladiator in engines_config:
             portfolio = self.engine_portfolios[engine_name]
+
+            # CRITICAL: Skip halted engines (blown accounts)
+            if portfolio.get("halted", False):
+                logger.warning(f"  Engine {engine_name}: HALTED (account blown) - skipping")
+                continue
 
             # Check specialty trigger
             is_triggered, reason = gladiator.check_specialty_trigger(market_summary)
@@ -1798,14 +1805,15 @@ Only trade when your specialty trigger activates. Patience beats aggression.
             portfolio["balance"] += pnl_amount
 
             # FTMO SAFETY: Enforce balance floor (cannot go negative)
-            # If balance drops below floor, engine is "blown" and should stop trading
+            # If balance drops below floor, engine is "blown" and HALTED from trading
             MIN_BALANCE_FLOOR = 100.0  # Minimum $100 to prevent negative equity
             if portfolio["balance"] < MIN_BALANCE_FLOOR:
                 logger.critical(
-                    f"Engine {engine_name} balance ${portfolio['balance']:.2f} below floor ${MIN_BALANCE_FLOOR}! "
-                    "Engine should stop trading to preserve remaining capital."
+                    f"🛑 Engine {engine_name} HALTED: balance ${portfolio['balance']:.2f} below floor ${MIN_BALANCE_FLOOR}! "
+                    "Engine will no longer trade to preserve remaining capital."
                 )
                 portfolio["balance"] = max(0.0, portfolio["balance"])  # Floor at $0
+                portfolio["halted"] = True  # CRITICAL: Prevent future trades
 
             # Update Prometheus metrics for dashboard
             HydraMetrics.set_engine_portfolio(
