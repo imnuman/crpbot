@@ -318,6 +318,90 @@ docker logs -f hydra-runtime 2>&1 | grep -E "MT5|LIVE|execute"
 | Max Daily Loss | 4.5% |
 | Max Total Loss | 9% |
 
+## Step 9: Enable SSH Control from Linux (Claude Code)
+
+This allows Claude Code to remotely control the Windows VPS.
+
+### 9.1 Install OpenSSH Server on Windows
+
+Open **PowerShell as Administrator** on your ForexVPS:
+
+```powershell
+# Install OpenSSH Server
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+
+# Start the service
+Start-Service sshd
+
+# Set to auto-start on boot
+Set-Service -Name sshd -StartupType 'Automatic'
+
+# Allow SSH through firewall (usually auto-configured)
+New-NetFirewallRule -DisplayName "OpenSSH Server" -Direction Inbound -Port 22 -Protocol TCP -Action Allow
+
+# Verify SSH is running
+Get-Service sshd
+```
+
+### 9.2 Set Up SSH Key Authentication (Recommended)
+
+On your **Linux server** (178.156.136.185):
+
+```bash
+# Generate SSH key if you don't have one
+ssh-keygen -t ed25519 -C "hydra-controller"
+
+# Copy public key to Windows
+ssh-copy-id Administrator@YOUR_FOREXVPS_IP
+
+# Or manually: copy ~/.ssh/id_ed25519.pub content to Windows:
+# C:\Users\Administrator\.ssh\authorized_keys
+```
+
+### 9.3 Configure Linux Environment
+
+```bash
+# Add to /root/crpbot/.env
+export WINDOWS_VPS_IP=YOUR_FOREXVPS_IP
+export WINDOWS_VPS_USER=Administrator
+export WINDOWS_VPS_KEY=/root/.ssh/id_ed25519
+
+# Or with password (less secure)
+export WINDOWS_VPS_PASS=your_password
+```
+
+### 9.4 Test Connection
+
+```bash
+cd /root/crpbot
+python mt5_executor/windows_manager.py test
+```
+
+### 9.5 Available Commands
+
+```bash
+# Check full VPS status
+python mt5_executor/windows_manager.py status
+
+# Start MT5 Terminal
+python mt5_executor/windows_manager.py start-mt5
+
+# Start Executor Service
+python mt5_executor/windows_manager.py start-executor
+
+# Stop Executor
+python mt5_executor/windows_manager.py stop-executor
+
+# Restart Executor
+python mt5_executor/windows_manager.py restart-executor
+
+# View logs
+python mt5_executor/windows_manager.py logs 100
+
+# Run any PowerShell command
+python mt5_executor/windows_manager.py exec "Get-Process"
+```
+
 ## Support
 
 - FTMO Support: support@ftmo.com
