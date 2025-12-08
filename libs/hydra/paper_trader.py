@@ -375,6 +375,38 @@ class PaperTradingSystem:
 
     # ==================== STATISTICS & REPORTING ====================
 
+    def get_closed_trades(self) -> List[Dict]:
+        """
+        Get all closed trades as list of dicts.
+
+        Returns:
+            List of closed trade dictionaries
+        """
+        return [
+            {
+                "trade_id": t.trade_id,
+                "asset": t.asset,
+                "regime": t.regime,
+                "strategy_id": t.strategy_id,
+                "gladiator": t.gladiator,
+                "direction": t.direction,
+                "entry_price": t.entry_price,
+                "exit_price": t.exit_price,
+                "stop_loss": t.stop_loss,
+                "take_profit": t.take_profit,
+                "position_size_usd": t.position_size_usd,
+                "entry_timestamp": t.entry_timestamp.isoformat() if t.entry_timestamp else None,
+                "exit_timestamp": t.exit_timestamp.isoformat() if t.exit_timestamp else None,
+                "exit_reason": t.exit_reason,
+                "pnl_usd": t.pnl_usd,
+                "pnl_percent": t.pnl_percent,
+                "outcome": t.outcome,
+                "rr_actual": t.rr_actual,
+                "status": t.status
+            }
+            for t in self.closed_trades
+        ]
+
     def get_overall_stats(self) -> Dict:
         """Get overall performance statistics."""
         if self.total_trades == 0:
