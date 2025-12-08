@@ -52,8 +52,11 @@ class DuplicateGuardConfig:
     # Maximum orders per engine per hour
     max_orders_per_engine_per_hour: int = 10
 
-    # Block opposite direction if position exists
+    # Block opposite direction if position exists (per engine)
     block_opposite_direction: bool = True
+
+    # Block opposite direction across ALL engines (prevents conflicting positions)
+    block_opposite_direction_global: bool = True  # NEW: Prevents BUY+SELL on same symbol
 
     # Block same direction if position exists (no pyramiding)
     block_same_direction_existing: bool = False
@@ -223,7 +226,7 @@ class DuplicateOrderGuard:
             if engine_orders >= self.config.max_orders_per_engine_per_hour:
                 return False, f"Rate limit reached for Engine {engine} ({engine_orders}/{self.config.max_orders_per_engine_per_hour} per hour)"
 
-            # Check existing position
+            # Check existing position for THIS engine
             if symbol in self._open_positions and engine in self._open_positions[symbol]:
                 existing_direction = self._open_positions[symbol][engine]
 
@@ -233,6 +236,12 @@ class DuplicateOrderGuard:
                 else:
                     if self.config.block_opposite_direction:
                         return False, f"Existing {existing_direction} position for {symbol} on Engine {engine} (opposite direction blocked)"
+
+            # Check existing position across ALL engines (prevents conflicting positions)
+            if self.config.block_opposite_direction_global and symbol in self._open_positions:
+                for other_engine, other_direction in self._open_positions[symbol].items():
+                    if other_engine != engine and other_direction != direction:
+                        return False, f"Conflicting {other_direction} position exists for {symbol} on Engine {other_engine} (global opposite blocked)"
 
             return True, "Order allowed"
 
@@ -371,3 +380,54 @@ def get_duplicate_guard() -> DuplicateOrderGuard:
     if _duplicate_guard is None:
         _duplicate_guard = DuplicateOrderGuard()
     return _duplicate_guard
+
+
+def sync_guard_with_paper_trades(paper_trades_path: str = "/app/data/hydra/paper_trades.jsonl"):
+    """
+    Sync duplicate guard with existing open positions from paper trades.
+
+    Call this at startup to ensure guard knows about existing positions.
+    """
+    import json
+    import os
+
+    guard = get_duplicate_guard()
+
+    # Try alternative paths
+    paths_to_try = [
+        paper_trades_path,
+        "/root/crpbot/data/hydra/paper_trades.jsonl",
+        "data/hydra/paper_trades.jsonl"
+    ]
+
+    for path in paths_to_try:
+        if os.path.exists(path):
+            paper_trades_path = path
+            break
+    else:
+        logger.warning("Paper trades file not found, guard not synced")
+        return
+
+    try:
+        with open(paper_trades_path) as f:
+            for line in f:
+                try:
+                    trade = json.loads(line.strip())
+                    if trade.get('status') == 'OPEN':
+                        symbol = trade.get('asset', trade.get('symbol'))
+                        engine = trade.get('gladiator', trade.get('engine', 'X'))
+                        direction = trade.get('direction')
+
+                        if symbol and direction:
+                            with guard._lock:
+                                if symbol not in guard._open_positions:
+                                    guard._open_positions[symbol] = {}
+                                guard._open_positions[symbol][engine] = direction
+                except json.JSONDecodeError:
+                    continue
+
+        total_positions = sum(len(engines) for engines in guard._open_positions.values())
+        logger.info(f"DuplicateGuard synced: {total_positions} open positions loaded")
+
+    except Exception as e:
+        logger.warning(f"Failed to sync guard with paper trades: {e}")

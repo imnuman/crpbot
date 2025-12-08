@@ -156,6 +156,13 @@ class PaperTradingSystem:
         # Load existing trades
         self._load_trades()
 
+        # Sync duplicate guard with open positions
+        try:
+            from .duplicate_order_guard import sync_guard_with_paper_trades
+            sync_guard_with_paper_trades(str(self.storage_path))
+        except Exception as e:
+            logger.warning(f"Failed to sync duplicate guard: {e}")
+
         logger.info(
             f"Paper Trading System initialized "
             f"({len(self.open_trades)} open, {len(self.closed_trades)} closed)"
@@ -169,8 +176,9 @@ class PaperTradingSystem:
         regime: str,
         strategy_id: str,
         gladiator: str,
-        signal: Dict
-    ) -> PaperTrade:
+        signal: Dict,
+        market_data: Optional[Dict] = None
+    ) -> Optional[PaperTrade]:
         """
         Create new paper trade from signal.
 
@@ -183,11 +191,38 @@ class PaperTradingSystem:
                 "position_size_usd": 100,
                 "consensus_level": "STRONG"
             }
-        """
-        trade_id = f"{asset}_{int(datetime.now(timezone.utc).timestamp())}"
+            market_data: Optional dict with price data for trend filtering
 
+        Returns:
+            PaperTrade if created, None if blocked by filters
+        """
         direction = signal["action"]
         entry_price = signal["entry_price"]
+
+        # Check duplicate guard (prevents conflicting positions)
+        try:
+            from .duplicate_order_guard import get_duplicate_guard
+            guard = get_duplicate_guard()
+            can_place, reason = guard.can_place_order(asset, direction, gladiator, entry_price)
+            if not can_place:
+                logger.warning(f"[DuplicateGuard] Trade blocked: {reason}")
+                return None
+        except Exception as e:
+            logger.warning(f"Duplicate guard check failed: {e}")
+
+        # Check trend filter (prevents counter-trend trades)
+        if market_data:
+            try:
+                from .trend_filter import get_trend_filter
+                trend_filter = get_trend_filter()
+                can_trade, reason = trend_filter.check_trend_alignment(asset, direction, market_data)
+                if not can_trade:
+                    logger.warning(f"[TrendFilter] Trade blocked: {reason}")
+                    return None
+            except Exception as e:
+                logger.warning(f"Trend filter check failed: {e}")
+
+        trade_id = f"{asset}_{int(datetime.now(timezone.utc).timestamp())}"
         sl_pct = signal.get("stop_loss_pct", 0.015)
         tp_pct = signal.get("take_profit_pct", 0.025)
         position_size = signal.get("position_size_usd", 100)
@@ -216,6 +251,14 @@ class PaperTradingSystem:
 
         self.open_trades[trade_id] = trade
         self.total_trades += 1
+
+        # Record in duplicate guard
+        try:
+            from .duplicate_order_guard import get_duplicate_guard
+            guard = get_duplicate_guard()
+            guard.record_order(asset, direction, gladiator, trade_id, entry_price)
+        except Exception as e:
+            logger.warning(f"Failed to record order in guard: {e}")
 
         logger.success(
             f"Paper trade created: {direction} {asset} @ {entry_price:.2f} "
@@ -356,6 +399,14 @@ class PaperTradingSystem:
         # Move to closed trades
         del self.open_trades[trade_id]
         self.closed_trades.append(trade)
+
+        # Notify duplicate guard that position is closed
+        try:
+            from .duplicate_order_guard import get_duplicate_guard
+            guard = get_duplicate_guard()
+            guard.record_position_closed(trade.asset, trade.gladiator)
+        except Exception as e:
+            logger.warning(f"Failed to notify guard of position close: {e}")
 
         # Update statistics
         if outcome == "win":
