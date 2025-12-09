@@ -32,6 +32,15 @@ class BotConfig:
     max_hold_hours: float = 2.0
     enabled: bool = True
     paper_mode: bool = True  # Set False for live trading
+    turbo_mode: bool = False  # Turbo mode: loosen thresholds for more trades
+
+    def get_turbo_multiplier(self) -> float:
+        """Get threshold multiplier for turbo mode (looser = more trades)."""
+        return 0.5 if self.turbo_mode else 1.0
+
+    def get_turbo_max_trades(self) -> int:
+        """Get max daily trades for turbo mode (3x normal)."""
+        return self.max_daily_trades * 3 if self.turbo_mode else self.max_daily_trades
 
 
 @dataclass
@@ -181,8 +190,9 @@ class BaseFTMOBot(ABC):
             if t.get("timestamp", datetime.min) > today_start
         ]
 
-        if len(self._daily_trades) >= self.config.max_daily_trades:
-            return False, f"Max daily trades reached ({self.config.max_daily_trades})"
+        max_trades = self.config.get_turbo_max_trades()
+        if len(self._daily_trades) >= max_trades:
+            return False, f"Max daily trades reached ({max_trades})"
 
         return True, "Can trade"
 

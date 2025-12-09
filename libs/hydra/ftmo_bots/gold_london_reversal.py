@@ -60,17 +60,18 @@ class GoldLondonReversalBot(BaseFTMOBot):
     STOP_LOSS_PIPS = 50.0
     TAKE_PROFIT_PIPS = 90.0
 
-    def __init__(self, paper_mode: bool = True):
+    def __init__(self, paper_mode: bool = True, turbo_mode: bool = False):
         config = BotConfig(
             bot_name="GoldLondonReversal",
             symbol="XAUUSD",  # Gold vs USD on MT5
             risk_percent=0.015,  # 1.5% risk per trade
-            max_daily_trades=1,  # Only 1 trade per day
+            max_daily_trades=1,  # Only 1 trade per day (3 in turbo)
             stop_loss_pips=self.STOP_LOSS_PIPS,
             take_profit_pips=self.TAKE_PROFIT_PIPS,
             max_hold_hours=2.0,
             enabled=True,
             paper_mode=paper_mode,
+            turbo_mode=turbo_mode,
         )
         super().__init__(config)
 
@@ -78,9 +79,13 @@ class GoldLondonReversalBot(BaseFTMOBot):
         self._traded_today = False
         self._last_trade_date: Optional[datetime] = None
 
+        # Apply turbo multiplier to threshold
+        self._min_move = self.MIN_ASIAN_MOVE_PERCENT * config.get_turbo_multiplier()
+
         logger.info(
             f"[{self.config.bot_name}] Strategy: "
-            f"Fade Asian trend at London open (min move: {self.MIN_ASIAN_MOVE_PERCENT}%)"
+            f"Fade Asian trend at London open (min move: {self._min_move}%)"
+            f"{' [TURBO MODE]' if turbo_mode else ''}"
         )
 
     def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -145,9 +150,9 @@ class GoldLondonReversalBot(BaseFTMOBot):
         if asian_data is None:
             return False, analysis.get("reason", "No Asian data")
 
-        # Check minimum move
-        if abs(asian_data.percent_change) < self.MIN_ASIAN_MOVE_PERCENT:
-            return False, f"Asian move too small ({asian_data.percent_change:.2f}% < {self.MIN_ASIAN_MOVE_PERCENT}%)"
+        # Check minimum move (uses turbo threshold if enabled)
+        if abs(asian_data.percent_change) < self._min_move:
+            return False, f"Asian move too small ({asian_data.percent_change:.2f}% < {self._min_move}%)"
 
         # Check trend direction is clear
         if asian_data.trend_direction == "NEUTRAL":
@@ -286,10 +291,10 @@ class GoldLondonReversalBot(BaseFTMOBot):
         # Calculate percent change
         percent_change = ((current_price - session_open) / session_open) * 100
 
-        # Determine trend direction
-        if percent_change >= self.MIN_ASIAN_MOVE_PERCENT:
+        # Determine trend direction (uses turbo threshold if enabled)
+        if percent_change >= self._min_move:
             trend = "BULLISH"
-        elif percent_change <= -self.MIN_ASIAN_MOVE_PERCENT:
+        elif percent_change <= -self._min_move:
             trend = "BEARISH"
         else:
             trend = "NEUTRAL"
@@ -352,11 +357,11 @@ _gold_london_bot: Optional[GoldLondonReversalBot] = None
 _bot_lock = threading.Lock()
 
 
-def get_gold_london_bot(paper_mode: bool = True) -> GoldLondonReversalBot:
+def get_gold_london_bot(paper_mode: bool = True, turbo_mode: bool = False) -> GoldLondonReversalBot:
     """Get or create Gold London Reversal bot singleton."""
     global _gold_london_bot
     if _gold_london_bot is None:
         with _bot_lock:
             if _gold_london_bot is None:
-                _gold_london_bot = GoldLondonReversalBot(paper_mode=paper_mode)
+                _gold_london_bot = GoldLondonReversalBot(paper_mode=paper_mode, turbo_mode=turbo_mode)
     return _gold_london_bot

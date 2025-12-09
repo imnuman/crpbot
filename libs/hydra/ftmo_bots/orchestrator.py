@@ -29,6 +29,7 @@ from .eurusd_breakout import get_eurusd_bot
 from .us30_orb import get_us30_bot
 from .nas100_gap import get_nas100_bot
 from .gold_ny_reversion import get_gold_ny_bot
+from .hf_scalper import get_hf_scalper
 from .base_ftmo_bot import TradeSignal
 from .metalearning import get_ftmo_metalearner, TradeResult, FTMOMetalearner
 
@@ -81,13 +82,18 @@ class FTMOOrchestrator:
         ("US30", "NAS100"): 0.85,  # Dow vs NASDAQ - high positive
         ("EURUSD", "US30"): -0.2,
         ("EURUSD", "NAS100"): -0.2,
+        ("EURUSD", "GBPUSD"): 0.85,  # EUR vs GBP - highly correlated
+        ("GBPUSD", "XAUUSD"): 0.35,  # GBP vs Gold - moderate
+        ("GBPUSD", "US30"): -0.25,  # GBP vs Dow
+        ("GBPUSD", "NAS100"): -0.20,  # GBP vs NASDAQ
     }
 
     MT5_EXECUTOR_URL = os.getenv("MT5_EXECUTOR_URL", "http://45.82.167.195:5000")
     MT5_API_SECRET = os.getenv("MT5_API_SECRET", "hydra_secret_2024")
 
-    def __init__(self, paper_mode: bool = True, enable_metalearning: bool = True, use_zmq: bool = True):
+    def __init__(self, paper_mode: bool = True, enable_metalearning: bool = True, use_zmq: bool = True, turbo_mode: bool = False):
         self.paper_mode = paper_mode
+        self.turbo_mode = turbo_mode
         self.limits = RiskLimits()
         self.enable_metalearning = enable_metalearning
         self.use_zmq = use_zmq and ZMQ_AVAILABLE
@@ -106,14 +112,18 @@ class FTMOOrchestrator:
                 logger.warning(f"[Orchestrator] ZMQ init failed: {e}, falling back to HTTP")
                 self.use_zmq = False
 
-        # Initialize all bots
+        # Initialize all bots (pass turbo_mode to bots that support it)
         self.bots = {
-            "gold_london": get_gold_london_bot(paper_mode),
+            "gold_london": get_gold_london_bot(paper_mode, turbo_mode=turbo_mode),
             "eurusd": get_eurusd_bot(paper_mode),
             "us30": get_us30_bot(paper_mode),
             "nas100": get_nas100_bot(paper_mode),
             "gold_ny": get_gold_ny_bot(paper_mode),
+            "hf_scalper": get_hf_scalper(paper_mode, turbo_mode=turbo_mode),
         }
+
+        if turbo_mode:
+            logger.info("[Orchestrator] TURBO MODE enabled - thresholds lowered, max trades increased")
 
         # Initialize metalearner (L1 + L2)
         self._metalearner: Optional[FTMOMetalearner] = None
@@ -196,9 +206,11 @@ class FTMOOrchestrator:
                     logger.debug(f"[Orchestrator] Correlation check failed for {bot_name}")
                     continue
 
+                # Fetch candles via ZMQ (for both metalearning and passing to bot)
+                candles = self._get_candles(bot.config.symbol, count=500, timeframe="M1")
+
                 # Apply L2 volatility check before running bot
                 if self._metalearner:
-                    candles = self._get_candles(bot.config.symbol)
                     if candles and len(candles) > 15:
                         self._metalearner.update_volatility(bot.config.symbol, candles)
 
@@ -217,8 +229,9 @@ class FTMOOrchestrator:
                         f"{original_risk*100:.2f}% -> {adjusted_risk*100:.2f}%"
                     )
 
-                # Run bot cycle
-                signal = bot.run_cycle()
+                # Run bot cycle with market data (avoids bot's HTTP fallback)
+                market_data = {"candles": candles} if candles else None
+                signal = bot.run_cycle(market_data)
 
                 # Restore original risk after trade
                 if self._metalearner:
@@ -374,19 +387,21 @@ class FTMOOrchestrator:
             logger.warning(f"[Orchestrator] Failed to get account info: {e}")
             return None
 
-    def _get_candles(self, symbol: str, count: int = 100) -> List[Dict[str, float]]:
+    def _get_candles(self, symbol: str, count: int = 100, timeframe: str = "H1") -> List[Dict[str, float]]:
         """Fetch candles for volatility analysis."""
         try:
-            # Note: ZMQ doesn't support candles yet, skip for now
-            if self.use_zmq:
-                logger.debug(f"[Orchestrator] Candles not available via ZMQ for {symbol}")
-                return []
+            # Use ZMQ for candles if available
+            if self.use_zmq and self._zmq_client:
+                candles = self._zmq_client.get_candles(symbol, timeframe, count)
+                if candles:
+                    logger.debug(f"[Orchestrator] Got {len(candles)} candles via ZMQ for {symbol}")
+                return candles
 
             # HTTP fallback
             import requests
             url = f"{self.MT5_EXECUTOR_URL}/candles/{symbol}"
             headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
-            params = {"count": count, "timeframe": "H1"}
+            params = {"count": count, "timeframe": timeframe}
             response = requests.get(url, headers=headers, params=params, timeout=10)
             data = response.json()
             return data.get("candles", [])

@@ -280,7 +280,20 @@ class MT5ZMQClient:
             return result.get("positions", [])
         logger.error(f"[ZMQ] get_positions failed: {result.get('error')}")
         return []
-    
+
+    def get_candles(self, symbol: str, timeframe: str = "M1", count: int = 100) -> list:
+        """Get historical candle data via ZMQ."""
+        result = self._send_command({
+            "cmd": "CANDLES",
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "count": count
+        })
+        if result.get("success"):
+            return result.get("candles", [])
+        logger.error(f"[ZMQ] get_candles failed: {result.get('error')}")
+        return []
+
     def reconnect_mt5(self) -> bool:
         """Force MT5 reconnection on Windows side."""
         result = self._send_command({"cmd": "RECONNECT"})
