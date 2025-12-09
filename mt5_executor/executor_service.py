@@ -35,9 +35,9 @@ import MetaTrader5 as mt5
 
 @dataclass
 class Config:
-    # MT5 Settings
-    mt5_login: int = int(os.getenv("FTMO_LOGIN", "0"))
-    mt5_password: str = os.getenv("FTMO_PASS", "")
+    # MT5 Settings - With FTMO fallback credentials
+    mt5_login: int = int(os.getenv("FTMO_LOGIN", "531025383"))
+    mt5_password: str = os.getenv("FTMO_PASS", "c*B@lWp41b784c")
     mt5_server: str = os.getenv("FTMO_SERVER", "FTMO-Server3")
 
     # API Settings
@@ -346,6 +346,109 @@ class MT5Manager:
 
         return {"success": True, "ticket": ticket, "close_price": result.price}
 
+    def get_price(self, symbol: str) -> Dict:
+        """Get current bid/ask price for a symbol."""
+        if not self.ensure_connected():
+            return {"success": False, "error": "Not connected"}
+
+        # Try symbol as-is first, then with common suffixes
+        symbol_info = mt5.symbol_info(symbol)
+        actual_symbol = symbol
+
+        if symbol_info is None:
+            for suffix in ["", ".raw", ".pro", "m", "_"]:
+                test_symbol = f"{symbol}{suffix}"
+                symbol_info = mt5.symbol_info(test_symbol)
+                if symbol_info is not None:
+                    actual_symbol = test_symbol
+                    break
+
+        if symbol_info is None:
+            return {"success": False, "error": f"Symbol not found: {symbol}"}
+
+        # Ensure symbol is visible
+        if not symbol_info.visible:
+            mt5.symbol_select(actual_symbol, True)
+            time.sleep(0.1)  # Brief pause for selection
+
+        tick = mt5.symbol_info_tick(actual_symbol)
+        if tick is None:
+            return {"success": False, "error": f"No tick data for {actual_symbol}"}
+
+        return {
+            "success": True,
+            "symbol": actual_symbol,
+            "bid": tick.bid,
+            "ask": tick.ask,
+            "last": tick.last,
+            "volume": tick.volume,
+            "time": datetime.fromtimestamp(tick.time, tz=timezone.utc).isoformat(),
+            "spread": round((tick.ask - tick.bid) / symbol_info.point, 1) if symbol_info.point > 0 else 0
+        }
+
+    def get_candles(self, symbol: str, timeframe: str = "M5", count: int = 100) -> Dict:
+        """Get historical OHLC candles for a symbol."""
+        if not self.ensure_connected():
+            return {"success": False, "error": "Not connected"}
+
+        # Map timeframe string to MT5 constant
+        tf_map = {
+            "M1": mt5.TIMEFRAME_M1,
+            "M5": mt5.TIMEFRAME_M5,
+            "M15": mt5.TIMEFRAME_M15,
+            "M30": mt5.TIMEFRAME_M30,
+            "H1": mt5.TIMEFRAME_H1,
+            "H4": mt5.TIMEFRAME_H4,
+            "D1": mt5.TIMEFRAME_D1,
+        }
+
+        mt5_tf = tf_map.get(timeframe.upper(), mt5.TIMEFRAME_M5)
+
+        # Try symbol as-is first, then with common suffixes
+        symbol_info = mt5.symbol_info(symbol)
+        actual_symbol = symbol
+
+        if symbol_info is None:
+            for suffix in ["", ".raw", ".pro", "m", "_"]:
+                test_symbol = f"{symbol}{suffix}"
+                symbol_info = mt5.symbol_info(test_symbol)
+                if symbol_info is not None:
+                    actual_symbol = test_symbol
+                    break
+
+        if symbol_info is None:
+            return {"success": False, "error": f"Symbol not found: {symbol}"}
+
+        # Ensure symbol is visible
+        if not symbol_info.visible:
+            mt5.symbol_select(actual_symbol, True)
+            time.sleep(0.1)
+
+        # Fetch candles
+        rates = mt5.copy_rates_from_pos(actual_symbol, mt5_tf, 0, min(count, 1000))
+
+        if rates is None or len(rates) == 0:
+            return {"success": False, "error": f"No candle data for {actual_symbol}"}
+
+        candles = []
+        for rate in rates:
+            candles.append({
+                "time": datetime.fromtimestamp(rate['time'], tz=timezone.utc).isoformat(),
+                "open": float(rate['open']),
+                "high": float(rate['high']),
+                "low": float(rate['low']),
+                "close": float(rate['close']),
+                "volume": int(rate['tick_volume']),
+            })
+
+        return {
+            "success": True,
+            "symbol": actual_symbol,
+            "timeframe": timeframe,
+            "count": len(candles),
+            "candles": candles
+        }
+
 
 # ============================================================================
 # Flask API Server
@@ -430,6 +533,69 @@ def close(ticket: int):
     return jsonify(result)
 
 
+@app.route("/price/<symbol>", methods=["GET"])
+def price(symbol: str):
+    """Get current bid/ask price for a symbol."""
+    if not verify_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if mt5_manager is None:
+        return jsonify({"error": "MT5 not initialized"}), 500
+
+    result = mt5_manager.get_price(symbol)
+    return jsonify(result)
+
+
+@app.route("/candles/<symbol>", methods=["GET"])
+def candles(symbol: str):
+    """Get historical OHLC candles for a symbol."""
+    if not verify_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if mt5_manager is None:
+        return jsonify({"error": "MT5 not initialized"}), 500
+
+    # Get optional parameters
+    timeframe = request.args.get("timeframe", "M5")
+    count = int(request.args.get("count", 100))
+
+    result = mt5_manager.get_candles(symbol, timeframe, count)
+    return jsonify(result)
+
+
+@app.route("/symbols", methods=["GET"])
+def symbols():
+    """List available symbols."""
+    if not verify_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if mt5_manager is None:
+        return jsonify({"error": "MT5 not initialized"}), 500
+
+    if not mt5_manager.ensure_connected():
+        return jsonify({"error": "Not connected"}), 500
+
+    # Get all visible symbols
+    all_symbols = mt5.symbols_get()
+    if all_symbols is None:
+        return jsonify({"symbols": []})
+
+    # Filter for common trading symbols
+    result = []
+    for s in all_symbols:
+        if s.visible and s.trade_mode != 0:  # Only tradeable symbols
+            result.append({
+                "symbol": s.name,
+                "description": s.description,
+                "digits": s.digits,
+                "point": s.point,
+                "spread": s.spread,
+                "trade_mode": s.trade_mode
+            })
+
+    return jsonify({"count": len(result), "symbols": result[:100]})  # Limit to 100
+
+
 # ============================================================================
 # Main Entry Point
 # ============================================================================
@@ -456,12 +622,13 @@ def main():
     print(f"[CONFIG] Max Total Loss: {config.max_total_loss_pct}%")
     print()
 
-    # Initialize MT5
+    # Initialize MT5 (don't exit on failure - start Flask anyway)
     mt5_manager = MT5Manager(config)
     if not mt5_manager.connect():
-        print("[ERROR] Failed to connect to MT5!")
+        print("[WARNING] Failed to connect to MT5!")
         print("Make sure MT5 terminal is running and logged in.")
-        sys.exit(1)
+        print("API will start but MT5 operations will fail until connected.")
+        print()
 
     print()
     print(f"[API] Starting server on http://0.0.0.0:{config.api_port}")
