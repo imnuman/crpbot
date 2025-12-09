@@ -70,37 +70,62 @@ class MT5Manager:
         self.initial_balance = 0
         self._lock = threading.Lock()
 
-    def connect(self) -> bool:
-        """Connect to MT5 terminal."""
+    def connect(self, timeout_seconds: int = 15) -> bool:
+        """Connect to MT5 terminal with timeout."""
+        import concurrent.futures
+
         with self._lock:
             if self.connected:
                 return True
 
-            print(f"[MT5] Connecting to {self.config.mt5_server}...")
+            print(f"[MT5] Connecting to {self.config.mt5_server}... (timeout: {timeout_seconds}s)")
 
-            if not mt5.initialize():
-                print(f"[MT5] Initialize failed: {mt5.last_error()}")
+            def do_connect():
+                # Initialize with timeout
+                if not mt5.initialize(timeout=timeout_seconds * 1000):  # ms
+                    return False, f"Initialize failed: {mt5.last_error()}"
+
+                # Login
+                authorized = mt5.login(
+                    login=self.config.mt5_login,
+                    password=self.config.mt5_password,
+                    server=self.config.mt5_server,
+                    timeout=timeout_seconds * 1000  # ms
+                )
+
+                if not authorized:
+                    mt5.shutdown()
+                    return False, f"Login failed: {mt5.last_error()}"
+
+                # Get account info
+                account = mt5.account_info()
+                if account is None:
+                    mt5.shutdown()
+                    return False, "Failed to get account info"
+
+                return True, account
+
+            # Run with timeout using ThreadPoolExecutor
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(do_connect)
+                try:
+                    success, result = future.result(timeout=timeout_seconds + 5)
+                except concurrent.futures.TimeoutError:
+                    print(f"[MT5] Connection timed out after {timeout_seconds}s")
+                    try:
+                        mt5.shutdown()
+                    except:
+                        pass
+                    return False
+                except Exception as e:
+                    print(f"[MT5] Connection error: {e}")
+                    return False
+
+            if not success:
+                print(f"[MT5] {result}")
                 return False
 
-            # Login
-            authorized = mt5.login(
-                login=self.config.mt5_login,
-                password=self.config.mt5_password,
-                server=self.config.mt5_server
-            )
-
-            if not authorized:
-                print(f"[MT5] Login failed: {mt5.last_error()}")
-                mt5.shutdown()
-                return False
-
-            # Get account info
-            self.account_info = mt5.account_info()
-            if self.account_info is None:
-                print("[MT5] Failed to get account info")
-                mt5.shutdown()
-                return False
-
+            self.account_info = result
             self.initial_balance = self.account_info.balance
             self.connected = True
 
