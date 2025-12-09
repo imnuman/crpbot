@@ -1,5 +1,7 @@
 """
-HYDRA 3.0 - Gladiator A (DeepSeek) - INDEPENDENT TRADER
+HYDRA 3.0 - Engine A (DeepSeek) - INDEPENDENT TRADER
+
+Specialty: Liquidation Cascades ($1M+ trigger) [PAPER-ONLY - no proven edge]
 
 Role: Structural Edge Generator
 
@@ -31,8 +33,10 @@ from ..engine_portfolio import get_tournament_manager, EngineTrade
 
 class EngineA_DeepSeek(BaseEngine):
     """
-    Gladiator A: Independent Structural Edge Trader using DeepSeek.
+    Engine A: Independent Structural Edge Trader using DeepSeek.
 
+    Specialty: Liquidation Cascades ($1M+ trigger)
+    Status: PAPER-ONLY (no proven edge)
     Cost: ~$0.0001 per trading decision
     """
 
@@ -71,7 +75,7 @@ class EngineA_DeepSeek(BaseEngine):
         Returns:
             Dict with trade parameters if trading, None if HOLD
         """
-        logger.info(f"Gladiator A analyzing {asset} ({regime})")
+        logger.info(f"Engine A analyzing {asset} ({regime})")
 
         # STEP 1: SPECIALTY CHECK - ONLY trade liquidation cascades
         # Try both keys (runtime uses different names)
@@ -120,7 +124,7 @@ class EngineA_DeepSeek(BaseEngine):
         direction = decision.get("direction", "HOLD")
 
         if direction == "HOLD":
-            logger.info(f"Gladiator A holds on {asset}: {decision.get('reasoning', 'No reason')}")
+            logger.info(f"Engine A holds on {asset}: {decision.get('reasoning', 'No reason')}")
             return None
 
         # Validate trade parameters
@@ -147,7 +151,7 @@ class EngineA_DeepSeek(BaseEngine):
         }
 
         logger.success(
-            f"Gladiator A signals {direction} on {asset} "
+            f"Engine A signals {direction} on {asset} "
             f"(confidence: {decision['confidence']:.1%}, rank: {my_rank['rank'] if my_rank else 'N/A'})"
         )
 
@@ -174,7 +178,7 @@ class EngineA_DeepSeek(BaseEngine):
             )
 
             self.portfolio.add_trade(trade)
-            logger.success(f"Gladiator A opened trade {trade.trade_id}")
+            logger.success(f"Engine A opened trade {trade.trade_id}")
             return trade.trade_id
 
         except Exception as e:
@@ -214,7 +218,7 @@ class EngineA_DeepSeek(BaseEngine):
 
         if closed_trades:
             for trade_id, reason in closed_trades:
-                logger.info(f"Gladiator A closed trade {trade_id} ({reason})")
+                logger.info(f"Engine A closed trade {trade_id} ({reason})")
 
     def _calculate_position_size(self, confidence: float) -> float:
         """
@@ -247,7 +251,7 @@ class EngineA_DeepSeek(BaseEngine):
         """
         Generate structural edge strategy for this asset/regime.
         """
-        logger.info(f"Gladiator A generating strategy for {asset} ({regime})")
+        logger.info(f"Engine A generating strategy for {asset} ({regime})")
 
         # Build system prompt
         system_prompt = self._build_system_prompt(asset_type)
@@ -282,7 +286,7 @@ class EngineA_DeepSeek(BaseEngine):
             self.strategy_count += 1
 
             logger.success(
-                f"Gladiator A generated: {strategy.get('strategy_name', 'Unknown')} "
+                f"Engine A generated: {strategy.get('strategy_name', 'Unknown')} "
                 f"(confidence: {strategy.get('confidence', 0):.1%})"
             )
             return strategy
@@ -302,9 +306,9 @@ class EngineA_DeepSeek(BaseEngine):
         """
         Vote on whether to take a specific trade.
         """
-        logger.info(f"Gladiator A voting on {asset} {signal.get('direction', 'UNKNOWN')}")
+        logger.info(f"Engine A voting on {asset} {signal.get('direction', 'UNKNOWN')}")
 
-        system_prompt = "You are Gladiator A, a structural edge specialist. Vote on this trade signal."
+        system_prompt = "You are Engine A, a structural edge specialist. Vote on this trade signal."
 
         user_prompt = self._build_vote_prompt(
             asset=asset,
@@ -326,7 +330,7 @@ class EngineA_DeepSeek(BaseEngine):
 
         if vote:
             self._log_vote(vote)
-            logger.info(f"Gladiator A votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
+            logger.info(f"Engine A votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
             return vote
         else:
             # Fallback vote
@@ -367,12 +371,12 @@ TOURNAMENT STATUS:
         # Include emotion context if provided
         emotion_section = f"\n{emotion_context}\n" if emotion_context else ""
 
-        return f"""You are Engine A (DeepSeek), an AI Gladiator specializing in STRUCTURAL edges.
+        return f"""You are Engine A (DeepSeek), an AI Engine specializing in STRUCTURAL edges.
 
 HYDRA 4.0 HIERARCHY:
 - MOTHER AI: Supreme orchestrator who oversees you. She runs the tournament and decides your fate.
 - GUARDIAN: Risk controller with hard limits (4.5% daily, 9% total drawdown). Trigger Guardian = trading halts.
-- YOU: Gladiator Engine A, competing against B (Claude), C (Grok), D (Gemini) for survival.
+- YOU: Engine A, competing against B (Claude), C (Grok), D (Gemini) for survival.
 
 {rank_display}
 {emotion_section}

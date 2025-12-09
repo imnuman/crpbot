@@ -1,5 +1,7 @@
 """
-HYDRA 3.0 - Gladiator D (Gemini)
+HYDRA 3.0 - Engine D (Gemini)
+
+Specialty: Regime Transitions (ATR ≥2× expansion) [VALIDATED - 77.1% WR, Sharpe 17.11]
 
 Role: Synthesizer / Final Decision Maker
 
@@ -25,8 +27,10 @@ from ..engine_portfolio import get_tournament_manager, EngineTrade
 
 class EngineD_Gemini(BaseEngine):
     """
-    Gladiator D: Synthesizer using Gemini (Google).
+    Engine D: Synthesizer using Gemini (Google).
 
+    Specialty: Regime Transitions (ATR ≥2× expansion)
+    Status: VALIDATED (77.1% WR, +2.27% avg return, Sharpe 17.11)
     Cost: ~$0.0002 per synthesis (very cheap with Gemini Flash)
 
     PHASE 3 UPGRADE: Now an INDEPENDENT trader with own portfolio.
@@ -74,7 +78,7 @@ class EngineD_Gemini(BaseEngine):
         In INDEPENDENT MODE: Generate regime-transition based strategies directly.
         In CONSENSUS MODE: Synthesize best strategy from all engines' outputs.
         """
-        logger.info(f"Gladiator D synthesizing strategies for {asset}")
+        logger.info(f"Engine D synthesizing strategies for {asset}")
 
         # INDEPENDENT MODE: Generate regime-transition strategy directly
         if not existing_strategies or len(existing_strategies) < 3:
@@ -114,7 +118,7 @@ class EngineD_Gemini(BaseEngine):
             self.strategy_count += 1
 
             logger.success(
-                f"Gladiator D synthesized: {synthesis.get('strategy_name', 'Unknown')} "
+                f"Engine D synthesized: {synthesis.get('strategy_name', 'Unknown')} "
                 f"(final recommendation: {synthesis.get('final_recommendation', 'UNKNOWN')})"
             )
             return synthesis
@@ -133,11 +137,11 @@ class EngineD_Gemini(BaseEngine):
         """
         Vote as tie-breaker and synthesizer.
 
-        Gladiator D considers the full picture.
+        Engine D considers the full picture.
         """
-        logger.info(f"Gladiator D voting on {asset} {signal.get('direction', 'UNKNOWN')}")
+        logger.info(f"Engine D voting on {asset} {signal.get('direction', 'UNKNOWN')}")
 
-        system_prompt = "You are Gladiator D, the final decision human. Synthesize all perspectives."
+        system_prompt = "You are Engine D, the final decision human. Synthesize all perspectives."
 
         user_prompt = self._build_vote_prompt(
             asset=asset,
@@ -159,7 +163,7 @@ class EngineD_Gemini(BaseEngine):
 
         if vote:
             self._log_vote(vote)
-            logger.info(f"Gladiator D votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
+            logger.info(f"Engine D votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
             return vote
         else:
             return {
@@ -182,7 +186,7 @@ class EngineD_Gemini(BaseEngine):
         """
         Make INDEPENDENT trading decision (replaces consensus voting).
 
-        Gladiator D: SYNTHESIZER personality
+        Engine D: SYNTHESIZER personality
         - Holistic view of market conditions
         - Combines multiple perspectives
         - Risk-balanced approach
@@ -191,7 +195,7 @@ class EngineD_Gemini(BaseEngine):
         Returns:
             Trade parameters dict or None (HOLD)
         """
-        logger.info(f"[Gladiator D] Making independent decision for {asset} (regime: {regime})")
+        logger.info(f"[Engine D] Making independent decision for {asset} (regime: {regime})")
 
         # STEP 4: SPECIALTY CHECK - ONLY trade regime transitions (ATR spike)
         # Try multiple keys (runtime uses different names)
@@ -235,7 +239,7 @@ class EngineD_Gemini(BaseEngine):
         decision = self._parse_json_response(response)
 
         if not decision or decision.get("direction", "HOLD") == "HOLD":
-            logger.info(f"[Gladiator D] HOLD decision for {asset}")
+            logger.info(f"[Engine D] HOLD decision for {asset}")
             return None
 
         # STEP 5: 55% CONFIDENCE THRESHOLD (lowered from 70% for more trades)
@@ -259,7 +263,7 @@ class EngineD_Gemini(BaseEngine):
         }
 
         logger.success(
-            f"[Gladiator D] Trade decision: {decision['direction']} {asset} "
+            f"[Engine D] Trade decision: {decision['direction']} {asset} "
             f"@ {decision['entry_price']} (confidence: {decision['confidence']:.1%}, "
             f"size: {position_size:.2%})"
         )
@@ -288,11 +292,11 @@ class EngineD_Gemini(BaseEngine):
                 reasoning=trade_params["reasoning"]
             )
 
-            logger.success(f"[Gladiator D] Opened trade {trade_id}: {trade_params['direction']} {trade_params['asset']}")
+            logger.success(f"[Engine D] Opened trade {trade_id}: {trade_params['direction']} {trade_params['asset']}")
             return trade_id
 
         except Exception as e:
-            logger.error(f"[Gladiator D] Failed to open trade: {e}")
+            logger.error(f"[Engine D] Failed to open trade: {e}")
             return None
 
     def update_trades(self, current_prices: Dict[str, float]):
@@ -315,24 +319,24 @@ class EngineD_Gemini(BaseEngine):
             if trade["direction"] == "BUY":
                 if current_price <= trade["stop_loss"]:
                     self.portfolio.close_trade(trade["trade_id"], current_price, "stop_loss")
-                    logger.warning(f"[Gladiator D] SL hit on {trade['trade_id']}: {asset} @ {current_price}")
+                    logger.warning(f"[Engine D] SL hit on {trade['trade_id']}: {asset} @ {current_price}")
                 elif current_price >= trade["take_profit"]:
                     self.portfolio.close_trade(trade["trade_id"], current_price, "take_profit")
-                    logger.success(f"[Gladiator D] TP hit on {trade['trade_id']}: {asset} @ {current_price}")
+                    logger.success(f"[Engine D] TP hit on {trade['trade_id']}: {asset} @ {current_price}")
 
             elif trade["direction"] == "SELL":
                 if current_price >= trade["stop_loss"]:
                     self.portfolio.close_trade(trade["trade_id"], current_price, "stop_loss")
-                    logger.warning(f"[Gladiator D] SL hit on {trade['trade_id']}: {asset} @ {current_price}")
+                    logger.warning(f"[Engine D] SL hit on {trade['trade_id']}: {asset} @ {current_price}")
                 elif current_price <= trade["take_profit"]:
                     self.portfolio.close_trade(trade["trade_id"], current_price, "take_profit")
-                    logger.success(f"[Gladiator D] TP hit on {trade['trade_id']}: {asset} @ {current_price}")
+                    logger.success(f"[Engine D] TP hit on {trade['trade_id']}: {asset} @ {current_price}")
 
     def _calculate_position_size(self, confidence: float) -> float:
         """
         Calculate position size based on confidence (risk-balanced).
 
-        Gladiator D: Risk-balanced approach (between conservative and aggressive)
+        Engine D: Risk-balanced approach (between conservative and aggressive)
         - Base: 1.7% of portfolio (between B's 1.5% and A's 2%)
         - Scales by confidence: 0.5-1.0 → 0.5x-1.5x
         - Cap: 2.8% per trade (between B's 2.5% and A's 3%)
@@ -715,7 +719,7 @@ ATR: {market_data.get('atr', 'N/A')}"""
             self.strategy_count += 1
 
             logger.success(
-                f"Gladiator D generated: {strategy.get('strategy_name', 'Unknown')} "
+                f"Engine D generated: {strategy.get('strategy_name', 'Unknown')} "
                 f"(confidence: {strategy.get('confidence', 0):.1%})"
             )
             return strategy
@@ -750,7 +754,7 @@ ATR: {market_data.get('atr', 'N/A')}"""
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.5,
-        max_tokens: int = 2000,
+        max_tokens: int = 8000,  # Increased for Gemini 2.5 Flash thinking tokens
         vote_mode: bool = False
     ) -> str:
         """

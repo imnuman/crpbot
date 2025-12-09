@@ -1,5 +1,7 @@
 """
-HYDRA 3.0 - Gladiator C (Grok/X.AI) - INDEPENDENT TRADER
+HYDRA 3.0 - Engine C (Grok/X.AI) - INDEPENDENT TRADER
+
+Specialty: Orderbook Imbalance (>1.03:1 or <0.97:1) [PAPER-ONLY - negative edge]
 
 Role: Fast Backtester
 
@@ -33,8 +35,10 @@ from ..engine_portfolio import get_tournament_manager, EngineTrade
 
 class EngineC_Grok(BaseEngine):
     """
-    Gladiator C: Independent Pattern-Based Trader using Grok (X.AI).
+    Engine C: Independent Pattern-Based Trader using Grok (X.AI).
 
+    Specialty: Orderbook Imbalance (>1.03:1 or <0.97:1)
+    Status: PAPER-ONLY (48.4% WR = negative edge, Sharpe -1.62)
     Cost: ~$5 per 1M tokens (competitive pricing)
     Speed: Fast inference with powerful reasoning
 
@@ -82,7 +86,7 @@ class EngineC_Grok(BaseEngine):
         market_data: Dict
     ) -> Optional[Dict]:
         """Make independent trading decision based on pattern recognition."""
-        logger.info(f"Gladiator C analyzing {asset} ({regime}) with pattern matching")
+        logger.info(f"Engine C analyzing {asset} ({regime}) with pattern matching")
 
         # STEP 3: SPECIALTY CHECK - ONLY trade orderbook imbalances
         # Try direct key first (from runtime), then nested orderbook_analysis
@@ -131,7 +135,7 @@ class EngineC_Grok(BaseEngine):
             "position_size": self._calculate_position_size(decision["confidence"])
         }
 
-        logger.success(f"Gladiator C signals {decision['direction']} on {asset} (confidence: {decision['confidence']:.1%}, rank: {my_rank['rank'] if my_rank else 'N/A'})")
+        logger.success(f"Engine C signals {decision['direction']} on {asset} (confidence: {decision['confidence']:.1%}, rank: {my_rank['rank'] if my_rank else 'N/A'})")
         return trade_params
 
     def open_trade(self, trade_params: Dict) -> Optional[str]:
@@ -149,7 +153,7 @@ class EngineC_Grok(BaseEngine):
                 entry_time=datetime.now(timezone.utc)
             )
             self.portfolio.add_trade(trade)
-            logger.success(f"Gladiator C opened trade {trade.trade_id}")
+            logger.success(f"Engine C opened trade {trade.trade_id}")
             return trade.trade_id
         except Exception as e:
             logger.error(f"Failed to open trade: {e}")
@@ -178,7 +182,7 @@ class EngineC_Grok(BaseEngine):
 
         if closed_trades:
             for trade_id, reason in closed_trades:
-                logger.info(f"Gladiator C closed trade {trade_id} ({reason})")
+                logger.info(f"Engine C closed trade {trade_id} ({reason})")
 
     def _calculate_position_size(self, confidence: float) -> float:
         """Calculate position size (moderate risk between A and B)."""
@@ -203,7 +207,7 @@ class EngineC_Grok(BaseEngine):
         In INDEPENDENT MODE: Generate orderbook-imbalance based strategies directly.
         In CONSENSUS MODE: Backtest existing strategies from other engines.
         """
-        logger.info(f"Gladiator C backtesting strategies for {asset}")
+        logger.info(f"Engine C backtesting strategies for {asset}")
 
         # INDEPENDENT MODE: Generate orderbook imbalance strategy directly
         if not existing_strategies:
@@ -237,7 +241,7 @@ class EngineC_Grok(BaseEngine):
             self.strategy_count += 1
 
             logger.success(
-                f"Gladiator C backtested: {backtest_result.get('strategy_name', 'Unknown')} "
+                f"Engine C backtested: {backtest_result.get('strategy_name', 'Unknown')} "
                 f"(passed: {backtest_result.get('backtest_passed', False)}, "
                 f"win rate: {backtest_result.get('estimated_wr', 0):.1%})"
             )
@@ -257,9 +261,9 @@ class EngineC_Grok(BaseEngine):
         """
         Vote based on historical pattern matching.
         """
-        logger.info(f"Gladiator C voting on {asset} {signal.get('direction', 'UNKNOWN')}")
+        logger.info(f"Engine C voting on {asset} {signal.get('direction', 'UNKNOWN')}")
 
-        system_prompt = "You are Gladiator C, a pattern recognition specialist. Have we seen this setup before?"
+        system_prompt = "You are Engine C, a pattern recognition specialist. Have we seen this setup before?"
 
         user_prompt = self._build_vote_prompt(
             asset=asset,
@@ -280,7 +284,7 @@ class EngineC_Grok(BaseEngine):
 
         if vote:
             self._log_vote(vote)
-            logger.info(f"Gladiator C votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
+            logger.info(f"Engine C votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
             return vote
         else:
             return {
@@ -606,7 +610,7 @@ ATR: {market_data.get('atr', 'N/A')}"""
             self.strategy_count += 1
 
             logger.success(
-                f"Gladiator C generated: {strategy.get('strategy_name', 'Unknown')} "
+                f"Engine C generated: {strategy.get('strategy_name', 'Unknown')} "
                 f"(confidence: {strategy.get('confidence', 0):.1%})"
             )
             return strategy

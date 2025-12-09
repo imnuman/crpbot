@@ -1,10 +1,10 @@
 """
 HYDRA 3.0 - Chat Interface
 
-User interaction layer for gladiator Q&A and recommendations.
+User interaction layer for engine Q&A and recommendations.
 
 Features:
-- Ask gladiators questions
+- Ask engines questions
 - Get market recommendations
 - Store user feedback for improvement
 """
@@ -18,11 +18,11 @@ from pathlib import Path
 
 class HydraChat:
     """
-    Chat interface for user <> gladiator interaction.
+    Chat interface for user <> engine interaction.
 
     Modes:
-    1. Question Mode: Ask gladiators about trades, strategies, market
-    2. Recommendation Mode: Get gladiator analysis on demand
+    1. Question Mode: Ask engines about trades, strategies, market
+    2. Recommendation Mode: Get engine analysis on demand
     3. Feedback Mode: Store user feedback for improvement
     """
 
@@ -78,13 +78,13 @@ class HydraChat:
                         max_tokens=500
                     )
                     responses[name] = response
-                    logger.info(f"Gladiator {name} responded: {response[:100]}...")
+                    logger.info(f"Engine {name} responded: {response[:100]}...")
                 except Exception as e:
-                    logger.error(f"Gladiator {name} error: {e}")
+                    logger.error(f"Engine {name} error: {e}")
                     responses[name] = f"Error: {str(e)}"
         else:
             if target not in self.engines:
-                return {"error": f"Unknown gladiator: {target}"}
+                return {"error": f"Unknown engine: {target}"}
 
             try:
                 gladiator = self.engines[target]
@@ -95,9 +95,9 @@ class HydraChat:
                     max_tokens=500
                 )
                 responses[target] = response
-                logger.info(f"Gladiator {target} responded: {response[:100]}...")
+                logger.info(f"Engine {target} responded: {response[:100]}...")
             except Exception as e:
-                logger.error(f"Gladiator {target} error: {e}")
+                logger.error(f"Engine {target} error: {e}")
                 responses[target] = f"Error: {str(e)}"
 
         # Save to chat history
@@ -171,7 +171,7 @@ class HydraChat:
                             "parse_error": True
                         }
                 except Exception as e:
-                    logger.error(f"Gladiator {name} recommendation error: {e}")
+                    logger.error(f"Engine {name} recommendation error: {e}")
                     recommendations[name] = {
                         "vote": "HOLD",
                         "confidence": 0.0,
@@ -179,7 +179,7 @@ class HydraChat:
                         "error": True
                     }
         else:
-            # Only ask Gladiator D (synthesizer)
+            # Only ask Engine D (synthesizer)
             try:
                 gladiator_d = self.engines["D"]
                 response = gladiator_d._call_llm(
@@ -200,7 +200,7 @@ class HydraChat:
                         "parse_error": True
                     }
             except Exception as e:
-                logger.error(f"Gladiator D recommendation error: {e}")
+                logger.error(f"Engine D recommendation error: {e}")
                 recommendations["D"] = {
                     "vote": "HOLD",
                     "confidence": 0.0,
@@ -272,13 +272,13 @@ class HydraChat:
 
     def _build_qa_system_prompt(self, context: Optional[Dict]) -> str:
         """Build system prompt for Q&A mode."""
-        prompt = """You are a HYDRA gladiator - a specialist AI trader.
+        prompt = """You are a HYDRA Engine - a specialist AI trader.
 
 Answer the user's question clearly and concisely based on your specialty:
-- Gladiator A: Structural edges (funding, liquidations, timing)
-- Gladiator B: Logic validation (flaws, edge cases, risks)
-- Gladiator C: Historical patterns (backtesting, precedents)
-- Gladiator D: Synthesis (combining perspectives, final decisions)
+- Engine A: Structural edges (funding, liquidations, timing)
+- Engine B: Logic validation (flaws, edge cases, risks)
+- Engine C: Historical patterns (backtesting, precedents)
+- Engine D: Synthesis (combining perspectives, final decisions)
 
 Keep responses under 3-4 sentences unless more detail is needed.
 Be honest about limitations and uncertainties."""
@@ -296,7 +296,7 @@ Be honest about limitations and uncertainties."""
 
     def _build_recommendation_system_prompt(self, engine_name: str) -> str:
         """Build system prompt for recommendation mode."""
-        return f"""You are Gladiator {engine_name}, providing a trading recommendation.
+        return f"""You are Engine {engine_name}, providing a trading recommendation.
 
 Analyze the market data and provide your vote.
 

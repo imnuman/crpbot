@@ -1,10 +1,10 @@
 """
 HYDRA 3.0 - Tournament Tracker
 
-Tracks gladiator performance, scores votes, and maintains leaderboard.
+Tracks engine performance, scores votes, and maintains leaderboard.
 
 Design:
-- Each gladiator vote is recorded with prediction (BUY/SELL/HOLD)
+- Each engine vote is recorded with prediction (BUY/SELL/HOLD)
 - When paper trade completes, votes are scored:
   - Correct prediction = +1 point
   - Wrong prediction = 0 points
@@ -30,7 +30,7 @@ Outcome = Literal["win", "loss", "neutral"]
 
 class TournamentTracker:
     """
-    Tracks gladiator voting performance and maintains competitive leaderboard.
+    Tracks engine voting performance and maintains competitive leaderboard.
 
     Scoring Rules:
     - Correct prediction (vote matches trade outcome): +1 point
@@ -38,10 +38,10 @@ class TournamentTracker:
     - HOLD vote: 0 points (neutral, not counted)
 
     Examples:
-    - Gladiator votes BUY → Trade wins → +1 point
-    - Gladiator votes SELL → Trade wins → +1 point
-    - Gladiator votes BUY → Trade loses → 0 points
-    - Gladiator votes HOLD → 0 points (regardless of outcome)
+    - Engine votes BUY → Trade wins → +1 point
+    - Engine votes SELL → Trade wins → +1 point
+    - Engine votes BUY → Trade loses → 0 points
+    - Engine votes HOLD → 0 points (regardless of outcome)
     """
 
     def __init__(self, data_dir: Optional[Path] = None):
@@ -99,7 +99,7 @@ class TournamentTracker:
 
         Args:
             trade_id: Unique trade identifier
-            gladiator: Gladiator ID (A, B, C, D)
+            gladiator: Engine ID (A, B, C, D)
             asset: Asset being traded (e.g., BTC-USD)
             vote: BUY, SELL, or HOLD
             confidence: Vote confidence (0.0 to 1.0)
@@ -127,7 +127,7 @@ class TournamentTracker:
         with open(self.votes_file, 'a') as f:
             f.write(json.dumps(vote_record) + '\n')
 
-        logger.debug(f"Recorded vote: Gladiator {gladiator} votes {vote} on {asset} (trade: {trade_id})")
+        logger.debug(f"Recorded vote: Engine {gladiator} votes {vote} on {asset} (trade: {trade_id})")
 
     def score_trade_outcome(
         self,
@@ -380,7 +380,7 @@ class TournamentTracker:
         print("\n" + "=" * 80)
         print("🏆 HYDRA TOURNAMENT LEADERBOARD 🏆")
         print("=" * 80)
-        print(f"{'Rank':<6} {'Gladiator':<12} {'Points':<10} {'Win Rate':<12} {'Votes':<10} {'Best Asset':<15}")
+        print(f"{'Rank':<6} {'Engine':<12} {'Points':<10} {'Win Rate':<12} {'Votes':<10} {'Best Asset':<15}")
         print("-" * 80)
 
         for i, stats in enumerate(leaderboard[:top_n], 1):
@@ -390,6 +390,6 @@ class TournamentTracker:
             votes = stats['total_votes']
             best_asset = stats.get('best_asset', 'N/A')
 
-            print(f"{i:<6} Gladiator {gladiator:<4} {points:<10} {win_rate:<12} {votes:<10} {best_asset:<15}")
+            print(f"{i:<6} Engine {gladiator:<4}   {points:<10} {win_rate:<12} {votes:<10} {best_asset:<15}")
 
         print("=" * 80 + "\n")

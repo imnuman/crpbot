@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
+import threading
 
 from libs.hydra.turbo_generator import GeneratedStrategy, StrategyType
 
@@ -511,11 +512,14 @@ class TurboTournament:
 
 # Singleton instance
 _tournament_instance: Optional[TurboTournament] = None
+_tournament_lock = threading.Lock()
 
 
 def get_turbo_tournament() -> TurboTournament:
-    """Get or create the turbo tournament singleton."""
+    """Get or create the turbo tournament singleton (thread-safe)."""
     global _tournament_instance
     if _tournament_instance is None:
-        _tournament_instance = TurboTournament()
+        with _tournament_lock:
+            if _tournament_instance is None:
+                _tournament_instance = TurboTournament()
     return _tournament_instance

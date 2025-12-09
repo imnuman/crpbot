@@ -484,7 +484,7 @@ def api_v7_recent_signals(hours=24):
                 if len(result) > max_length:
                     return result[:max_length] + '...'
                 return result
-            except:
+            except (AttributeError, TypeError, IndexError):
                 # Fallback: just return raw notes truncated
                 return notes[:max_length] + '...' if len(notes) > max_length else notes
 

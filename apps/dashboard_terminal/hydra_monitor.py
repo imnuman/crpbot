@@ -247,7 +247,7 @@ class HydraMonitor:
             try:
                 ts = datetime.fromisoformat(trade['timestamp'])
                 time_str = ts.strftime("%H:%M:%S")
-            except:
+            except (ValueError, TypeError, KeyError):
                 time_str = "N/A"
 
             engine = trade['engine']

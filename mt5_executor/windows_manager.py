@@ -125,13 +125,13 @@ def get_vps_status() -> dict:
     code, out, _ = ssh_command("Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage")
     try:
         status["cpu_usage"] = int(out.strip())
-    except:
+    except (ValueError, AttributeError):
         pass
 
     code, out, _ = ssh_command("(Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory, TotalVisibleMemorySize | ForEach-Object { [math]::Round((1 - ($_.FreePhysicalMemory / $_.TotalVisibleMemorySize)) * 100, 1) })")
     try:
         status["memory_usage"] = float(out.strip())
-    except:
+    except (ValueError, AttributeError):
         pass
 
     return status

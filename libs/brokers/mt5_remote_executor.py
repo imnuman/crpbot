@@ -5,9 +5,9 @@ This module allows the HYDRA Linux server to send trade signals
 to the MT5 Executor running on a Windows VPS (ForexVPS).
 
 Usage:
+    # Set MT5_API_SECRET env var first
     executor = MT5RemoteExecutor(
-        windows_vps_url="http://YOUR_FOREXVPS_IP:5000",
-        api_secret="hydra_secret_2024"
+        windows_vps_url="http://YOUR_FOREXVPS_IP:5000"
     )
 
     result = executor.execute_signal({
@@ -38,10 +38,14 @@ from loguru import logger
 class RemoteExecutorConfig:
     """Configuration for remote MT5 executor."""
     executor_url: str = os.getenv("MT5_EXECUTOR_URL", "http://localhost:5000")
-    api_secret: str = os.getenv("MT5_API_SECRET", "hydra_secret_2024")
+    api_secret: str = os.getenv("MT5_API_SECRET", "")  # REQUIRED: Set MT5_API_SECRET env var
     timeout: int = 30  # Request timeout in seconds
     retry_attempts: int = 3
     retry_delay: float = 1.0
+
+    def __post_init__(self):
+        if not self.api_secret:
+            raise ValueError("MT5_API_SECRET environment variable is required for remote execution")
 
 
 class MT5RemoteExecutor:
@@ -68,9 +72,12 @@ class MT5RemoteExecutor:
         if config:
             self.config = config
         else:
+            secret = api_secret or os.getenv("MT5_API_SECRET", "")
+            if not secret:
+                raise ValueError("MT5_API_SECRET environment variable or api_secret parameter is required")
             self.config = RemoteExecutorConfig(
                 executor_url=windows_vps_url or os.getenv("MT5_EXECUTOR_URL", "http://localhost:5000"),
-                api_secret=api_secret or os.getenv("MT5_API_SECRET", "hydra_secret_2024")
+                api_secret=secret
             )
 
         self._session = requests.Session()

@@ -165,7 +165,7 @@ def main():
     summary = mother_ai.get_tournament_summary()
     for ranking in summary["rankings"]:
         logger.info(
-            f"  Gladiator {ranking['gladiator']}: "
+            f"  Engine {ranking['gladiator']}: "
             f"Weight={ranking['weight']:.0%}, "
             f"Trades={ranking['total_trades']}, "
             f"P&L=${ranking['total_pnl_usd']:+.2f}"
@@ -228,7 +228,7 @@ def main():
         logger.info(f"\n📊 FINAL TOURNAMENT STANDINGS:")
         for ranking in final_summary["rankings"]:
             logger.info(
-                f"  #{ranking['rank']} - Gladiator {ranking['gladiator']} | "
+                f"  #{ranking['rank']} - Engine {ranking['gladiator']} | "
                 f"Weight: {ranking['weight']:.0%} | "
                 f"P&L: ${ranking['total_pnl_usd']:+.2f} | "
                 f"WR: {ranking['win_rate']:.1%} | "
@@ -248,7 +248,7 @@ def main():
         logger.info(f"\n📊 TOURNAMENT STANDINGS AT SHUTDOWN:")
         for ranking in final_summary["rankings"]:
             logger.info(
-                f"  #{ranking['rank']} - Gladiator {ranking['gladiator']} | "
+                f"  #{ranking['rank']} - Engine {ranking['gladiator']} | "
                 f"Weight: {ranking['weight']:.0%} | "
                 f"P&L: ${ranking['total_pnl_usd']:+.2f} | "
                 f"WR: {ranking['win_rate']:.1%} | "

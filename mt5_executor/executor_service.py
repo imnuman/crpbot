@@ -35,9 +35,9 @@ import MetaTrader5 as mt5
 
 @dataclass
 class Config:
-    # MT5 Settings - With FTMO fallback credentials
+    # MT5 Settings - With FTMO fallback credentials (master password)
     mt5_login: int = int(os.getenv("FTMO_LOGIN", "531025383"))
-    mt5_password: str = os.getenv("FTMO_PASS", "c*B@lWp41b784c")
+    mt5_password: str = os.getenv("FTMO_PASS", "h9$K$FpY*1as")
     mt5_server: str = os.getenv("FTMO_SERVER", "FTMO-Server3")
 
     # API Settings
@@ -619,6 +619,43 @@ def symbols():
             })
 
     return jsonify({"count": len(result), "symbols": result[:100]})  # Limit to 100
+
+
+# ============================================================================
+# Reconnect Endpoint
+# ============================================================================
+
+@app.route("/reconnect", methods=["POST"])
+@require_auth
+def reconnect_mt5():
+    """Force reconnect to MT5."""
+    global mt5_manager
+
+    print("[API] Reconnect request received...")
+
+    # Try to disconnect first
+    try:
+        mt5.shutdown()
+    except:
+        pass
+
+    # Reinitialize
+    success = mt5_manager.connect()
+
+    if success:
+        account = mt5.account_info()
+        return jsonify({
+            "status": "connected",
+            "account": account.login if account else None,
+            "server": account.server if account else None,
+            "balance": account.balance if account else 0
+        })
+    else:
+        error = mt5.last_error()
+        return jsonify({
+            "status": "failed",
+            "error": str(error) if error else "Unknown error"
+        }), 500
 
 
 # ============================================================================

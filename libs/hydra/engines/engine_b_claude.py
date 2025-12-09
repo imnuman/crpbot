@@ -1,5 +1,7 @@
 """
-HYDRA 3.0 - Gladiator B (Claude) - INDEPENDENT TRADER
+HYDRA 3.0 - Engine B (Claude) - INDEPENDENT TRADER
+
+Specialty: Funding Rate Extremes (≥0.1%) [PAPER-ONLY - collecting data]
 
 Role: Logic Validator
 
@@ -32,8 +34,10 @@ from ..engine_portfolio import get_tournament_manager, EngineTrade
 
 class EngineB_Claude(BaseEngine):
     """
-    Gladiator B: Independent Logic-Based Trader using Claude (Anthropic).
+    Engine B: Independent Logic-Based Trader using Claude (Anthropic).
 
+    Specialty: Funding Rate Extremes (≥0.1%)
+    Status: PAPER-ONLY (collecting data at lower threshold)
     Cost: ~$0.015 per trading decision (higher than DeepSeek, but worth it for quality)
     """
 
@@ -72,7 +76,7 @@ class EngineB_Claude(BaseEngine):
         Returns:
             Dict with trade parameters if trading, None if HOLD
         """
-        logger.info(f"Gladiator B analyzing {asset} ({regime}) with logic validation")
+        logger.info(f"Engine B analyzing {asset} ({regime}) with logic validation")
 
         # STEP 2: SPECIALTY CHECK - ONLY trade funding rate extremes
         # Try funding_rate_pct first (runtime), then funding_rate (decimal)
@@ -124,7 +128,7 @@ class EngineB_Claude(BaseEngine):
         direction = decision.get("direction", "HOLD")
 
         if direction == "HOLD":
-            logger.info(f"Gladiator B holds on {asset}: {decision.get('reasoning', 'No reason')}")
+            logger.info(f"Engine B holds on {asset}: {decision.get('reasoning', 'No reason')}")
             return None
 
         # Validate trade parameters
@@ -151,7 +155,7 @@ class EngineB_Claude(BaseEngine):
         }
 
         logger.success(
-            f"Gladiator B signals {direction} on {asset} "
+            f"Engine B signals {direction} on {asset} "
             f"(confidence: {decision['confidence']:.1%}, rank: {my_rank['rank'] if my_rank else 'N/A'})"
         )
 
@@ -178,7 +182,7 @@ class EngineB_Claude(BaseEngine):
             )
 
             self.portfolio.add_trade(trade)
-            logger.success(f"Gladiator B opened trade {trade.trade_id}")
+            logger.success(f"Engine B opened trade {trade.trade_id}")
             return trade.trade_id
 
         except Exception as e:
@@ -218,7 +222,7 @@ class EngineB_Claude(BaseEngine):
 
         if closed_trades:
             for trade_id, reason in closed_trades:
-                logger.info(f"Gladiator B closed trade {trade_id} ({reason})")
+                logger.info(f"Engine B closed trade {trade_id} ({reason})")
 
     def _calculate_position_size(self, confidence: float) -> float:
         """
@@ -254,7 +258,7 @@ class EngineB_Claude(BaseEngine):
         In INDEPENDENT MODE: Generate funding-rate based strategies directly.
         In CONSENSUS MODE: Validate and improve strategies from Gladiator A.
         """
-        logger.info(f"Gladiator B reviewing strategies for {asset}")
+        logger.info(f"Engine B reviewing strategies for {asset}")
 
         # INDEPENDENT MODE: Generate funding-rate strategy directly
         if not existing_strategies:
@@ -289,7 +293,7 @@ class EngineB_Claude(BaseEngine):
             self.strategy_count += 1
 
             logger.success(
-                f"Gladiator B validated: {validated.get('strategy_name', 'Unknown')} "
+                f"Engine B validated: {validated.get('strategy_name', 'Unknown')} "
                 f"(approved: {validated.get('approved', False)})"
             )
             return validated
@@ -308,9 +312,9 @@ class EngineB_Claude(BaseEngine):
         """
         Vote on trade with focus on logical consistency.
         """
-        logger.info(f"Gladiator B voting on {asset} {signal.get('direction', 'UNKNOWN')}")
+        logger.info(f"Engine B voting on {asset} {signal.get('direction', 'UNKNOWN')}")
 
-        system_prompt = "You are Gladiator B, a logic validator. Critique this trade signal for logical flaws."
+        system_prompt = "You are Engine B, a logic validator. Critique this trade signal for logical flaws."
 
         user_prompt = self._build_vote_prompt(
             asset=asset,
@@ -331,7 +335,7 @@ class EngineB_Claude(BaseEngine):
 
         if vote:
             self._log_vote(vote)
-            logger.info(f"Gladiator B votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
+            logger.info(f"Engine B votes: {vote.get('vote', 'UNKNOWN')} ({vote.get('confidence', 0):.1%})")
             return vote
         else:
             return {
@@ -698,7 +702,7 @@ ATR: {market_data.get('atr', 'N/A')}"""
             self.strategy_count += 1
 
             logger.success(
-                f"Gladiator B generated: {strategy.get('strategy_name', 'Unknown')} "
+                f"Engine B generated: {strategy.get('strategy_name', 'Unknown')} "
                 f"(confidence: {strategy.get('confidence', 0):.1%})"
             )
             return strategy

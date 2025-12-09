@@ -1,16 +1,17 @@
 """
 HYDRA 3.0 - Engine Specialization
 
-Each engine has ONE specialty only:
-- Engine A (DeepSeek): ONLY liquidation cascades ($20M+ trigger)
-- Engine B (Claude): ONLY funding rate extremes (>0.5%)
-- Engine C (Grok): ONLY orderbook imbalance (>2.5:1)
-- Engine D (Gemini): ONLY regime transitions (ATR 2× expansion)
+Each engine has ONE specialty only (current thresholds):
+- Engine A (DeepSeek): ONLY liquidation cascades ($1M+ trigger) [PAPER-ONLY]
+- Engine B (Claude): ONLY funding rate extremes (≥0.1%) [PAPER-ONLY]
+- Engine C (Grok): ONLY orderbook imbalance (>1.03:1 or <0.97:1) [PAPER-ONLY]
+- Engine D (Gemini): ONLY regime transitions (ATR ≥2× expansion) [VALIDATED]
 
 Engines MUST reject any trade outside their specialty.
 """
 
 import logging
+import threading
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Dict, Any
@@ -40,6 +41,13 @@ class SpecialtyConfig:
     # Validation rules
     min_confidence: float = 0.55  # 55% minimum (lowered from 70% for more trades)
 
+    # Statistical validation status (from trigger_validation.py results)
+    # Only validated engines can trigger real trades
+    is_validated: bool = False  # True = statistically proven edge
+    validation_win_rate: float = 0.0  # Historical win rate from validation
+    validation_sharpe: float = 0.0  # Historical Sharpe from validation
+    paper_only: bool = True  # If True, signals are logged but not traded
+
     def to_dict(self) -> dict:
         return {
             "specialty": self.specialty.value,
@@ -48,25 +56,43 @@ class SpecialtyConfig:
             "trigger_threshold": self.trigger_threshold,
             "trigger_unit": self.trigger_unit,
             "min_confidence": self.min_confidence,
+            "is_validated": self.is_validated,
+            "validation_win_rate": self.validation_win_rate,
+            "validation_sharpe": self.validation_sharpe,
+            "paper_only": self.paper_only,
         }
 
 
 # Engine specialty assignments
-# NOTE: Thresholds lowered from original extreme values to trigger during normal trading
+# VALIDATION RESULTS (2024-12-08):
+# - Engine D (ATR): 77.1% WR, +2.27% avg, Sharpe 17.11 - VALIDATED
+# - Engine B (Funding): 0.5% threshold never triggered - lowered to 0.1%
+# - Engine C (Orderbook): 48.4% WR, -0.27% avg - NEGATIVE EDGE
+# - Engine A (Liquidation): No historical data available
+#
+# HYBRID MODE: Only Engine D trades live, others paper-observe only
 ENGINE_SPECIALTIES = {
     "A": SpecialtyConfig(
         specialty=Specialty.LIQUIDATION_CASCADE,
         engine_id="A",
         description="Liquidation cascades - forced liquidations triggering price moves",
-        trigger_threshold=1_000_000,  # $1M+ in liquidations (was $20M)
+        trigger_threshold=1_000_000,  # $1M+ in liquidations
         trigger_unit="USD",
+        is_validated=False,  # No historical data to validate
+        validation_win_rate=0.0,
+        validation_sharpe=0.0,
+        paper_only=True,  # PAPER ONLY - no edge proven
     ),
     "B": SpecialtyConfig(
         specialty=Specialty.FUNDING_EXTREME,
         engine_id="B",
         description="Funding rate extremes - crowded trades about to reverse",
-        trigger_threshold=0.005,  # >0.005% funding rate (lowered for FTMO prep)
+        trigger_threshold=0.10,  # Lowered from 0.5% to 0.1% for data collection
         trigger_unit="percent",
+        is_validated=False,  # Only 1 event at 0.5% - need more data
+        validation_win_rate=0.0,
+        validation_sharpe=0.0,
+        paper_only=True,  # PAPER ONLY - collecting data at lower threshold
     ),
     "C": SpecialtyConfig(
         specialty=Specialty.ORDERBOOK_IMBALANCE,
@@ -74,13 +100,21 @@ ENGINE_SPECIALTIES = {
         description="Orderbook imbalance - one-sided pressure",
         trigger_threshold=1.03,  # 1.03:1 bid/ask ratio (3% imbalance to trigger)
         trigger_unit="ratio",
+        is_validated=False,  # 48.4% WR = NEGATIVE EDGE
+        validation_win_rate=0.484,
+        validation_sharpe=-1.62,  # Losing Sharpe!
+        paper_only=True,  # PAPER ONLY - proven losing strategy
     ),
     "D": SpecialtyConfig(
         specialty=Specialty.REGIME_TRANSITION,
         engine_id="D",
         description="Regime transitions - volatility changes signaling trend shifts",
-        trigger_threshold=0.80,  # ATR 0.80× (lowered for FTMO prep)
+        trigger_threshold=2.0,  # ATR 2× expansion (validated threshold)
         trigger_unit="multiplier",
+        is_validated=True,  # VALIDATED: 77.1% WR, Sharpe 17.11
+        validation_win_rate=0.771,
+        validation_sharpe=17.11,
+        paper_only=False,  # LIVE TRADING - statistically proven edge
     ),
 }
 
@@ -203,24 +237,46 @@ class SpecialtyValidator:
 
     def format_specialties(self) -> str:
         """Format specialties for display."""
-        lines = ["=== Engine Specialties ==="]
+        lines = ["=== Engine Specialties (Hybrid Mode) ==="]
         for engine_id, config in self.specialties.items():
-            lines.append(f"Engine {engine_id}: {config.specialty.value}")
+            status = "LIVE" if not config.paper_only else "PAPER"
+            validated = "VALIDATED" if config.is_validated else "unvalidated"
+            lines.append(f"Engine {engine_id}: {config.specialty.value} [{status}] ({validated})")
             lines.append(f"  {config.description}")
             lines.append(f"  Trigger: {config.trigger_threshold} {config.trigger_unit}")
+            if config.is_validated:
+                lines.append(f"  Validation: {config.validation_win_rate:.1%} WR, Sharpe {config.validation_sharpe:.2f}")
             lines.append(f"  Min confidence: {config.min_confidence:.0%}")
         return "\n".join(lines)
+
+    def is_engine_live(self, engine_id: str) -> bool:
+        """Check if engine is allowed to trade live (not paper_only)."""
+        config = self.get_specialty(engine_id)
+        if config is None:
+            return False
+        return not config.paper_only
+
+    def get_live_engines(self) -> list:
+        """Get list of engines that can trade live."""
+        return [eid for eid, config in self.specialties.items() if not config.paper_only]
+
+    def get_paper_engines(self) -> list:
+        """Get list of engines that are paper-only."""
+        return [eid for eid, config in self.specialties.items() if config.paper_only]
 
 
 # Singleton
 _validator_instance: Optional[SpecialtyValidator] = None
+_validator_lock = threading.Lock()
 
 
 def get_specialty_validator() -> SpecialtyValidator:
-    """Get or create the specialty validator singleton."""
+    """Get or create the specialty validator singleton (thread-safe)."""
     global _validator_instance
     if _validator_instance is None:
-        _validator_instance = SpecialtyValidator()
+        with _validator_lock:
+            if _validator_instance is None:
+                _validator_instance = SpecialtyValidator()
     return _validator_instance
 
 

@@ -64,6 +64,10 @@ class CoinbaseDataProvider(DataProviderInterface):
                 f"Error: {e}"
             ) from e
         
+        # Rate limiting: minimum delay between requests (Coinbase allows ~10 req/s)
+        self._last_request_time = 0.0
+        self._min_request_interval = 0.15  # 150ms between requests
+
         logger.info("Coinbase data provider initialized (JWT authentication)")
 
     def _generate_jwt(self, method: str = "GET", path: str = "") -> str:
@@ -98,6 +102,12 @@ class CoinbaseDataProvider(DataProviderInterface):
         self, method: str, endpoint: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Make authenticated request to Coinbase API using JWT."""
+        # Rate limiting: ensure minimum interval between requests
+        elapsed = time.time() - self._last_request_time
+        if elapsed < self._min_request_interval:
+            time.sleep(self._min_request_interval - elapsed)
+        self._last_request_time = time.time()
+
         # Build request path for JWT (without query params - they're sent separately)
         request_path = f"/api/v3/brokerage{endpoint}"
         
@@ -193,11 +203,26 @@ class CoinbaseDataProvider(DataProviderInterface):
             # Coinbase Advanced Trade API uses /product_book/{product_id} for candles
             # But let's try /products/{product_id}/candles first
             endpoint = f"/products/{symbol}/candles"
-            response = self._make_request("GET", endpoint, params)
-            candles = response.get("candles", [])
+
+            # Retry logic with exponential backoff for empty responses
+            max_retries = 3
+            retry_delays = [0.5, 1.0, 2.0]  # Exponential backoff
+            candles = []
+
+            for attempt in range(max_retries):
+                response = self._make_request("GET", endpoint, params)
+                candles = response.get("candles", [])
+
+                if candles:
+                    break  # Success, exit retry loop
+
+                if attempt < max_retries - 1:
+                    delay = retry_delays[attempt]
+                    logger.debug(f"No candles for {symbol}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
 
             if not candles:
-                logger.warning(f"No candles returned for {symbol} {interval}")
+                logger.warning(f"No candles returned for {symbol} {interval} after {max_retries} attempts")
                 return pd.DataFrame(
                     columns=["timestamp", "open", "high", "low", "close", "volume"]
                 )

@@ -14,6 +14,7 @@ Uses ADX, ATR, and Bollinger Band width to determine regime.
 from typing import Dict, List
 from loguru import logger
 import numpy as np
+import threading
 from datetime import datetime, timezone
 
 
@@ -409,10 +410,13 @@ class RegimeDetector:
 # ==================== SINGLETON PATTERN ====================
 
 _regime_detector = None
+_regime_lock = threading.Lock()
 
 def get_regime_detector() -> RegimeDetector:
-    """Get singleton instance of RegimeDetector."""
+    """Get singleton instance of RegimeDetector (thread-safe)."""
     global _regime_detector
     if _regime_detector is None:
-        _regime_detector = RegimeDetector()
+        with _regime_lock:
+            if _regime_detector is None:
+                _regime_detector = RegimeDetector()
     return _regime_detector

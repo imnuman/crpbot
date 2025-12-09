@@ -15,6 +15,7 @@ This reduces risk while allowing trades with strong consensus.
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 from loguru import logger
+import threading
 
 
 class ConsensusEngine:
@@ -83,8 +84,8 @@ class ConsensusEngine:
                 "votes_hold": 1,
                 "avg_confidence": 0.7,
                 "dissenting_gladiators": ["C"],
-                "dissenting_reasons": ["Gladiator C: Backtest shows lower win rate"],
-                "summary": "3/4 gladiators agree on BUY (STRONG consensus)"
+                "dissenting_reasons": ["Engine C: Backtest shows lower win rate"],
+                "summary": "3/4 engines agree on BUY (STRONG consensus)"
             }
         """
         if not votes or len(votes) != 4:
@@ -167,7 +168,7 @@ class ConsensusEngine:
 
         dissenting_gladiators = [d.get("gladiator", "?") for d in dissenters]
         dissenting_reasons = [
-            f"Gladiator {d.get('gladiator', '?')}: {d.get('reasoning', 'No reason')}"
+            f"Engine {d.get('gladiator', '?')}: {d.get('reasoning', 'No reason')}"
             for d in dissenters
         ]
 
@@ -207,9 +208,9 @@ class ConsensusEngine:
         tie_breaker_gladiator: str = "D"
     ) -> Dict:
         """
-        In case of 2-2 tie, use specific gladiator as tie-breaker.
+        In case of 2-2 tie, use specific engine as tie-breaker.
 
-        Default: Gladiator D (Synthesizer) breaks ties.
+        Default: Engine D (Synthesizer) breaks ties.
         """
         buy_count = sum(1 for v in votes if v.get("vote") == "BUY")
         sell_count = sum(1 for v in votes if v.get("vote") == "SELL")
@@ -228,7 +229,7 @@ class ConsensusEngine:
         tie_direction = tie_breaker.get("vote")
 
         if tie_direction == "HOLD":
-            logger.info(f"Tie-breaker (Gladiator {tie_breaker_gladiator}) voted HOLD - no consensus")
+            logger.info(f"Tie-breaker (Engine {tie_breaker_gladiator}) voted HOLD - no consensus")
             return self._no_consensus()
 
         # Count votes in tie-breaker direction
@@ -243,11 +244,11 @@ class ConsensusEngine:
             "votes_hold": sum(1 for v in votes if v.get("vote") == "HOLD"),
             "avg_confidence": sum(v.get("confidence", 0) for v in votes) / len(votes),
             "tie_broken_by": tie_breaker_gladiator,
-            "summary": f"2-2 tie broken by Gladiator {tie_breaker_gladiator}: {tie_direction}",
+            "summary": f"2-2 tie broken by Engine {tie_breaker_gladiator}: {tie_direction}",
             "all_votes": votes
         }
 
-        logger.info(f"Tie broken by Gladiator {tie_breaker_gladiator}: {tie_direction}")
+        logger.info(f"Tie broken by Engine {tie_breaker_gladiator}: {tie_direction}")
 
         return result
 
@@ -375,10 +376,13 @@ class ConsensusEngine:
 
 # Global singleton instance
 _consensus_engine = None
+_consensus_lock = threading.Lock()
 
 def get_consensus_engine() -> ConsensusEngine:
-    """Get global ConsensusEngine singleton."""
+    """Get global ConsensusEngine singleton (thread-safe)."""
     global _consensus_engine
     if _consensus_engine is None:
-        _consensus_engine = ConsensusEngine()
+        with _consensus_lock:
+            if _consensus_engine is None:
+                _consensus_engine = ConsensusEngine()
     return _consensus_engine

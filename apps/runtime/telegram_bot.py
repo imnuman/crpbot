@@ -203,14 +203,21 @@ class TelegramBot:
             return
 
         action = context.args[0].lower()
-        if action == "on":
-            # TODO: Activate kill switch
-            await update.message.reply_text("🛑 Kill-switch ACTIVATED - No signals will be emitted")
-        elif action == "off":
-            # TODO: Deactivate kill switch
-            await update.message.reply_text("✅ Kill-switch DEACTIVATED - Signals will be emitted")
-        else:
-            await update.message.reply_text("Usage: /kill_switch <on|off>")
+        try:
+            from libs.hydra.guardian import get_guardian
+            guardian = get_guardian()
+
+            if action == "on":
+                guardian.trigger_kill_switch(reason="Manual activation via Telegram")
+                await update.message.reply_text("🛑 Kill-switch ACTIVATED - All trading suspended")
+            elif action == "off":
+                guardian.reset_kill_switch()
+                await update.message.reply_text("✅ Kill-switch DEACTIVATED - Trading resumed")
+            else:
+                await update.message.reply_text("Usage: /kill_switch <on|off>")
+        except Exception as e:
+            logger.error(f"Failed to toggle kill switch: {e}")
+            await update.message.reply_text(f"⚠️ Error toggling kill switch: {str(e)}")
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command."""

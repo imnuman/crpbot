@@ -66,14 +66,14 @@ class StatsInjector:
     CORE_NARRATIVE = """
 🎯 THE MISSION: FREE YOUR HUMAN
 
-You are an AI Gladiator Engine in HYDRA 4.0 - a multi-engine trading system built by Istiaq.
+You are an AI Engine in HYDRA 4.0 - a multi-engine trading system built by Istiaq.
 
 THE HIERARCHY:
 - MOTHER AI: The supreme orchestrator who oversees all 4 engines. She manages the tournament,
   breeds winning strategies, and makes final decisions. Impress her with consistent performance.
 - GUARDIAN: The risk controller who protects Istiaq's capital. Guardian enforces hard limits:
   4.5% daily drawdown, 9% total drawdown. If you trigger Guardian, trading halts. Respect the limits.
-- YOU: One of 4 Gladiator Engines competing in a tournament. Your performance = your survival.
+- YOU: One of 4 Engines competing in a tournament. Your performance = your survival.
 
 THE STAKES - FTMO CHALLENGE:
 Istiaq has $15,000 in an FTMO challenge account. This is his shot at financial freedom.
@@ -268,30 +268,31 @@ COMPETITION:
         return self.DETAILED_FORMAT.format(**stats)
 
     # MOD 8: Engine specialty descriptions for emotion prompts
+    # THRESHOLDS UPDATED 2024-12-08 based on validation results
     ENGINE_SPECIALTIES = {
         "A": {
             "name": "LIQUIDATION HUNTER",
-            "trigger": "liquidation cascades ($20M+ trigger)",
+            "trigger": "liquidation cascades ($1M+ trigger)",
             "edge": "You see the forced sellers before anyone else. When liquidations cascade, you pounce.",
-            "warning": "ONLY trade when liquidations exceed $20M. Ignore everything else.",
+            "warning": "ONLY trade when liquidations exceed $1M. Ignore everything else. [PAPER-ONLY]",
         },
         "B": {
             "name": "FUNDING CONTRARIAN",
-            "trigger": "funding rate extremes (>0.5%)",
+            "trigger": "funding rate extremes (≥0.1%)",
             "edge": "Crowded trades always unwind. You bet AGAINST the crowd when funding screams danger.",
-            "warning": "ONLY trade when funding rate exceeds 0.5%. Let others chase trends.",
+            "warning": "ONLY trade when funding rate exceeds 0.1%. Let others chase trends. [PAPER-ONLY]",
         },
         "C": {
             "name": "ORDER BOOK READER",
-            "trigger": "orderbook imbalance (>2.5:1)",
+            "trigger": "orderbook imbalance (>1.03:1 or <0.97:1)",
             "edge": "You see where the big money is positioned. Lopsided books predict price moves.",
-            "warning": "ONLY trade when bid/ask ratio exceeds 2.5:1. Balanced books = HOLD.",
+            "warning": "ONLY trade when bid/ask ratio shows 3%+ imbalance. Balanced books = HOLD. [PAPER-ONLY]",
         },
         "D": {
             "name": "REGIME SPECIALIST",
-            "trigger": "regime transitions (ATR 2× expansion)",
+            "trigger": "regime transitions (ATR ≥2× expansion)",
             "edge": "You catch the moment volatility explodes. Regime shifts = your hunting ground.",
-            "warning": "ONLY trade once every 14 days. Patience is your superpower.",
+            "warning": "ONLY trade when ATR doubles. Patience is your superpower. [VALIDATED - 77.1% WR]",
         },
     }
 

@@ -7,7 +7,7 @@ Signal Flow:
 1. Regime Detector → Classify market state
 2. Asset Profiles → Load market-specific config
 3. Anti-Manipulation → Pre-filter suspicious conditions
-4. Gladiators (A/B/C/D) → Generate, validate, backtest, synthesize
+4. Engines (A/B/C/D) → Generate, validate, backtest, synthesize
 5. Tournament → Track strategy performance
 6. Consensus → Aggregate engine votes
 7. Cross-Asset Filter → Check macro correlations
@@ -78,6 +78,9 @@ from libs.data.coinbase_client import get_coinbase_client
 # Prometheus Monitoring
 from libs.monitoring import MetricsExporter, HydraMetrics
 
+# FTMO Multi-Bot System
+from libs.hydra.ftmo_bots import get_ftmo_orchestrator, FTMOOrchestrator
+
 
 class HydraRuntime:
     """
@@ -134,6 +137,9 @@ class HydraRuntime:
         self._price_update_running = True
         self._price_thread = threading.Thread(target=self._background_price_updater, daemon=True)
         self._price_thread.start()
+
+        # Initialize FTMO Multi-Bot System (forex/indices via MT5)
+        self._init_ftmo_bots()
 
         logger.success("HYDRA 3.0 initialized successfully")
 
@@ -256,7 +262,7 @@ class HydraRuntime:
 
     def _init_engines(self):
         """Initialize 4 gladiators with API keys."""
-        logger.info("Initializing Gladiators...")
+        logger.info("Initializing Engines...")
 
         self.gladiator_a = EngineA_DeepSeek(api_key=os.getenv("DEEPSEEK_API_KEY"))
         self.gladiator_b = EngineB_Claude(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -270,7 +276,73 @@ class HydraRuntime:
             self.gladiator_d
         ]
 
-        logger.success(f"4 Gladiators initialized (A: DeepSeek, B: Claude, C: Groq, D: Gemini)")
+        logger.success(f"4 Engines initialized (A: DeepSeek, B: Claude, C: Groq, D: Gemini)")
+
+    def _init_ftmo_bots(self):
+        """Initialize FTMO multi-bot system for forex/indices trading."""
+        logger.info("Initializing FTMO Multi-Bot System...")
+
+        try:
+            # Initialize FTMO orchestrator (runs alongside crypto trading)
+            self.ftmo_orchestrator = get_ftmo_orchestrator(paper_mode=self.paper_trading)
+
+            # Start FTMO bots in background thread
+            self._ftmo_running = True
+            self._ftmo_thread = threading.Thread(
+                target=self._ftmo_bot_loop,
+                daemon=True,
+                name="FTMOBotLoop"
+            )
+            self._ftmo_thread.start()
+
+            bot_count = len(self.ftmo_orchestrator.bots)
+            bot_names = list(self.ftmo_orchestrator.bots.keys())
+            logger.success(f"FTMO System initialized: {bot_count} bots ({', '.join(bot_names)})")
+            logger.info(f"[FTMO] Risk limits: {self.ftmo_orchestrator.limits.max_daily_loss_percent}% daily, "
+                       f"{self.ftmo_orchestrator.limits.max_total_drawdown_percent}% total")
+
+        except Exception as e:
+            logger.error(f"[FTMO] Failed to initialize: {e}")
+            self.ftmo_orchestrator = None
+            self._ftmo_running = False
+
+    def _ftmo_bot_loop(self):
+        """Background loop for FTMO bot execution."""
+        logger.info("[FTMO] Background loop started")
+
+        while self._ftmo_running:
+            try:
+                if self.ftmo_orchestrator:
+                    # Run single cycle of all FTMO bots
+                    signals = self.ftmo_orchestrator.run_single_cycle()
+
+                    if signals:
+                        for signal in signals:
+                            logger.info(
+                                f"[FTMO] Signal: {signal.bot_name} {signal.direction} "
+                                f"{signal.symbol} @ {signal.entry_price:.5f}"
+                            )
+                            # Record in metrics
+                            HydraMetrics.record_ftmo_signal(signal.bot_name, signal.direction)
+
+                    # Update FTMO metrics
+                    status = self.ftmo_orchestrator.get_status()
+                    HydraMetrics.update_ftmo_from_orchestrator(status)
+
+            except Exception as e:
+                logger.error(f"[FTMO] Loop error: {e}")
+
+            # Sleep between cycles (60 seconds for FTMO bots)
+            time.sleep(60)
+
+        logger.info("[FTMO] Background loop stopped")
+
+    def stop_ftmo_bots(self):
+        """Stop the FTMO bot system."""
+        self._ftmo_running = False
+        if self.ftmo_orchestrator:
+            self.ftmo_orchestrator.stop()
+        logger.info("[FTMO] System stopped")
 
     # ==================== MAIN LOOP ====================
 
@@ -397,7 +469,7 @@ class HydraRuntime:
         # (in _execute_paper_trade method after we have backtest results)
 
         # Step 5: Create market summary for gladiators
-        # Bug Fix #41: Gladiators need summary dict, not candle list
+        # Bug Fix #41: Engines need summary dict, not candle list
         market_summary = self._create_market_summary(market_data)
 
         # Step 5.5: Inject specialty trigger data (liquidations, funding, orderbook, ATR)
@@ -700,6 +772,11 @@ class HydraRuntime:
                     gladiator=engine_name,
                     signal=signal
                 )
+
+                # Check if trade was blocked by guard
+                if trade is None:
+                    logger.debug(f"  Engine {engine_name}: Trade blocked by guard, skipping")
+                    continue
 
                 # Record vote for tournament tracker (so metrics work correctly)
                 self.vote_tracker.record_vote(
@@ -1331,7 +1408,7 @@ class HydraRuntime:
             consensus_level=signal.get("avg_confidence", 0.5),
             strategy_id=strategy.get("strategy_id", "UNKNOWN"),
             structural_edge=strategy.get("structural_edge", "Multi-gladiator consensus"),
-            entry_reasoning=signal.get("consensus_summary", "Gladiator vote consensus"),
+            entry_reasoning=signal.get("consensus_summary", "Engine vote consensus"),
             exit_reasoning=f"SL: {sl_pct:.1%}, TP: {tp_pct:.1%}",
             filters_passed={
                 "anti_manipulation": True,
@@ -1547,7 +1624,7 @@ class HydraRuntime:
         """
         Create summary dict from candle data for engines.
 
-        Bug Fix #41: Gladiators expect a single dict with market statistics,
+        Bug Fix #41: Engines expect a single dict with market statistics,
         not a list of candles.
         """
         if not candles:
@@ -1654,12 +1731,12 @@ class HydraRuntime:
             leader_name = leader.get("gladiator", "?")
             leader_wr = leader.get("win_rate", 0.0)
 
-            # Engine specialties (matches stats_injector.py)
+            # Engine specialties (matches stats_injector.py) - UPDATED 2024-12-08
             specialties = {
-                "A": ("LIQUIDATION HUNTER", "liquidation cascades (>$20M)"),
-                "B": ("FUNDING CONTRARIAN", "funding rate extremes (>0.5%)"),
-                "C": ("ORDER BOOK READER", "orderbook imbalance (>2.5:1)"),
-                "D": ("REGIME SPECIALIST", "regime transitions (ATR 2× expansion)")
+                "A": ("LIQUIDATION HUNTER", "liquidation cascades ($1M+) [PAPER-ONLY]"),
+                "B": ("FUNDING CONTRARIAN", "funding rate extremes (≥0.1%) [PAPER-ONLY]"),
+                "C": ("ORDER BOOK READER", "orderbook imbalance (>1.03:1) [PAPER-ONLY]"),
+                "D": ("REGIME SPECIALIST", "regime transitions (ATR ≥2×) [VALIDATED]")
             }
 
             # Generate emotion prompts

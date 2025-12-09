@@ -157,7 +157,7 @@ class ConsensusVote(Base):
     timestamp = Column(DateTime, nullable=False, index=True)
     symbol = Column(String(20), nullable=False)
 
-    # Gladiator vote
+    # Engine vote (gladiator is historical field name)
     gladiator = Column(String(20), nullable=False)
     strategy_id = Column(String(50), ForeignKey("strategies.strategy_id"))
     vote = Column(String(10), nullable=False)  # BUY, SELL, HOLD

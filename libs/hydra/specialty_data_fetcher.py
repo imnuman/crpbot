@@ -33,6 +33,28 @@ class SpecialtyDataFetcher:
     # Cache duration in seconds
     CACHE_DURATION = 60  # Refresh every 60 seconds
 
+    # Data validation bounds (sanity checks for external API data)
+    MAX_LIQUIDATION_USD = 10_000_000_000  # $10B max liquidation (sanity check)
+    MAX_FUNDING_RATE_PCT = 10.0  # 10% max funding rate (sanity check)
+    MAX_BID_ASK_RATIO = 100.0  # 100:1 max ratio (sanity check)
+    MAX_ATR_MULTIPLIER = 50.0  # 50x max ATR multiplier (sanity check)
+
+    @staticmethod
+    def _validate_numeric(value: Any, min_val: float, max_val: float, default: float = 0.0) -> float:
+        """Validate numeric value is within reasonable bounds."""
+        try:
+            num = float(value)
+            if np.isnan(num) or np.isinf(num):
+                logger.warning(f"Invalid numeric value (nan/inf): {value}, using default {default}")
+                return default
+            if num < min_val or num > max_val:
+                logger.warning(f"Numeric value {num} out of bounds [{min_val}, {max_val}], clamping")
+                return max(min_val, min(max_val, num))
+            return num
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Failed to validate numeric value {value}: {e}, using default {default}")
+            return default
+
     def __init__(self):
         self._cache: Dict[str, Any] = {}
         self._cache_time: Dict[str, float] = {}
@@ -413,7 +435,7 @@ class SpecialtyDataFetcher:
         """
         Fetch orderbook and calculate bid/ask ratio.
 
-        Engine C specialty: >2.5:1 ratio triggers trading.
+        Engine C specialty: >1.03:1 or <0.97:1 ratio triggers trading.
 
         Uses Coinbase REST API (no websocket needed for this).
 
@@ -628,7 +650,7 @@ if __name__ == "__main__":
 
         # Check trigger conditions
         print(f"\n--- TRIGGER STATUS ---")
-        print(f"Engine A (Liquidation $20M+): {'TRIGGERED' if data['liquidation_total_usd'] >= 20_000_000 else 'not triggered'}")
-        print(f"Engine B (Funding >0.5%): {'TRIGGERED' if abs(data['funding_rate_pct']) >= 0.5 else 'not triggered'}")
-        print(f"Engine C (Orderbook >2.5:1): {'TRIGGERED' if data['bid_ask_ratio'] >= 2.5 or data['bid_ask_ratio'] <= 0.4 else 'not triggered'}")
+        print(f"Engine A (Liquidation $1M+): {'TRIGGERED' if data['liquidation_total_usd'] >= 1_000_000 else 'not triggered'}")
+        print(f"Engine B (Funding ≥0.1%): {'TRIGGERED' if abs(data['funding_rate_pct']) >= 0.1 else 'not triggered'}")
+        print(f"Engine C (Orderbook >1.03:1): {'TRIGGERED' if data['bid_ask_ratio'] >= 1.03 or data['bid_ask_ratio'] <= 0.97 else 'not triggered'}")
         print(f"Engine D (ATR >2x): {'TRIGGERED' if data['atr_multiplier'] >= 2.0 else 'not triggered'}")

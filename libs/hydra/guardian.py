@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 from loguru import logger
 import json
+import threading
 from pathlib import Path
 
 
@@ -57,6 +58,9 @@ class Guardian:
             account_balance: Starting account balance
             state_file: Path to persist Guardian state (for emergency shutdowns)
         """
+        # Thread-safety lock for state modifications
+        self._lock = threading.Lock()
+
         self.account_balance = account_balance
         self.starting_balance = account_balance
         self.daily_pnl = 0.0
@@ -424,10 +428,14 @@ class Guardian:
 # ==================== SINGLETON PATTERN ====================
 
 _guardian = None
+_guardian_lock = threading.Lock()
 
 def get_guardian(account_balance: float = 10000.0) -> Guardian:
-    """Get singleton instance of Guardian."""
+    """Get singleton instance of Guardian (thread-safe)."""
     global _guardian
     if _guardian is None:
-        _guardian = Guardian(account_balance=account_balance)
+        with _guardian_lock:
+            # Double-check pattern for thread safety
+            if _guardian is None:
+                _guardian = Guardian(account_balance=account_balance)
     return _guardian

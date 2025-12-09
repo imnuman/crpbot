@@ -6,7 +6,7 @@ Continuously monitors HYDRA 3.0 tournament and automatically responds to failure
 Features:
 1. Process health monitoring (HYDRA runtime)
 2. API credit balance tracking (DeepSeek, Claude, Grok, Gemini)
-3. Gladiator voting pattern analysis
+3. Engine voting pattern analysis
 4. Paper trading performance metrics
 5. Auto-restart on crashes
 6. Log rotation to prevent disk fill

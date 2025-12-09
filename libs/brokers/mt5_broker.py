@@ -309,6 +309,44 @@ class MT5Broker(BrokerInterface):
             logger.error(f"Error getting account info: {e}")
             return None
 
+    def _validate_order_params(
+        self,
+        symbol: str,
+        volume: float,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        price: Optional[float] = None
+    ) -> Tuple[bool, str]:
+        """
+        Validate order parameters before sending to MT5.
+
+        Returns:
+            Tuple of (is_valid: bool, error_message: str)
+        """
+        # Validate symbol (alphanumeric with limited special chars)
+        if not symbol or not isinstance(symbol, str):
+            return False, "Symbol is required"
+        if len(symbol) > 20:
+            return False, "Symbol name too long (max 20 chars)"
+        if not all(c.isalnum() or c in '.-_/' for c in symbol):
+            return False, "Invalid symbol format"
+
+        # Validate volume
+        if not isinstance(volume, (int, float)) or volume <= 0:
+            return False, "Volume must be positive"
+        if volume > 100:  # Reasonable max lot size
+            return False, "Volume exceeds maximum (100 lots)"
+
+        # Validate prices (if provided)
+        if price is not None and (not isinstance(price, (int, float)) or price <= 0):
+            return False, "Price must be positive"
+        if stop_loss is not None and (not isinstance(stop_loss, (int, float)) or stop_loss <= 0):
+            return False, "Stop loss must be positive"
+        if take_profit is not None and (not isinstance(take_profit, (int, float)) or take_profit <= 0):
+            return False, "Take profit must be positive"
+
+        return True, ""
+
     def place_market_order(
         self,
         symbol: str,
@@ -320,6 +358,17 @@ class MT5Broker(BrokerInterface):
         magic_number: int = 0
     ) -> OrderResult:
         """Place a market order."""
+        # Validate input parameters
+        is_valid, error_msg = self._validate_order_params(symbol, volume, stop_loss, take_profit)
+        if not is_valid:
+            logger.warning(f"Order validation failed: {error_msg}")
+            return OrderResult(
+                success=False,
+                symbol=symbol,
+                side=side,
+                error_message=f"Validation: {error_msg}"
+            )
+
         if not self._ensure_connected():
             return OrderResult(
                 success=False,
@@ -446,6 +495,17 @@ class MT5Broker(BrokerInterface):
         expiration: Optional[datetime] = None
     ) -> OrderResult:
         """Place a limit order."""
+        # Validate input parameters
+        is_valid, error_msg = self._validate_order_params(symbol, volume, stop_loss, take_profit, price)
+        if not is_valid:
+            logger.warning(f"Limit order validation failed: {error_msg}")
+            return OrderResult(
+                success=False,
+                symbol=symbol,
+                side=side,
+                error_message=f"Validation: {error_msg}"
+            )
+
         if not self._ensure_connected():
             return OrderResult(
                 success=False,

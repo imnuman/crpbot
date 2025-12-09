@@ -56,10 +56,13 @@ class DuplicateGuardConfig:
     block_opposite_direction: bool = True
 
     # Block opposite direction across ALL engines (prevents conflicting positions)
-    block_opposite_direction_global: bool = True  # NEW: Prevents BUY+SELL on same symbol
+    block_opposite_direction_global: bool = True  # Prevents BUY+SELL on same symbol
 
     # Block same direction if position exists (no pyramiding)
     block_same_direction_existing: bool = False
+
+    # Maximum open positions per asset (across all engines) - FTMO safe
+    max_positions_per_asset: int = 2
 
     # Idempotency window (orders with same key within window are blocked)
     idempotency_window_seconds: int = 60
@@ -242,6 +245,12 @@ class DuplicateOrderGuard:
                 for other_engine, other_direction in self._open_positions[symbol].items():
                     if other_engine != engine and other_direction != direction:
                         return False, f"Conflicting {other_direction} position exists for {symbol} on Engine {other_engine} (global opposite blocked)"
+
+            # Check max positions per asset limit
+            if symbol in self._open_positions:
+                current_positions = len(self._open_positions[symbol])
+                if current_positions >= self.config.max_positions_per_asset:
+                    return False, f"Max positions reached for {symbol} ({current_positions}/{self.config.max_positions_per_asset})"
 
             return True, "Order allowed"
 

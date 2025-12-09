@@ -18,7 +18,6 @@ Usage:
 
 import os
 import time
-import requests
 import threading
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
@@ -32,6 +31,14 @@ from .nas100_gap import get_nas100_bot
 from .gold_ny_reversion import get_gold_ny_bot
 from .base_ftmo_bot import TradeSignal
 from .metalearning import get_ftmo_metalearner, TradeResult, FTMOMetalearner
+
+# Import ZMQ client for MT5 connection
+try:
+    from libs.brokers.mt5_zmq_client import MT5ZMQClient, get_mt5_client
+    ZMQ_AVAILABLE = True
+except ImportError:
+    ZMQ_AVAILABLE = False
+    logger.warning("[Orchestrator] ZMQ client not available, falling back to HTTP")
 
 
 @dataclass
@@ -79,10 +86,25 @@ class FTMOOrchestrator:
     MT5_EXECUTOR_URL = os.getenv("MT5_EXECUTOR_URL", "http://45.82.167.195:5000")
     MT5_API_SECRET = os.getenv("MT5_API_SECRET", "hydra_secret_2024")
 
-    def __init__(self, paper_mode: bool = True, enable_metalearning: bool = True):
+    def __init__(self, paper_mode: bool = True, enable_metalearning: bool = True, use_zmq: bool = True):
         self.paper_mode = paper_mode
         self.limits = RiskLimits()
         self.enable_metalearning = enable_metalearning
+        self.use_zmq = use_zmq and ZMQ_AVAILABLE
+
+        # Initialize ZMQ client for MT5 connection
+        self._zmq_client: Optional[MT5ZMQClient] = None
+        if self.use_zmq:
+            try:
+                self._zmq_client = get_mt5_client()
+                if self._zmq_client.connect():
+                    logger.info("[Orchestrator] ZMQ client connected to MT5 executor")
+                else:
+                    logger.warning("[Orchestrator] ZMQ client failed to connect, falling back to HTTP")
+                    self.use_zmq = False
+            except Exception as e:
+                logger.warning(f"[Orchestrator] ZMQ init failed: {e}, falling back to HTTP")
+                self.use_zmq = False
 
         # Initialize all bots
         self.bots = {
@@ -287,15 +309,23 @@ class FTMOOrchestrator:
     def _update_open_positions(self):
         """Update list of open positions from MT5."""
         try:
-            url = f"{self.MT5_EXECUTOR_URL}/positions"
-            headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
+            if self.use_zmq and self._zmq_client:
+                # Use ZMQ client
+                positions = self._zmq_client.get_positions()
+                self._open_positions = positions
+                logger.debug(f"[Orchestrator] {len(self._open_positions)} open positions (ZMQ)")
+            else:
+                # Fallback to HTTP
+                import requests
+                url = f"{self.MT5_EXECUTOR_URL}/positions"
+                headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
 
-            response = requests.get(url, headers=headers, timeout=10)
-            data = response.json()
+                response = requests.get(url, headers=headers, timeout=10)
+                data = response.json()
 
-            if data.get("success"):
-                self._open_positions = data.get("positions", [])
-                logger.debug(f"[Orchestrator] {len(self._open_positions)} open positions")
+                if data.get("success"):
+                    self._open_positions = data.get("positions", [])
+                    logger.debug(f"[Orchestrator] {len(self._open_positions)} open positions (HTTP)")
 
         except Exception as e:
             logger.warning(f"[Orchestrator] Failed to update positions: {e}")
@@ -329,10 +359,17 @@ class FTMOOrchestrator:
     def _get_account_info(self) -> Optional[Dict[str, Any]]:
         """Get account info from MT5."""
         try:
-            url = f"{self.MT5_EXECUTOR_URL}/account"
-            headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
-            response = requests.get(url, headers=headers, timeout=10)
-            return response.json()
+            if self.use_zmq and self._zmq_client:
+                # Use ZMQ client
+                account = self._zmq_client.get_account()
+                return account
+            else:
+                # Fallback to HTTP
+                import requests
+                url = f"{self.MT5_EXECUTOR_URL}/account"
+                headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
+                response = requests.get(url, headers=headers, timeout=10)
+                return response.json()
         except Exception as e:
             logger.warning(f"[Orchestrator] Failed to get account info: {e}")
             return None
@@ -340,6 +377,13 @@ class FTMOOrchestrator:
     def _get_candles(self, symbol: str, count: int = 100) -> List[Dict[str, float]]:
         """Fetch candles for volatility analysis."""
         try:
+            # Note: ZMQ doesn't support candles yet, skip for now
+            if self.use_zmq:
+                logger.debug(f"[Orchestrator] Candles not available via ZMQ for {symbol}")
+                return []
+
+            # HTTP fallback
+            import requests
             url = f"{self.MT5_EXECUTOR_URL}/candles/{symbol}"
             headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
             params = {"count": count, "timeframe": "H1"}
@@ -483,6 +527,8 @@ class FTMOOrchestrator:
             "open_positions": len(self._open_positions),
             "max_positions": self.limits.max_concurrent_positions,
             "metalearning_enabled": self.enable_metalearning,
+            "zmq_enabled": self.use_zmq,
+            "zmq_connected": self._zmq_client.is_connected if self._zmq_client else False,
             "daily_stats": {
                 "trades": self._daily_stats.trades_taken if self._daily_stats else 0,
                 "starting_balance": self._daily_stats.starting_balance if self._daily_stats else 0,

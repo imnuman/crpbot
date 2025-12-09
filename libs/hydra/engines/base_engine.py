@@ -1,9 +1,9 @@
 """
-HYDRA 3.0 - Base Gladiator (Abstract Class)
+HYDRA 3.0 - Base Engine (Abstract Class)
 
-All gladiators inherit from this base class.
+All engines inherit from this base class.
 
-Each gladiator must implement:
+Each engine must implement:
 - generate_strategy(): Create a trading strategy
 - vote_on_trade(): Vote BUY/SELL/HOLD on a specific trade
 """
@@ -40,7 +40,7 @@ class BaseGladiator(ABC):
         self.specialty_validator = get_specialty_validator()
         self.specialty_config = self.specialty_validator.get_specialty(name)
 
-        logger.info(f"Gladiator {name} initialized: {role}")
+        logger.info(f"Engine {name} initialized: {role}")
 
     @abstractmethod
     def generate_strategy(
@@ -118,11 +118,11 @@ class BaseGladiator(ABC):
         """
         Check if this engine's specialty trigger is active.
 
-        Each engine has ONE specialty:
-        - Engine A: Liquidation cascades ($20M+ trigger)
-        - Engine B: Funding rate extremes (>0.5%)
-        - Engine C: Orderbook imbalance (>2.5:1)
-        - Engine D: Regime transitions (ATR 2× expansion)
+        Each engine has ONE specialty (thresholds from engine_specialization.py):
+        - Engine A: Liquidation cascades ($1M+ trigger)
+        - Engine B: Funding rate extremes (≥0.1%)
+        - Engine C: Orderbook imbalance (>1.03:1 or <0.97:1)
+        - Engine D: Regime transitions (ATR ≥2× expansion) [VALIDATED]
 
         Args:
             market_data: Dict with market conditions
@@ -166,7 +166,7 @@ class BaseGladiator(ABC):
         is_triggered, reason = self.check_specialty_trigger(market_data)
 
         if not is_triggered:
-            logger.info(f"Gladiator {self.name}: {reason} - voting HOLD")
+            logger.info(f"Engine {self.name}: {reason} - voting HOLD")
             return {
                 "vote": "HOLD",
                 "confidence": 0.0,
@@ -176,7 +176,7 @@ class BaseGladiator(ABC):
             }
 
         # Specialty triggered - proceed with normal vote
-        logger.info(f"Gladiator {self.name}: {reason} - proceeding with vote")
+        logger.info(f"Engine {self.name}: {reason} - proceeding with vote")
         return self.vote_on_trade(asset, asset_type, regime, strategy, signal, market_data)
 
     def _call_llm(

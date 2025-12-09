@@ -378,3 +378,194 @@ Bot is ready! 🚀
             message += f"\n\n{details}"
 
         return self.send_message(message)
+
+    def send_ftmo_trade_alert(
+        self,
+        bot_name: str,
+        symbol: str,
+        direction: str,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float,
+        lot_size: float,
+        reason: str,
+        paper_mode: bool = True
+    ) -> bool:
+        """
+        Send FTMO multi-bot trade alert
+
+        Args:
+            bot_name: Name of the FTMO bot
+            symbol: Trading symbol
+            direction: BUY or SELL
+            entry_price: Entry price
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+            lot_size: Position size
+            reason: Trade reasoning
+            paper_mode: Whether in paper mode
+
+        Returns:
+            True if sent successfully
+        """
+        emoji = "🟢" if direction == "BUY" else "🔴"
+        mode = "PAPER" if paper_mode else "LIVE"
+
+        # Calculate risk/reward
+        risk_pips = abs(entry_price - stop_loss)
+        reward_pips = abs(take_profit - entry_price)
+        rr_ratio = reward_pips / risk_pips if risk_pips > 0 else 0
+
+        message = f"""
+{emoji} <b>FTMO BOT TRADE</b> {emoji}
+
+<b>Bot:</b> {bot_name}
+<b>Symbol:</b> {symbol}
+<b>Direction:</b> {direction}
+<b>Mode:</b> {mode}
+
+💰 <b>TRADE DETAILS</b>
+• <b>Entry:</b> {entry_price:.5f}
+• <b>Stop Loss:</b> {stop_loss:.5f}
+• <b>Take Profit:</b> {take_profit:.5f}
+• <b>Lot Size:</b> {lot_size}
+• <b>Risk/Reward:</b> 1:{rr_ratio:.2f}
+
+📊 <b>REASON</b>
+<i>{reason}</i>
+        """.strip()
+
+        return self.send_message(message)
+
+    def send_ftmo_status_update(
+        self,
+        balance: float,
+        daily_pnl: float,
+        daily_drawdown: float,
+        total_drawdown: float,
+        open_positions: int,
+        trades_today: int
+    ) -> bool:
+        """
+        Send FTMO daily status update
+
+        Args:
+            balance: Current account balance
+            daily_pnl: Today's P&L in USD
+            daily_drawdown: Daily drawdown percentage
+            total_drawdown: Total drawdown percentage
+            open_positions: Number of open positions
+            trades_today: Total trades today
+
+        Returns:
+            True if sent successfully
+        """
+        pnl_emoji = "📈" if daily_pnl >= 0 else "📉"
+        dd_warning = "⚠️" if daily_drawdown > 3 or total_drawdown > 7 else ""
+
+        message = f"""
+📊 <b>FTMO DAILY STATUS</b>
+
+💰 <b>ACCOUNT</b>
+• <b>Balance:</b> ${balance:,.2f}
+• <b>Daily P&L:</b> {pnl_emoji} ${daily_pnl:+,.2f}
+
+{dd_warning}<b>RISK METRICS</b>
+• <b>Daily DD:</b> {daily_drawdown:.2f}% / 5%
+• <b>Total DD:</b> {total_drawdown:.2f}% / 10%
+
+📈 <b>ACTIVITY</b>
+• <b>Open Positions:</b> {open_positions}/3
+• <b>Trades Today:</b> {trades_today}
+        """.strip()
+
+        return self.send_message(message)
+
+    def send_ftmo_kill_switch_alert(self, reason: str, balance: float, drawdown: float) -> bool:
+        """
+        Send critical kill switch alert
+
+        Args:
+            reason: Why kill switch was triggered
+            balance: Current balance
+            drawdown: Current drawdown
+
+        Returns:
+            True if sent successfully
+        """
+        message = f"""
+🚨🚨🚨 <b>KILL SWITCH ACTIVATED</b> 🚨🚨🚨
+
+<b>Reason:</b> {reason}
+
+<b>Current State:</b>
+• Balance: ${balance:,.2f}
+• Drawdown: {drawdown:.2f}%
+
+⚠️ <b>ALL TRADING HALTED</b> ⚠️
+
+Manual review required before resuming.
+        """.strip()
+
+        return self.send_message(message)
+
+
+# Singleton instance for global access
+_notifier: Optional[TelegramNotifier] = None
+
+
+def get_telegram_notifier() -> Optional[TelegramNotifier]:
+    """Get or create the global Telegram notifier instance."""
+    global _notifier
+    if _notifier is None:
+        import os
+        token = os.getenv("TELEGRAM_TOKEN")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        if token and chat_id:
+            _notifier = TelegramNotifier(token, chat_id)
+    return _notifier
+
+
+def send_telegram_message(message: str) -> bool:
+    """
+    Send a message via Telegram (global helper function)
+
+    Args:
+        message: Message to send (HTML format supported)
+
+    Returns:
+        True if sent successfully
+    """
+    notifier = get_telegram_notifier()
+    if notifier:
+        return notifier.send_message(message)
+    return False
+
+
+def send_ftmo_trade_alert(
+    bot_name: str,
+    symbol: str,
+    direction: str,
+    entry_price: float,
+    stop_loss: float,
+    take_profit: float,
+    lot_size: float,
+    reason: str,
+    paper_mode: bool = True
+) -> bool:
+    """Send FTMO trade alert via Telegram."""
+    notifier = get_telegram_notifier()
+    if notifier:
+        return notifier.send_ftmo_trade_alert(
+            bot_name, symbol, direction, entry_price,
+            stop_loss, take_profit, lot_size, reason, paper_mode
+        )
+    return False
+
+
+def send_ftmo_kill_switch_alert(reason: str, balance: float, drawdown: float) -> bool:
+    """Send FTMO kill switch alert via Telegram."""
+    notifier = get_telegram_notifier()
+    if notifier:
+        return notifier.send_ftmo_kill_switch_alert(reason, balance, drawdown)
+    return False

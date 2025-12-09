@@ -36,7 +36,7 @@ class PaperTrade:
     asset: str
     regime: str
     strategy_id: str
-    gladiator: str
+    gladiator: str  # Engine ID: "A", "B", "C", or "D" (historical name, same as engine_id)
 
     # Entry details
     direction: str  # "BUY" | "SELL"
@@ -47,6 +47,11 @@ class PaperTrade:
     # Exit targets
     stop_loss: float
     take_profit: float
+
+    @property
+    def engine(self) -> str:
+        """Alias for gladiator - returns engine ID (A, B, C, D)."""
+        return self.gladiator
 
     # Exit details (filled when closed)
     exit_price: Optional[float] = None
@@ -198,6 +203,19 @@ class PaperTradingSystem:
         """
         direction = signal["action"]
         entry_price = signal["entry_price"]
+
+        # Check hybrid mode - log if engine is validated
+        engine_validated = False
+        try:
+            from .engine_specialization import get_specialty_validator
+            validator = get_specialty_validator()
+            engine_validated = validator.is_engine_live(gladiator)
+            if engine_validated:
+                logger.info(f"[HybridMode] Engine {gladiator} - VALIDATED (live-ready)")
+            else:
+                logger.debug(f"[HybridMode] Engine {gladiator} - paper-only (collecting data)")
+        except Exception as e:
+            logger.debug(f"Hybrid mode check failed: {e}")
 
         # Check duplicate guard (prevents conflicting positions)
         try:
