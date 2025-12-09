@@ -1,0 +1,26 @@
+[Unit]
+Description=FTMO Multi-Bot Trading System
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/crpbot
+Environment=PATH=/root/crpbot/.venv/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/root/crpbot/.env
+ExecStart=/root/crpbot/.venv/bin/python apps/runtime/ftmo_runner.py --turbo --interval 60
+Restart=always
+RestartSec=30
+StandardOutput=append:/var/log/ftmo-runner.log
+StandardError=append:/var/log/ftmo-runner.log
+
+# Watchdog - restart if no activity for 10 minutes
+WatchdogSec=600
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

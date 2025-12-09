@@ -8,6 +8,31 @@
 #   - Metrics:      http://178.156.136.185:9100/metrics
 
 services:
+  # FTMO Runner - FTMO Multi-Bot Trading System with MT5 ZMQ
+  ftmo-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ftmo-runner
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: >
+      uv run python apps/runtime/ftmo_runner.py
+      --turbo
+      --interval 60
+    networks:
+      - hydra-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # HYDRA Runtime - Main trading engine with Prometheus metrics
   hydra-runtime:
     build:
