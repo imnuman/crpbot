@@ -496,9 +496,188 @@
           "expr": "ftmo_bot_active{bot=\"EngineD_ATR\"}",
           "legendFormat": "Engine D (ATR)",
           "refId": "F"
+        },
+        {
+          "expr": "ftmo_bot_active{bot=\"HFScalper\"}",
+          "legendFormat": "HF Scalper",
+          "refId": "G"
         }
       ],
       "title": "Bot Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {"options": {"0": {"color": "dark-red", "index": 0, "text": "OFF"}}, "type": "value"},
+            {"options": {"1": {"color": "green", "index": 1, "text": "ON"}}, "type": "value"}
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "text", "value": null}]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 3, "w": 8, "x": 0, "y": 18},
+      "id": 16,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "ftmo_turbo_mode_active",
+          "legendFormat": "Turbo Mode",
+          "refId": "A"
+        },
+        {
+          "expr": "ftmo_metalearning_active",
+          "legendFormat": "Metalearning",
+          "refId": "B"
+        },
+        {
+          "expr": "ftmo_paper_mode_active",
+          "legendFormat": "Paper Mode",
+          "refId": "C"
+        }
+      ],
+      "title": "System Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {"options": {"0": {"color": "green", "index": 0, "text": "LOW"}}, "type": "value"},
+            {"options": {"1": {"color": "yellow", "index": 1, "text": "MEDIUM"}}, "type": "value"},
+            {"options": {"2": {"color": "orange", "index": 2, "text": "HIGH"}}, "type": "value"},
+            {"options": {"3": {"color": "red", "index": 3, "text": "EXTREME"}}, "type": "value"}
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "text", "value": null}]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 3, "w": 8, "x": 8, "y": 18},
+      "id": 17,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "ftmo_l2_volatility_regime{symbol=\"XAUUSD\"}",
+          "legendFormat": "XAUUSD",
+          "refId": "A"
+        },
+        {
+          "expr": "ftmo_l2_volatility_regime{symbol=\"EURUSD\"}",
+          "legendFormat": "EURUSD",
+          "refId": "B"
+        },
+        {
+          "expr": "ftmo_l2_volatility_regime{symbol=\"US30\"}",
+          "legendFormat": "US30",
+          "refId": "C"
+        }
+      ],
+      "title": "L2: Volatility Regime",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.8},
+              {"color": "green", "value": 1.0},
+              {"color": "yellow", "value": 1.5},
+              {"color": "red", "value": 2.0}
+            ]
+          },
+          "unit": "x"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 3, "w": 8, "x": 16, "y": 18},
+      "id": 18,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "ftmo_l1_position_multiplier{bot=\"GoldLondonReversal\"}",
+          "legendFormat": "Gold London",
+          "refId": "A"
+        },
+        {
+          "expr": "ftmo_l1_position_multiplier{bot=\"HFScalper\"}",
+          "legendFormat": "HF Scalper",
+          "refId": "B"
+        },
+        {
+          "expr": "ftmo_l1_position_multiplier{bot=\"EURUSDBreakout\"}",
+          "legendFormat": "EURUSD",
+          "refId": "C"
+        }
+      ],
+      "title": "L1: Position Multiplier",
       "type": "stat"
     },
     {

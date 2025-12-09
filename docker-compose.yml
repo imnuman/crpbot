@@ -3,12 +3,12 @@
 #
 # Deploy: docker compose up -d --build
 # Access:
-#   - Grafana:      http://178.156.136.185:3000
-#   - Prometheus:   http://178.156.136.185:9090
-#   - Metrics:      http://178.156.136.185:9100/metrics
+#   - Grafana:      http://77.42.23.42:3001
+#   - Prometheus:   http://77.42.23.42:9090
+#   - Metrics:      http://77.42.23.42:9100/metrics
 
 services:
-  # FTMO Runner - FTMO Multi-Bot Trading System with MT5 ZMQ
+  # FTMO Event-Driven Runner - Real-time streaming with ZMQ PUB/SUB
   ftmo-runner:
     build:
       context: .
@@ -17,21 +17,23 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "9101:9100"  # Prometheus metrics for FTMO bots
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     command: >
-      uv run python apps/runtime/ftmo_runner.py
+      uv run python apps/runtime/ftmo_event_runner.py
       --turbo
-      --interval 60
+      --metrics-port 9100
     networks:
       - hydra-network
     healthcheck:
-      test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
-      interval: 60s
+      test: ["CMD", "curl", "-f", "http://localhost:9100/metrics"]
+      interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
 
   # HYDRA Runtime - Main trading engine with Prometheus metrics
   hydra-runtime:
@@ -85,12 +87,12 @@ services:
     container_name: hydra-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-hydra4admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://178.156.136.185:3000
+      - GF_SERVER_ROOT_URL=http://77.42.23.42:3001
       - GF_ALERTING_ENABLED=false
       - GF_UNIFIED_ALERTING_ENABLED=true
     volumes:
@@ -142,7 +144,7 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
-      - '--web.external-url=http://178.156.136.185:9093'
+      - '--web.external-url=http://77.42.23.42:9093'
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager

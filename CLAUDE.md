@@ -4,22 +4,81 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## Dual-Environment Setup
+## Multi-Server Infrastructure
 
-This project operates across **two environments** - identify yours first:
+This project operates across **four servers**:
 
-```bash
-pwd
-# /home/numan/crpbot  -> QC Claude (Local - Development & Testing)
-# /root/crpbot        -> Builder Claude (Cloud - Production)
+| Server | IP | OS | Role |
+|--------|-----|-----|------|
+| **US Production** | 178.156.136.185 | Linux | FTMO trading (low latency to Windows VPS) |
+| **Finland Dev** | 77.42.23.42 | Linux | Grafana dashboard, development, git repo |
+| **Windows VPS** | 45.82.167.195 | Windows | MT5 terminal, ZMQ executor |
+| **Local Dev** | `/home/numan/crpbot` | Linux | QC Claude, testing |
+
+### Server Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     FTMO Trading System                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│   ┌──────────────────┐     SSH/ZMQ     ┌──────────────────┐     │
+│   │ US Production    │ ◄─────────────► │ Windows VPS      │     │
+│   │ 178.156.136.185  │     tunnel      │ 45.82.167.195    │     │
+│   │                  │                  │                  │     │
+│   │ • FTMO Runner    │                  │ • MT5 Terminal   │     │
+│   │ • 5 Trading Bots │                  │ • ZMQ Server     │     │
+│   │ • Metalearning   │                  │ • Trade Executor │     │
+│   └──────────────────┘                  └──────────────────┘     │
+│           │                                                       │
+│           │ rsync                                                 │
+│           ▼                                                       │
+│   ┌──────────────────┐                                           │
+│   │ Finland Dev      │                                           │
+│   │ 77.42.23.42      │                                           │
+│   │                  │                                           │
+│   │ • Grafana :3001  │                                           │
+│   │ • Prometheus     │                                           │
+│   │ • Git repo       │                                           │
+│   └──────────────────┘                                           │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-| Environment | Path | Role |
-|------------|------|------|
-| QC Claude | `/home/numan/crpbot` | Development, testing, documentation |
-| Builder Claude | `/root/crpbot` | Production runtime, deployment, monitoring |
+### Credentials & Access
 
-**Sync Protocol**: Always `git pull origin main` before work, `git push` after.
+**US Production** (root@178.156.136.185):
+```bash
+ssh root@178.156.136.185
+# FTMO runner location: /root/crpbot
+```
+
+**Finland Dev** (root@77.42.23.42):
+```bash
+ssh root@77.42.23.42
+# Grafana: http://77.42.23.42:3001 (admin / hydra2024)
+```
+
+**Windows VPS** (trader@45.82.167.195):
+```bash
+# SSH access (requires sshpass)
+sshpass -p '80B#^yOr2b5s' ssh trader@45.82.167.195
+# MT5 ZMQ Server: C:\HYDRA\mt5_zmq_server.py
+# Port: 5555 (ZMQ REQ-REP)
+```
+
+### Sync Protocol
+
+```bash
+# On Finland (source of truth):
+git pull origin main  # Before work
+git push origin main  # After work
+
+# Sync to US Production:
+rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='.venv' \
+  /root/crpbot/libs/ root@178.156.136.185:/root/crpbot/libs/
+rsync -avz /root/crpbot/apps/ root@178.156.136.185:/root/crpbot/apps/
+```
 
 ---
 

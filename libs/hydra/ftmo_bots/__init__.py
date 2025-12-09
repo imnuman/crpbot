@@ -33,6 +33,11 @@ from .metalearning import (
     TradeResult,
 )
 
+# Event-driven architecture
+from .event_bus import FTMOEventBus, TickEvent, CandleEvent, get_event_bus
+from .event_bot_wrapper import EventBotWrapper, MultiSymbolBotWrapper, TriggerConfig
+from .metrics import FTMOMetrics, get_ftmo_metrics
+
 __all__ = [
     "BaseFTMOBot",
     "BotConfig",
@@ -56,4 +61,14 @@ __all__ = [
     "AdaptivePositionSizer",
     "VolatilityRegimeDetector",
     "TradeResult",
+    # Event-driven architecture
+    "FTMOEventBus",
+    "TickEvent",
+    "CandleEvent",
+    "get_event_bus",
+    "EventBotWrapper",
+    "MultiSymbolBotWrapper",
+    "TriggerConfig",
+    "FTMOMetrics",
+    "get_ftmo_metrics",
 ]

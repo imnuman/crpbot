@@ -1340,6 +1340,75 @@ class HydraMetrics:
 
     # ========== FTMO Multi-Bot Methods ==========
 
+    # ========== FTMO Metalearning (L1/L2) Metrics ==========
+
+    # Metalearning active flag
+    ftmo_metalearning_active = Gauge(
+        'ftmo_metalearning_active',
+        'Whether metalearning is active (1) or disabled (0)'
+    )
+
+    # L1: Adaptive Position Sizing metrics
+    ftmo_l1_position_multiplier = Gauge(
+        'ftmo_l1_position_multiplier',
+        'Current L1 adaptive position sizing multiplier (0.5-2.0)',
+        ['bot']
+    )
+
+    ftmo_l1_risk_percent = Gauge(
+        'ftmo_l1_risk_percent',
+        'Current L1 risk percentage per trade',
+        ['bot']
+    )
+
+    ftmo_l1_streak = Gauge(
+        'ftmo_l1_streak',
+        'Current win/loss streak (positive=wins, negative=losses)',
+        ['bot']
+    )
+
+    ftmo_l1_kelly_fraction = Gauge(
+        'ftmo_l1_kelly_fraction',
+        'Current Kelly criterion fraction',
+        ['bot']
+    )
+
+    # L2: Volatility Regime Detection metrics
+    ftmo_l2_volatility_regime = Gauge(
+        'ftmo_l2_volatility_regime',
+        'Current volatility regime: 0=LOW, 1=MEDIUM, 2=HIGH, 3=EXTREME',
+        ['symbol']
+    )
+
+    ftmo_l2_atr_multiplier = Gauge(
+        'ftmo_l2_atr_multiplier',
+        'Current ATR multiplier for stop-loss/take-profit',
+        ['symbol']
+    )
+
+    ftmo_l2_regime_confidence = Gauge(
+        'ftmo_l2_regime_confidence',
+        'Confidence in current volatility regime detection (0-1)',
+        ['symbol']
+    )
+
+    # ========== FTMO Turbo Mode Metrics ==========
+
+    ftmo_turbo_mode_active = Gauge(
+        'ftmo_turbo_mode_active',
+        'Whether FTMO turbo mode is active (1) or disabled (0)'
+    )
+
+    ftmo_turbo_max_trades = Gauge(
+        'ftmo_turbo_max_trades',
+        'Maximum trades per day in turbo mode'
+    )
+
+    ftmo_turbo_threshold_multiplier = Gauge(
+        'ftmo_turbo_threshold_multiplier',
+        'Signal threshold multiplier in turbo mode (lower = more signals)'
+    )
+
     @classmethod
     def initialize_ftmo_bots(cls):
         """Initialize FTMO multi-bot metrics."""
@@ -1349,7 +1418,8 @@ class HydraMetrics:
             'US30ORB',
             'NAS100Gap',
             'GoldNYReversion',
-            'EngineD_ATR'
+            'EngineD_ATR',
+            'HFScalper'  # Added HF Scalper bot
         ]
 
         for bot in ftmo_bots:
@@ -1368,6 +1438,25 @@ class HydraMetrics:
         cls.ftmo_account_balance.set(15000)
         cls.ftmo_paper_mode.set(1)
         cls.ftmo_daily_target_progress.set(0)
+
+        # Initialize L1/L2 metalearning metrics
+        cls.ftmo_metalearning_active.set(0)
+        for bot in ftmo_bots:
+            cls.ftmo_l1_position_multiplier.labels(bot=bot).set(1.0)
+            cls.ftmo_l1_risk_percent.labels(bot=bot).set(1.5)
+            cls.ftmo_l1_streak.labels(bot=bot).set(0)
+            cls.ftmo_l1_kelly_fraction.labels(bot=bot).set(0.02)
+
+        # Initialize L2 volatility regime metrics
+        for symbol in ['XAUUSD', 'EURUSD', 'US30', 'NAS100', 'GBPUSD']:
+            cls.ftmo_l2_volatility_regime.labels(symbol=symbol).set(1)  # MEDIUM
+            cls.ftmo_l2_atr_multiplier.labels(symbol=symbol).set(1.0)
+            cls.ftmo_l2_regime_confidence.labels(symbol=symbol).set(0.5)
+
+        # Initialize turbo mode metrics
+        cls.ftmo_turbo_mode_active.set(0)
+        cls.ftmo_turbo_max_trades.set(9)  # 3x normal max
+        cls.ftmo_turbo_threshold_multiplier.set(0.5)  # 50% thresholds
 
     @classmethod
     def set_ftmo_bot_status(
