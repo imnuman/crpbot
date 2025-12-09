@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     sqlite3 \
+    sshpass \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency management
