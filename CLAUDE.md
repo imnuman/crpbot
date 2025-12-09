@@ -518,4 +518,104 @@ export KILL_SWITCH=true
 
 ---
 
+## Known Bugs & Fixes (December 2025)
+
+This section documents critical bugs discovered and fixed to prevent recurrence.
+
+### Bug #1: MultiSymbolBotWrapper Tick Counter Not Incrementing
+
+**File**: `libs/hydra/ftmo_bots/event_bot_wrapper.py`
+
+**Symptom**: In status reports, `hf_scalper: ticks=0` while individual symbol bots (e.g., `eurusd: ticks=19`) showed correct counts.
+
+**Root Cause**: `MultiSymbolBotWrapper.on_tick()` incremented `self._symbol_tick_counts[tick.symbol]` but NOT `self._tick_count`. The status reporter's `get_status()` method inherits from base class and reads `self._tick_count`.
+
+**Fix** (line ~434):
+```python
+# In MultiSymbolBotWrapper.on_tick():
+self._symbol_tick_counts[tick.symbol] += 1
+self._tick_count += 1  # <-- ADDED: Also increment base counter for status reporting
+self._last_tick_time = time.time()
+```
+
+**Fix** (line ~494):
+```python
+# In MultiSymbolBotWrapper._run_analysis_multi():
+for symbol in self.symbols:
+    self._symbol_tick_counts[symbol] = 0
+self._tick_count = 0  # <-- ADDED: Also reset base counter
+self._last_analysis_time = time.time()
+```
+
+---
+
+### Bug #2: HFScalper Using Wrong Prices for Forex Pairs
+
+**File**: `libs/hydra/ftmo_bots/event_bot_wrapper.py`
+
+**Symptom**: HFScalper was generating signals for EURUSD with entry prices around ~4208 (Gold price) instead of ~1.05 (EURUSD price).
+
+**Root Cause**: `MultiSymbolBotWrapper._run_analysis_multi()` was passing candles in a format the HFScalper didn't expect:
+- Passed: `{"candles_by_symbol": {symbol: candles}, "candles": first_symbol_candles}`
+- Expected: `{"{symbol}_candles": candles}` format
+
+**Fix** (line ~478-486):
+```python
+# In MultiSymbolBotWrapper._run_analysis_multi():
+market_data = {
+    "candles_by_symbol": all_candles,
+}
+# Add {symbol}_candles keys for HFScalper compatibility
+for symbol, candles in all_candles.items():
+    market_data[f"{symbol}_candles"] = candles  # <-- ADDED
+# Keep generic candles for backwards compatibility
+market_data["candles"] = list(all_candles.values())[0] if all_candles else []
+```
+
+---
+
+### Bug #3: Docker Build Not Picking Up Code Changes
+
+**Symptom**: After editing Python files, `docker compose build` appears to succeed but the container runs old code.
+
+**Root Cause**: Docker's build cache may not detect changes to files copied during build.
+
+**Solution**: Always use `--no-cache` flag when code changes must be reflected:
+```bash
+docker compose down ftmo-runner
+docker compose build --no-cache ftmo-runner
+docker compose up -d ftmo-runner
+```
+
+**Verification**: After starting, verify the fix is in the container:
+```bash
+docker exec ftmo-runner grep -A3 "search_string" /app/path/to/file.py
+```
+
+---
+
+### Bug #4: Session Window Check Always Returns True
+
+**File**: `libs/hydra/ftmo_bots/event_bot_wrapper.py`
+
+**Note**: This is expected behavior, not a bug. When `session_windows` list is empty, `_in_session_window()` returns `True` by design - allowing bots without session restrictions to always be active.
+
+```python
+def _in_session_window(self) -> bool:
+    if not self.config.session_windows:
+        return True  # No session restriction = always active
+```
+
+---
+
+### Debugging Tips for Future Issues
+
+1. **Check tick counts match**: `hf_scalper.ticks` should equal sum of its tracked symbols
+2. **Verify prices in signals**: Check `entry_price` matches the symbol (Gold ~2000-3000, EURUSD ~1.0-1.1)
+3. **Always rebuild with `--no-cache`** after code changes
+4. **Verify container code**: `docker exec container grep pattern /app/file.py`
+5. **Monitor status reports**: Look for `ticks=0` on multi-symbol bots as a red flag
+
+---
+
 **Last Updated**: 2025-12-09 | **Branch**: `main` | **System**: HYDRA 4.0 + FTMO Live Trading
