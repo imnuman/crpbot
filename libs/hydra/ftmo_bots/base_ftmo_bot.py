@@ -3,7 +3,7 @@ Base FTMO Bot Class
 
 Abstract base class for all FTMO challenge bots.
 Provides common functionality:
-- MT5 signal routing via Windows VPS
+- MT5 signal routing via Windows VPS (ZMQ)
 - Risk management (1.5% per trade)
 - Position sizing
 - Trade logging
@@ -11,13 +11,20 @@ Provides common functionality:
 """
 
 import os
-import requests
 import threading
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from loguru import logger
+
+# Import ZMQ client for MT5 communication
+try:
+    from libs.brokers.mt5_zmq_client import get_mt5_client, MT5ZMQClient
+    ZMQ_AVAILABLE = True
+except ImportError:
+    ZMQ_AVAILABLE = False
+    logger.warning("MT5 ZMQ client not available")
 
 
 @dataclass
@@ -82,9 +89,8 @@ class BaseFTMOBot(ABC):
     - generate_signal(): Generate trade signal if conditions met
     """
 
-    # MT5 Executor service on Windows VPS
-    MT5_EXECUTOR_URL = os.getenv("MT5_EXECUTOR_URL", "http://45.82.167.195:5000")
-    MT5_API_SECRET = os.getenv("MT5_API_SECRET", "hydra_secret_2024")
+    # ZMQ client (singleton) for MT5 communication
+    _zmq_client: Optional['MT5ZMQClient'] = None
 
     def __init__(self, config: BotConfig):
         self.config = config
@@ -94,6 +100,15 @@ class BaseFTMOBot(ABC):
         self._last_trade_time: Optional[datetime] = None
 
         logger.info(f"[{config.bot_name}] Bot initialized (symbol: {config.symbol}, risk: {config.risk_percent*100:.1f}%)")
+
+    @classmethod
+    def get_zmq_client(cls) -> Optional['MT5ZMQClient']:
+        """Get or create ZMQ client singleton."""
+        if not ZMQ_AVAILABLE:
+            return None
+        if cls._zmq_client is None:
+            cls._zmq_client = get_mt5_client()
+        return cls._zmq_client
 
     @abstractmethod
     def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -238,31 +253,26 @@ class BaseFTMOBot(ABC):
         }
 
     def _execute_live(self, signal: TradeSignal) -> Dict[str, Any]:
-        """Execute via MT5 on Windows VPS."""
+        """Execute via MT5 on Windows VPS using ZMQ."""
         try:
-            url = f"{self.MT5_EXECUTOR_URL}/trade"
-            headers = {
-                "Authorization": f"Bearer {self.MT5_API_SECRET}",
-                "Content-Type": "application/json",
-            }
-
-            payload = {
-                "action": "open",
-                "symbol": signal.symbol,
-                "direction": signal.direction,
-                "lot_size": signal.lot_size,
-                "stop_loss": signal.stop_loss,
-                "take_profit": signal.take_profit,
-                "comment": f"HYDRA_{signal.bot_name}",
-            }
+            client = self.get_zmq_client()
+            if not client:
+                logger.error(f"[{self.config.bot_name}] ZMQ client not available")
+                return {"success": False, "error": "ZMQ client not available"}
 
             logger.info(
                 f"[{self.config.bot_name}] LIVE TRADE: "
                 f"{signal.direction} {signal.symbol} @ {signal.entry_price:.2f}"
             )
 
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
-            result = response.json()
+            result = client.trade(
+                symbol=signal.symbol,
+                direction=signal.direction,
+                volume=signal.lot_size,
+                sl=signal.stop_loss,
+                tp=signal.take_profit,
+                comment=f"HYDRA_{signal.bot_name}"
+            )
 
             if result.get("success"):
                 logger.success(
@@ -291,24 +301,29 @@ class BaseFTMOBot(ABC):
             }
 
     def get_account_info(self) -> Dict[str, Any]:
-        """Get account info from MT5."""
+        """Get account info from MT5 via ZMQ."""
         try:
-            url = f"{self.MT5_EXECUTOR_URL}/account"
-            headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
-            response = requests.get(url, headers=headers, timeout=10)
-            return response.json()
+            client = self.get_zmq_client()
+            if client:
+                result = client.get_account()
+                if result:
+                    return result
+            logger.warning("ZMQ client not available, using fallback")
+            return {"balance": 15000, "equity": 15000}  # Fallback
         except Exception as e:
             logger.error(f"Failed to get account info: {e}")
             return {"balance": 15000, "equity": 15000}  # Fallback
 
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """Get current price from MT5."""
+        """Get current price from MT5 via ZMQ."""
         try:
-            url = f"{self.MT5_EXECUTOR_URL}/price/{symbol}"
-            headers = {"Authorization": f"Bearer {self.MT5_API_SECRET}"}
-            response = requests.get(url, headers=headers, timeout=10)
-            data = response.json()
-            return data.get("bid")
+            client = self.get_zmq_client()
+            if client:
+                result = client.get_price(symbol)
+                if result:
+                    return result.get("bid")
+            logger.warning(f"ZMQ client not available for {symbol}")
+            return None
         except Exception as e:
             logger.error(f"Failed to get price for {symbol}: {e}")
             return None
