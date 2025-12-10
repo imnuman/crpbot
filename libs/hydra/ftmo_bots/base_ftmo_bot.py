@@ -184,8 +184,9 @@ class BaseFTMOBot(ABC):
         lot_size = risk_amount / (stop_loss_pips * pip_value_per_lot)
 
         # Round to 2 decimal places and enforce min/max
+        # SAFETY: Max 0.5 lots after $503 loss on 2025-12-10
         lot_size = round(lot_size, 2)
-        lot_size = max(0.01, min(lot_size, 5.0))  # Min 0.01, Max 5.0 lots
+        lot_size = max(0.01, min(lot_size, 0.5))  # Min 0.01, Max 0.5 lots (conservative)
 
         logger.debug(
             f"[{self.config.bot_name}] Lot size: {lot_size} "
@@ -270,6 +271,27 @@ class BaseFTMOBot(ABC):
                     logger.info(
                         f"[{self.config.bot_name}] [SellFilter] SELL allowed (whitelisted)"
                     )
+
+            # POSITION LIMIT: Max 1 position per symbol to prevent concentration
+            # Added 2025-12-10 after $503 loss from 4x EURUSD positions
+            MAX_POSITIONS_PER_SYMBOL = 1
+            client = self.get_zmq_client()
+            if client:
+                try:
+                    positions = client.get_positions()
+                    if positions.get("success") and positions.get("positions"):
+                        symbol_count = sum(
+                            1 for p in positions["positions"]
+                            if p.get("symbol") == signal.symbol
+                        )
+                        if symbol_count >= MAX_POSITIONS_PER_SYMBOL:
+                            logger.warning(
+                                f"[{self.config.bot_name}] [PositionLimit] Trade blocked: "
+                                f"Already {symbol_count} position(s) on {signal.symbol} (max {MAX_POSITIONS_PER_SYMBOL})"
+                            )
+                            return {"success": False, "error": f"Max positions reached for {signal.symbol}"}
+                except Exception as e:
+                    logger.warning(f"[{self.config.bot_name}] Position check failed: {e}")
 
             client = self.get_zmq_client()
             if not client:

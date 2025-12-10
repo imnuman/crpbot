@@ -257,20 +257,22 @@ class FTMOEventRunner:
                 }
                 print(f"    - {name}: {symbol}")
 
-            # HF Scalper is multi-symbol
-            hf_bot = get_hf_scalper(self.paper_mode, turbo_mode=self.turbo_mode)
-            hf_symbols = ["XAUUSD", "EURUSD", "US30.cash", "US100.cash"]
-            hf_wrapper = MultiSymbolBotWrapper(
-                bot=hf_bot,
-                symbols=hf_symbols,
-                on_signal=self._handle_signal
-            )
-            self._bot_wrappers["hf_scalper"] = {
-                "wrapper": hf_wrapper,
-                "symbol": hf_symbols,
-                "multi": True
-            }
-            print(f"    - hf_scalper: {hf_symbols}")
+            # HF Scalper - DISABLED until proven profitable
+            # Lost $503 on 2025-12-10 due to over-trading without track record
+            # TODO: Re-enable after paper testing shows positive expectancy
+            # hf_bot = get_hf_scalper(self.paper_mode, turbo_mode=self.turbo_mode)
+            # hf_symbols = ["XAUUSD", "EURUSD", "US30.cash", "US100.cash"]
+            # hf_wrapper = MultiSymbolBotWrapper(
+            #     bot=hf_bot,
+            #     symbols=hf_symbols,
+            #     on_signal=self._handle_signal
+            # )
+            # self._bot_wrappers["hf_scalper"] = {
+            #     "wrapper": hf_wrapper,
+            #     "symbol": hf_symbols,
+            #     "multi": True
+            # }
+            print(f"    - hf_scalper: DISABLED (unproven)")
 
             print(f"  {len(self._bot_wrappers)} bots initialized")
             return True
