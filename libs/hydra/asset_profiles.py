@@ -582,6 +582,29 @@ class AssetProfileManager:
                   "Interoperability narrative."
         )
 
+        # BCH-USD - Bitcoin Cash (added 2025-12-10 to fix missing profile error)
+        profiles["BCH-USD"] = AssetProfile(
+            asset="BCH-USD",
+            type="standard",
+            spread_normal=0.0002,
+            spread_reject_multiplier=4.0,
+            size_modifier=0.85,
+            overnight_allowed=True,
+            max_hold_hours=None,
+            best_sessions=["Asia", "London", "NY"],
+            manipulation_risk="MEDIUM",
+            funding_threshold=0.15,
+            whale_threshold=3000000,  # $3M
+            special_rules=[
+                "BTC fork - follows BTC trends",
+                "Lower volatility than BTC",
+                "Block size debate news = volatility",
+                "Halving cycles affect price"
+            ],
+            notes="Bitcoin fork. Lower volatility and liquidity than BTC. "
+                  "Often moves with BTC but with lag."
+        )
+
         return profiles
 
 
