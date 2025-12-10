@@ -11,7 +11,7 @@ Classifies market into 5 regimes:
 Uses ADX, ATR, and Bollinger Band width to determine regime.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from loguru import logger
 import numpy as np
 import threading
@@ -76,11 +76,15 @@ class RegimeDetector:
         atr_sma = self._calculate_sma([c.get('atr', 0) for c in candles[-lookback_atr:]], lookback_atr)
         bb_width = self._calculate_bb_width(candles, lookback_bb)
 
+        # Calculate RSI for metrics
+        rsi = self._calculate_rsi(candles)
+
         metrics = {
             "adx": adx,
             "atr": atr,
             "atr_sma": atr_sma,
             "bb_width": bb_width,
+            "rsi": rsi,  # Added for trend exhaustion visibility
             "current_price": candles[-1]['close']
         }
 
@@ -105,7 +109,7 @@ class RegimeDetector:
         # Calculate confidence
         confidence = self.get_regime_confidence(symbol)
 
-        logger.info(f"{symbol} regime: {regime} (ADX: {adx:.1f}, ATR: {atr:.4f}, BB: {bb_width:.4f})")
+        logger.info(f"{symbol} regime: {regime} (ADX: {adx:.1f}, RSI: {rsi:.1f}, ATR: {atr:.4f}, BB: {bb_width:.4f})")
         return {
             "regime": regime,
             "confidence": confidence,
@@ -122,13 +126,24 @@ class RegimeDetector:
     ) -> str:
         """
         Decision tree for regime classification.
+
+        FIX: Added trend exhaustion filter to prevent shorting at downtrend bottoms
+        and buying at uptrend tops.
         """
         # Check 1: Trending (ADX > 25)
         if adx > self.ADX_TRENDING_THRESHOLD:
             # Determine trend direction
             if self._is_uptrend(candles):
+                # FIX: Check if uptrend is exhausted (RSI overbought, extended from mean)
+                if self._is_trend_exhausted(candles, "UP"):
+                    logger.info("TRENDING_UP detected but trend exhausted → CHOPPY (no trade)")
+                    return "CHOPPY"
                 return "TRENDING_UP"
             else:
+                # FIX: Check if downtrend is exhausted (RSI oversold, extended from mean)
+                if self._is_trend_exhausted(candles, "DOWN"):
+                    logger.info("TRENDING_DOWN detected but trend exhausted → CHOPPY (no trade)")
+                    return "CHOPPY"
                 return "TRENDING_DOWN"
 
         # Check 2: Ranging (ADX < 20 + Tight BBands)
@@ -349,6 +364,95 @@ class RegimeDetector:
         current_price = candles[-1]['close']
 
         return current_price > sma
+
+    def _calculate_rsi(self, candles: List[Dict], period: int = 14) -> float:
+        """
+        Calculate Relative Strength Index (RSI).
+
+        RSI < 30 = Oversold (potential reversal UP)
+        RSI > 70 = Overbought (potential reversal DOWN)
+        RSI 30-70 = Neutral momentum
+        """
+        if len(candles) < period + 1:
+            return 50.0  # Neutral default
+
+        closes = [c['close'] for c in candles[-(period + 1):]]
+
+        gains = []
+        losses = []
+
+        for i in range(1, len(closes)):
+            change = closes[i] - closes[i-1]
+            if change > 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(change))
+
+        avg_gain = np.mean(gains) if gains else 0
+        avg_loss = np.mean(losses) if losses else 0
+
+        if avg_loss == 0:
+            return 100.0
+
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+        return rsi
+
+    def _is_trend_exhausted(self, candles: List[Dict], direction: str, lookback: int = 20) -> bool:
+        """
+        Check if trend is exhausted (extended too far from mean).
+
+        FIX: Prevents shorting at downtrend bottoms / buying at uptrend tops.
+
+        Args:
+            direction: "UP" or "DOWN" - the detected trend direction
+
+        Returns:
+            True if trend appears exhausted (don't trade in this direction)
+        """
+        if len(candles) < lookback:
+            return False
+
+        closes = [c['close'] for c in candles[-lookback:]]
+        sma = np.mean(closes)
+        std = np.std(closes)
+        current_price = candles[-1]['close']
+
+        if std == 0:
+            return False
+
+        # Calculate z-score (how many std devs from mean)
+        z_score = (current_price - sma) / std
+
+        # RSI check for momentum exhaustion
+        rsi = self._calculate_rsi(candles)
+
+        if direction == "DOWN":
+            # Don't SHORT if:
+            # 1. Price is already >1.5 std devs below mean (extended)
+            # 2. RSI is oversold (<35) - potential bounce
+            if z_score < -1.5:
+                logger.debug(f"Trend exhaustion: price {z_score:.2f} std below mean")
+                return True
+            if rsi < 35:
+                logger.debug(f"Trend exhaustion: RSI oversold at {rsi:.1f}")
+                return True
+
+        elif direction == "UP":
+            # Don't BUY if:
+            # 1. Price is already >1.5 std devs above mean (extended)
+            # 2. RSI is overbought (>65) - potential pullback
+            if z_score > 1.5:
+                logger.debug(f"Trend exhaustion: price {z_score:.2f} std above mean")
+                return True
+            if rsi > 65:
+                logger.debug(f"Trend exhaustion: RSI overbought at {rsi:.1f}")
+                return True
+
+        return False
 
     # ==================== UTILITY METHODS ====================
 
