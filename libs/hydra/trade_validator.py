@@ -21,6 +21,10 @@ MIN_CONFIDENCE = 0.70  # 70% minimum confidence
 MAX_CORRELATION = 0.80  # Engines must not be too similar (>80% = reject)
 MIN_HISTORICAL_TRADES = 5  # Need 5 trades before correlation check kicks in
 
+# LESSON LEARNED: BUY=100% WR, SELL=27% WR across all engines
+# Disable SELL until short detection improves
+ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
+
 
 @dataclass
 class TradeProposal:
@@ -109,6 +113,9 @@ class TradeValidator:
         """
         checks = {}
 
+        # Check 0: Direction filter (BUY only until shorts improve)
+        checks["direction"] = self._check_direction(proposal)
+
         # Check 1: Minimum confidence (70%)
         checks["confidence"] = self._check_confidence(proposal)
 
@@ -155,6 +162,40 @@ class TradeValidator:
             logger.warning(f"Trade REJECTED: {rejection_reason}")
 
         return result
+
+    def _check_direction(self, proposal: TradeProposal) -> dict:
+        """
+        Check if trade direction is allowed.
+
+        LESSON LEARNED from 44 trades:
+        - BUY trades: 100% win rate (13/13)
+        - SELL trades: 27% win rate (8/31)
+
+        Until short detection improves, only allow BUY/LONG.
+        """
+        direction = proposal.direction.upper()
+        is_long = direction in ("LONG", "BUY")
+
+        if ALLOW_SHORT_TRADES:
+            # Shorts enabled - allow all directions
+            return {
+                "passed": True,
+                "direction": direction,
+                "reason": f"Direction {direction} allowed (shorts enabled)",
+            }
+
+        if is_long:
+            return {
+                "passed": True,
+                "direction": direction,
+                "reason": f"Direction {direction} allowed (BUY only mode)",
+            }
+        else:
+            return {
+                "passed": False,
+                "direction": direction,
+                "reason": f"SHORT/SELL disabled (historical WR: 27%). Set ALLOW_SHORT_TRADES=True to enable.",
+            }
 
     def _check_confidence(self, proposal: TradeProposal) -> dict:
         """Check minimum 70% confidence."""
