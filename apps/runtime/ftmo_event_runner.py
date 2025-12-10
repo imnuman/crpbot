@@ -238,16 +238,15 @@ class FTMOEventRunner:
             )
 
             # Create bots with event wrappers
-            # ONLY proven performers (71%+ WR) - disabled weak bots to protect $366 buffer
+            # Re-enabled gold_ny on 2025-12-10 after data analysis showed $8.79/trade expectancy
             bots_config = [
                 ("gold_london", get_gold_london_bot(self.paper_mode, turbo_mode=self.turbo_mode), "XAUUSD"),
                 ("eurusd", get_eurusd_bot(self.paper_mode), "EURUSD"),
                 ("us30", get_us30_bot(self.paper_mode), "US30.cash"),
-                # DISABLED: gold_ny (47.6% WR - too risky with $366 buffer)
+                ("gold_ny", get_gold_ny_bot(self.paper_mode), "XAUUSD"),  # RE-ENABLED: $8.79/trade expectancy
                 # DISABLED: nas100 (47.6% WR, only $0.30/trade - negligible P&L)
             ]
-            print("    - gold_ny: DISABLED (47.6% WR)")
-            print("    - nas100: DISABLED (47.6% WR)")
+            print("    - nas100: DISABLED (47.6% WR, only $0.30/trade)")
 
             for name, bot, symbol in bots_config:
                 wrapper = EventBotWrapper(
