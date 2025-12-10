@@ -255,6 +255,16 @@ class BaseFTMOBot(ABC):
     def _execute_live(self, signal: TradeSignal) -> Dict[str, Any]:
         """Execute via MT5 on Windows VPS using ZMQ."""
         try:
+            # SELL FILTER: Block SELL/SHORT trades until short detection improves
+            # LESSON LEARNED: BUY=100% WR (13/13), SELL=27% WR (8/31)
+            ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
+            if not ALLOW_SHORT_TRADES and signal.direction.upper() in ("SELL", "SHORT"):
+                logger.warning(
+                    f"[{self.config.bot_name}] [SellFilter] Trade blocked: "
+                    f"{signal.direction} {signal.symbol} - SELL trades disabled (historical WR: 27%)"
+                )
+                return {"success": False, "error": "SELL trades disabled"}
+
             client = self.get_zmq_client()
             if not client:
                 logger.error(f"[{self.config.bot_name}] ZMQ client not available")
