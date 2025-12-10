@@ -187,6 +187,9 @@ class GoldLondonReversalBot(BaseFTMOBot):
 
         # Get account info for position sizing
         account_info = self.get_account_info()
+        if not account_info:
+            logger.warning(f"[{self.config.bot_name}] Skipping trade - account info unavailable")
+            return None
         balance = account_info.get("balance", 15000)
 
         # Calculate lot size

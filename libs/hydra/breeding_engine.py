@@ -50,7 +50,7 @@ class BreedingEngine:
 
     def __init__(self):
         self.offspring_count = 0
-        self.breeding_history = []
+        self.breeding_history = []  # Trimmed to last 1000 after each breed
         logger.info("Breeding Engine initialized")
 
     def breed(
@@ -125,6 +125,9 @@ class BreedingEngine:
             "crossover_type": crossover_type,
             "mutations": mutation_log
         })
+        # Trim to prevent memory leak
+        if len(self.breeding_history) > 1000:
+            self.breeding_history = self.breeding_history[-1000:]
 
         logger.success(
             f"Offspring {offspring['strategy_id']} created (generation {offspring['generation']})"

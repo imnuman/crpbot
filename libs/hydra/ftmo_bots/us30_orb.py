@@ -157,6 +157,9 @@ class US30ORBBot(BaseFTMOBot):
 
         # Get account info
         account_info = self.get_account_info()
+        if not account_info:
+            logger.warning(f"[{self.config.bot_name}] Skipping trade - account info unavailable")
+            return None
         balance = account_info.get("balance", 15000)
 
         # For indices, pip value is different

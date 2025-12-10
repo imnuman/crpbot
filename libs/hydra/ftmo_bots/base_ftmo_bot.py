@@ -278,11 +278,12 @@ class BaseFTMOBot(ABC):
             client = self.get_zmq_client()
             if client:
                 try:
+                    # get_positions() returns a LIST, not a dict
                     positions = client.get_positions()
-                    if positions.get("success") and positions.get("positions"):
+                    if positions and isinstance(positions, list) and len(positions) > 0:
                         symbol_count = sum(
-                            1 for p in positions["positions"]
-                            if p.get("symbol") == signal.symbol
+                            1 for p in positions
+                            if isinstance(p, dict) and p.get("symbol") == signal.symbol
                         )
                         if symbol_count >= MAX_POSITIONS_PER_SYMBOL:
                             logger.warning(
@@ -344,13 +345,14 @@ class BaseFTMOBot(ABC):
             client = self.get_zmq_client()
             if client:
                 result = client.get_account()
-                if result:
+                if result and result.get("balance"):
                     return result
-            logger.warning("ZMQ client not available, using fallback")
-            return {"balance": 15000, "equity": 15000}  # Fallback
+            # Do NOT use hardcoded fallback - better to skip trade than use wrong balance
+            logger.warning("ZMQ client not available or account info unavailable - trade will be skipped")
+            return None  # Caller must check for None and skip trade
         except Exception as e:
             logger.error(f"Failed to get account info: {e}")
-            return {"balance": 15000, "equity": 15000}  # Fallback
+            return None  # Safer to skip trade than use wrong balance
 
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price from MT5 via ZMQ."""

@@ -232,6 +232,10 @@ class FTMOEventBus:
             "start_time": None
         }
 
+        # Reconnection limits to prevent infinite loops
+        self._consecutive_failures = 0
+        self.MAX_RECONNECT_ATTEMPTS = 10  # Stop after 10 consecutive failures
+
         # Prometheus metrics
         self._init_prometheus_metrics()
 
@@ -374,6 +378,7 @@ class FTMOEventBus:
             try:
                 message = self.sub_socket.recv_string()
                 backoff = 1  # Reset backoff on successful receive
+                self._reset_failure_counter()  # Reset failure counter on successful receive
 
                 # Parse topic and payload
                 parts = message.split(" ", 1)
@@ -385,14 +390,23 @@ class FTMOEventBus:
 
                 # Route by topic type
                 if topic.startswith("TICK:"):
-                    symbol = topic.split(":")[1]
-                    self._handle_tick(symbol, data)
+                    # Safe split with bounds check to prevent IndexError
+                    tick_parts = topic.split(":")
+                    if len(tick_parts) >= 2:
+                        symbol = tick_parts[1]
+                        self._handle_tick(symbol, data)
+                    else:
+                        logger.warning(f"[EventBus] Malformed TICK topic: {topic}")
 
                 elif topic.startswith("CANDLE:"):
-                    parts = topic.split(":")
-                    timeframe = parts[1]
-                    symbol = parts[2]
-                    self._handle_candle(symbol, timeframe, data)
+                    # Safe split with bounds check to prevent IndexError
+                    candle_parts = topic.split(":")
+                    if len(candle_parts) >= 3:
+                        timeframe = candle_parts[1]
+                        symbol = candle_parts[2]
+                        self._handle_candle(symbol, timeframe, data)
+                    else:
+                        logger.warning(f"[EventBus] Malformed CANDLE topic: {topic}")
 
                 elif topic == "HEARTBEAT":
                     self._handle_heartbeat(data)
@@ -406,7 +420,8 @@ class FTMOEventBus:
 
             except zmq.ZMQError as e:
                 logger.error(f"[EventBus] ZMQ error: {e}")
-                self._reconnect(backoff)
+                if not self._reconnect(backoff):
+                    break  # Max retries exceeded, stop the loop
                 backoff = min(backoff * 2, 60)
 
             except Exception as e:
@@ -497,9 +512,22 @@ class FTMOEventBus:
             except Exception as e:
                 logger.error(f"[EventBus] Health monitor error: {e}")
 
-    def _reconnect(self, delay: float):
-        """Reconnect after failure."""
-        logger.info(f"[EventBus] Reconnecting in {delay}s...")
+    def _reconnect(self, delay: float) -> bool:
+        """Reconnect after failure. Returns False if max retries exceeded."""
+        self._consecutive_failures += 1
+
+        if self._consecutive_failures > self.MAX_RECONNECT_ATTEMPTS:
+            logger.error(
+                f"[EventBus] Max reconnection attempts ({self.MAX_RECONNECT_ATTEMPTS}) exceeded. "
+                "Stopping event bus to prevent infinite loop. Manual restart required."
+            )
+            self._running = False
+            return False
+
+        logger.info(
+            f"[EventBus] Reconnecting in {delay}s... "
+            f"(attempt {self._consecutive_failures}/{self.MAX_RECONNECT_ATTEMPTS})"
+        )
         time.sleep(delay)
 
         with self._lock:
@@ -527,6 +555,13 @@ class FTMOEventBus:
 
             # Reconnect
             self._connect()
+        return True
+
+    def _reset_failure_counter(self):
+        """Reset consecutive failure counter after successful operation."""
+        if self._consecutive_failures > 0:
+            logger.debug(f"[EventBus] Resetting failure counter (was {self._consecutive_failures})")
+            self._consecutive_failures = 0
 
     def get_latest_tick(self, symbol: str) -> Optional[TickEvent]:
         """Get most recent tick for a symbol."""

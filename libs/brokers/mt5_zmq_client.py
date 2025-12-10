@@ -213,7 +213,28 @@ class MT5ZMQClient:
 
             self._connected = False
             logger.info("[ZMQ] Disconnected")
-    
+
+    def _recreate_socket(self):
+        """Recreate socket after error (called with lock held)."""
+        try:
+            if self.socket:
+                self.socket.setsockopt(zmq.LINGER, 0)
+                self.socket.close()
+                self.socket = None
+
+            if self.context:
+                self.socket = self.context.socket(zmq.REQ)
+                self.socket.setsockopt(zmq.RCVTIMEO, self.config.request_timeout)
+                self.socket.setsockopt(zmq.SNDTIMEO, self.config.request_timeout)
+                self.socket.setsockopt(zmq.LINGER, 0)
+                endpoint = f"tcp://127.0.0.1:{self.config.local_port}"
+                self.socket.connect(endpoint)
+                self._connected = True
+                logger.debug("[ZMQ] Socket recreated after error")
+        except Exception as e:
+            logger.error(f"[ZMQ] Failed to recreate socket: {e}")
+            self._connected = False
+
     def _send_command(self, cmd: Dict) -> Dict:
         """Send command and get response (thread-safe)."""
         with self._lock:
@@ -234,12 +255,12 @@ class MT5ZMQClient:
                 response = self.socket.recv_json()
                 return response
             except zmq.Again:
-                logger.error("[ZMQ] Request timeout")
-                self._connected = False
+                logger.error("[ZMQ] Request timeout - recreating socket")
+                self._recreate_socket()  # Socket is in bad state after timeout
                 return {"success": False, "error": "Request timeout"}
             except zmq.ZMQError as e:
-                logger.error(f"[ZMQ] Error: {e}")
-                self._connected = False
+                logger.error(f"[ZMQ] Error: {e} - recreating socket")
+                self._recreate_socket()  # Clean up bad socket
                 return {"success": False, "error": str(e)}
     
     def ping(self) -> Dict:
