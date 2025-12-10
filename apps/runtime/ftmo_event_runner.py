@@ -97,11 +97,12 @@ class FTMOEventRunner:
         self._zmq_client = None
         self._metrics = None
 
-        # Risk state
+        # Risk state - TIGHTENED after $503 loss on 2025-12-10
+        # Only $366 buffer remaining before challenge fails
         self._kill_switch = False
         self._daily_starting_balance: float = 15000.0
-        self._max_daily_loss_percent = 4.5
-        self._max_total_drawdown_percent = 8.5
+        self._max_daily_loss_percent = 2.0  # Was 4.5% - now 2% for safety
+        self._max_total_drawdown_percent = 8.0  # Was 8.5% - trigger earlier
 
         # Signal queue for trade execution
         self._signal_queue: List[Any] = []
@@ -237,13 +238,16 @@ class FTMOEventRunner:
             )
 
             # Create bots with event wrappers
+            # ONLY proven performers (71%+ WR) - disabled weak bots to protect $366 buffer
             bots_config = [
                 ("gold_london", get_gold_london_bot(self.paper_mode, turbo_mode=self.turbo_mode), "XAUUSD"),
                 ("eurusd", get_eurusd_bot(self.paper_mode), "EURUSD"),
                 ("us30", get_us30_bot(self.paper_mode), "US30.cash"),
-                ("nas100", get_nas100_bot(self.paper_mode), "US100.cash"),
-                ("gold_ny", get_gold_ny_bot(self.paper_mode), "XAUUSD"),
+                # DISABLED: gold_ny (47.6% WR - too risky with $366 buffer)
+                # DISABLED: nas100 (47.6% WR, only $0.30/trade - negligible P&L)
             ]
+            print("    - gold_ny: DISABLED (47.6% WR)")
+            print("    - nas100: DISABLED (47.6% WR)")
 
             for name, bot, symbol in bots_config:
                 wrapper = EventBotWrapper(
