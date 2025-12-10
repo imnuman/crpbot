@@ -119,12 +119,12 @@ class HFScalperBot(BaseFTMOBot):
             if not self._can_trade_symbol(symbol, now):
                 continue
 
-            # Get candles for symbol
+            # Get candles for symbol - MUST use symbol-specific candles only
             symbol_candles = market_data.get(f"{symbol}_candles", [])
             if not symbol_candles:
-                symbol_candles = market_data.get("candles", [])
-                if not symbol_candles:
-                    continue
+                # Skip if no candles for this specific symbol (don't use fallback to avoid price mixing)
+                logger.debug(f"[{self.config.bot_name}] No candles for {symbol}, skipping")
+                continue
 
             # Analyze momentum
             setup = self._analyze_momentum(symbol, symbol_candles)
