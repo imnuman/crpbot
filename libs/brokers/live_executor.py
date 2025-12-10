@@ -30,6 +30,9 @@ from .broker_interface import (
 )
 from .mt5_broker import MT5Broker, get_mt5_broker, HYDRA_MAGIC_NUMBER
 
+# FTMO-supported crypto symbols (available via MT5)
+FTMO_CRYPTO_SYMBOLS = {"BTCUSD", "ETHUSD", "LTCUSD", "XRPUSD", "BCHUSD"}
+
 # Import HYDRA components
 from libs.hydra.guardian import get_guardian
 from libs.hydra.duplicate_order_guard import get_duplicate_guard
@@ -212,6 +215,75 @@ class LiveExecutor:
         )
 
         return lot_size
+
+    def _get_zmq_client(self):
+        """Get ZMQ client for MT5 if available."""
+        try:
+            from libs.brokers.mt5_zmq_client import get_mt5_client
+            client = get_mt5_client()
+            if hasattr(client, 'is_connected') and client.is_connected:
+                return client
+            if hasattr(client, 'connect') and client.connect():
+                return client
+        except Exception as e:
+            logger.warning(f"ZMQ client unavailable: {e}")
+        return None
+
+    def _is_ftmo_crypto(self, symbol: str) -> bool:
+        """Check if symbol is FTMO-supported crypto."""
+        mt5_symbol = symbol.replace("-", "")
+        return mt5_symbol in FTMO_CRYPTO_SYMBOLS
+
+    def _execute_via_zmq(
+        self,
+        zmq_client,
+        symbol: str,
+        direction: str,
+        volume: float,
+        sl: float,
+        tp: float,
+        comment: str
+    ) -> ExecutionResult:
+        """Execute trade via MT5 ZMQ client."""
+        try:
+            result = zmq_client.trade(
+                symbol=symbol,
+                direction=direction,
+                volume=volume,
+                sl=sl,
+                tp=tp,
+                comment=comment
+            )
+
+            if result.get("success", False):
+                logger.success(
+                    f"[ZMQ] Trade executed: {direction} {volume} {symbol} "
+                    f"ticket={result.get('ticket', 'N/A')}"
+                )
+                return ExecutionResult(
+                    success=True,
+                    trade_id=f"ZMQ_{symbol}_{int(time.time())}",
+                    order_result=OrderResult(
+                        success=True,
+                        ticket=result.get("ticket", 0),
+                        fill_price=result.get("fill_price", 0),
+                        slippage_pips=0,
+                        error_message=""
+                    )
+                )
+            else:
+                error = result.get("error", "Unknown ZMQ error")
+                logger.error(f"[ZMQ] Trade failed: {error}")
+                return ExecutionResult(
+                    success=False,
+                    rejection_reason=f"ZMQ: {error}"
+                )
+        except Exception as e:
+            logger.error(f"[ZMQ] Exception during trade: {e}")
+            return ExecutionResult(
+                success=False,
+                rejection_reason=f"ZMQ exception: {str(e)}"
+            )
 
     def execute_signal(
         self,
@@ -399,7 +471,45 @@ class LiveExecutor:
                     tp_price = entry_price * (1 - take_profit_pct)
                     side = OrderSide.SELL
 
-                # Place order
+                # Try ZMQ route for FTMO-supported crypto
+                if self._is_ftmo_crypto(symbol):
+                    zmq_client = self._get_zmq_client()
+                    if zmq_client:
+                        logger.info(f"[HYDRA→ZMQ] Routing {mt5_symbol} trade via FTMO ZMQ")
+                        zmq_result = self._execute_via_zmq(
+                            zmq_client,
+                            mt5_symbol,
+                            direction,
+                            lot_size,
+                            sl_price,
+                            tp_price,
+                            f"HYDRA_{engine}_{strategy_id[:8]}"
+                        )
+                        if zmq_result.success:
+                            self._successful_trades += 1
+                            self._daily_trades.append({
+                                "trade_id": trade_id,
+                                "symbol": symbol,
+                                "direction": direction,
+                                "ticket": zmq_result.order_result.ticket if zmq_result.order_result else 0,
+                                "fill_price": zmq_result.order_result.fill_price if zmq_result.order_result else entry_price,
+                                "timestamp": datetime.now(timezone.utc)
+                            })
+                            self.duplicate_guard.record_order(
+                                symbol=symbol,
+                                direction=direction,
+                                engine=engine,
+                                entry_price=entry_price
+                            )
+                            zmq_result.trade_id = trade_id
+                            zmq_result.guardian_check = guardian_check
+                            zmq_result.duplicate_check = (can_place, guard_reason)
+                            zmq_result.execution_time_ms = (time.time() - start_time) * 1000
+                            return zmq_result
+                        else:
+                            logger.warning(f"[HYDRA→ZMQ] ZMQ failed, falling back to broker: {zmq_result.rejection_reason}")
+
+                # Place order via standard broker (fallback or non-crypto)
                 order_result = self.broker.place_market_order(
                     symbol=mt5_symbol,
                     side=side,

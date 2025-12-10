@@ -1309,6 +1309,9 @@ class HydraRuntime:
             f"size modifier: {signal['position_size_modifier']:.0%})"
         )
 
+    # FTMO-supported crypto symbols (MT5)
+    FTMO_CRYPTO = {"BTC-USD", "ETH-USD", "LTC-USD", "XRP-USD", "BCH-USD"}
+
     def _execute_live_trade(self, asset: str, signal: Dict, market_data: List[Dict]):
         """
         Execute live trade via MT5 broker.
@@ -1319,6 +1322,11 @@ class HydraRuntime:
         - Position sizing by risk
         - Trade alerts
         """
+        # Filter non-FTMO crypto to paper trading
+        if asset.endswith("-USD") and asset not in self.FTMO_CRYPTO:
+            logger.info(f"[HYDRA] {asset} not supported on FTMO - routing to paper")
+            return self._execute_paper_trade(asset, signal, market_data)
+
         logger.critical(
             f"LIVE TRADE: {signal['action']} {asset} @ {signal['entry_price']} "
             f"(consensus: {signal['consensus_level']})"
@@ -2290,6 +2298,12 @@ def main():
         help="Paper trading mode (default: True)"
     )
     parser.add_argument(
+        "--live",
+        action="store_true",
+        default=False,
+        help="Enable LIVE trading (overrides --paper)"
+    )
+    parser.add_argument(
         "--iterations",
         type=int,
         default=-1,
@@ -2312,10 +2326,15 @@ def main():
         level="INFO"
     )
 
+    # Determine trading mode: --live overrides --paper
+    paper_mode = not args.live  # --live flag enables live trading
+    if args.live:
+        logger.warning("⚠️  LIVE TRADING MODE ENABLED - Real money at risk!")
+
     # Create runtime
     runtime = HydraRuntime(
         assets=args.assets,
-        paper_trading=args.paper,
+        paper_trading=paper_mode,
         check_interval_seconds=args.interval
     )
 

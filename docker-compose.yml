@@ -53,8 +53,8 @@ services:
       - ./tradingai.db:/app/tradingai.db
     command: >
       uv run python apps/runtime/hydra_runtime.py
-      --paper
-      --assets BTC-USD ETH-USD SOL-USD XRP-USD ADA-USD LINK-USD AVAX-USD DOT-USD MATIC-USD ATOM-USD UNI-USD NEAR-USD FIL-USD APT-USD ARB-USD
+      --live
+      --assets BTC-USD ETH-USD LTC-USD XRP-USD BCH-USD
       --iterations -1
       --interval 300
     networks:
