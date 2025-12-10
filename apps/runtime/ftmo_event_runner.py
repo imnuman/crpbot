@@ -451,12 +451,16 @@ class FTMOEventRunner:
         """Execute a trading signal."""
         logger.info(f"[EventRunner] Executing: {signal.bot_name} {signal.direction} {signal.symbol}")
 
-        # SELL FILTER: Block SELL/SHORT trades until short detection improves
-        # LESSON LEARNED: BUY=100% WR (13/13), SELL=27% WR (8/31)
-        ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
-        if not ALLOW_SHORT_TRADES and signal.direction.upper() in ("SELL", "SHORT"):
-            logger.warning(f"[SellFilter] Trade blocked: {signal.direction} {signal.symbol} - SELL trades disabled (historical WR: 27%)")
-            return
+        # SELL FILTER: Block SELL for most bots, but allow proven performers
+        # gold_london has 71% WR on SELL (7 trades) - allow it
+        SELL_WHITELIST = ["GoldLondonReversal", "gold_london"]
+
+        if signal.direction.upper() in ("SELL", "SHORT"):
+            if signal.bot_name not in SELL_WHITELIST:
+                logger.warning(f"[SellFilter] Trade blocked: {signal.bot_name} {signal.direction} {signal.symbol} - not in whitelist")
+                return
+            else:
+                logger.info(f"[SellFilter] SELL allowed for {signal.bot_name} (whitelisted)")
 
         try:
             if self.paper_mode:
