@@ -54,7 +54,7 @@ class NAS100GapBot(BaseFTMOBot):
     MAX_GAP_PERCENT = 2.0  # Skip huge gaps
     GAP_FILL_TARGET_PERCENT = 0.7  # Target 70% fill
 
-    STOP_LOSS_POINTS = 25.0
+    STOP_LOSS_POINTS = 80.0  # Increased from 25 (backtest showed 40-50 point losses hitting SL)
     EXIT_HOUR = 16  # 16:30 UTC (11:30 EST)
     EXIT_MINUTE = 30
 

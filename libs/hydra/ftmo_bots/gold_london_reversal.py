@@ -57,8 +57,8 @@ class GoldLondonReversalBot(BaseFTMOBot):
     MAX_HOLD_HOUR = 10  # Exit by 10:00 UTC latest
 
     MIN_ASIAN_MOVE_PERCENT = 0.15  # Minimum 0.15% move to trigger
-    STOP_LOSS_PIPS = 50.0
-    TAKE_PROFIT_PIPS = 90.0
+    STOP_LOSS_PIPS = 75.0  # Increased from 50 (backtest showed 40-48 pip losses hitting SL)
+    TAKE_PROFIT_PIPS = 120.0  # Increased proportionally (R:R = 1:1.6)
 
     def __init__(self, paper_mode: bool = True, turbo_mode: bool = False):
         config = BotConfig(

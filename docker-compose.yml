@@ -24,6 +24,7 @@ services:
       - ./logs:/app/logs
     command: >
       uv run python apps/runtime/ftmo_event_runner.py
+      --live
       --turbo
       --metrics-port 9100
     networks:

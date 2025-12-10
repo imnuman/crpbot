@@ -53,7 +53,7 @@ class GoldNYReversionBot(BaseFTMOBot):
     TRADE_END_HOUR = 21  # 21:00 UTC (16:00 EST)
 
     MIN_DEVIATION_PERCENT = 1.5  # Minimum deviation from VWAP
-    STOP_LOSS_PIPS = 50.0
+    STOP_LOSS_PIPS = 75.0  # Increased from 50 (backtest showed 41-48 pip losses hitting SL)
 
     def __init__(self, paper_mode: bool = True):
         config = BotConfig(

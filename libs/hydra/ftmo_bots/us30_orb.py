@@ -55,8 +55,8 @@ class US30ORBBot(BaseFTMOBot):
     TRADE_START_MINUTE = 46  # Start looking for breakouts at 14:46
     TRADE_END_HOUR = 16  # Stop trading at 16:00 UTC (11:00 EST)
 
-    STOP_LOSS_POINTS = 40.0
-    TAKE_PROFIT_POINTS = 80.0
+    STOP_LOSS_POINTS = 70.0  # Increased from 40 (backtest showed 33-40 point losses hitting SL)
+    TAKE_PROFIT_POINTS = 120.0  # Increased proportionally (R:R = 1:1.7)
     MIN_RANGE_POINTS = 30.0  # Minimum range to consider
     MAX_RANGE_POINTS = 150.0  # Skip if too volatile
 

@@ -45,8 +45,8 @@ class EURUSDBreakoutBot(BaseFTMOBot):
     """
 
     # Strategy parameters
-    STOP_LOSS_PIPS = 20.0
-    TAKE_PROFIT_PIPS = 40.0
+    STOP_LOSS_PIPS = 30.0  # Increased from 20 (backtest showed 16-20 pip losses hitting SL)
+    TAKE_PROFIT_PIPS = 55.0  # Increased proportionally (R:R = 1:1.8)
     MIN_RANGE_PIPS = 30.0  # Minimum daily range to consider
     MAX_RANGE_PIPS = 150.0  # Skip if range too wide (volatile day)
     CONFIRMATION_PIPS = 3.0  # Must break by at least 3 pips
