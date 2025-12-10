@@ -1,0 +1,63 @@
+# FTMO Trading Runner - Lightweight (no PyTorch/ML)
+# Expected size: ~500MB vs 13GB
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sqlite3 \
+    sshpass \
+    openssh-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install pip packages directly (no uv overhead for small set)
+# Only what FTMO runner actually needs
+RUN pip install --no-cache-dir \
+    loguru>=0.7.0 \
+    python-dotenv>=1.0.0 \
+    pyzmq>=25.0.0 \
+    requests>=2.31.0 \
+    prometheus-client>=0.17.0 \
+    numpy>=1.24.0 \
+    pandas>=2.0.0 \
+    httpx>=0.25.0 \
+    pydantic>=2.0.0
+
+# ============================================
+# SOURCE CODE - Copy only what FTMO needs
+# ============================================
+# Create directory structure first
+RUN mkdir -p apps/runtime libs/hydra libs/brokers
+
+# Create __init__.py files
+RUN touch apps/__init__.py apps/runtime/__init__.py libs/__init__.py libs/hydra/__init__.py libs/brokers/__init__.py
+
+# Copy FTMO runner
+COPY apps/runtime/ftmo_event_runner.py ./apps/runtime/
+
+# Copy FTMO bots
+COPY libs/hydra/ftmo_bots/ ./libs/hydra/ftmo_bots/
+
+# Copy broker client
+COPY libs/brokers/mt5_zmq_client.py ./libs/brokers/
+
+# Create data directories
+RUN mkdir -p /app/data/hydra/ftmo /app/logs && \
+    mkdir -p /root && \
+    ln -s /app /root/crpbot
+
+# Set environment
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+ENV HYDRA_DATA_DIR=/app/data/hydra
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 9100)); s.close()" || exit 1
+
+# Default: FTMO runner in paper mode
+CMD ["python", "apps/runtime/ftmo_event_runner.py", "--turbo", "--metrics-port", "9100"]

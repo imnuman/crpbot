@@ -8,11 +8,11 @@
 #   - Metrics:      http://77.42.23.42:9100/metrics
 
 services:
-  # FTMO Event-Driven Runner - Real-time streaming with ZMQ PUB/SUB
+  # FTMO Event-Driven Runner - Lightweight (no PyTorch ~500MB vs 13GB)
   ftmo-runner:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.ftmo
     container_name: ftmo-runner
     restart: unless-stopped
     env_file:
@@ -23,14 +23,14 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     command: >
-      uv run python apps/runtime/ftmo_event_runner.py
+      python apps/runtime/ftmo_event_runner.py
       --live
       --turbo
       --metrics-port 9100
     networks:
       - hydra-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9100/metrics"]
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 9100)); s.close()"]
       interval: 30s
       timeout: 10s
       retries: 3
