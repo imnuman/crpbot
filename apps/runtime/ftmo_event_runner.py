@@ -451,6 +451,13 @@ class FTMOEventRunner:
         """Execute a trading signal."""
         logger.info(f"[EventRunner] Executing: {signal.bot_name} {signal.direction} {signal.symbol}")
 
+        # SELL FILTER: Block SELL/SHORT trades until short detection improves
+        # LESSON LEARNED: BUY=100% WR (13/13), SELL=27% WR (8/31)
+        ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
+        if not ALLOW_SHORT_TRADES and signal.direction.upper() in ("SELL", "SHORT"):
+            logger.warning(f"[SellFilter] Trade blocked: {signal.direction} {signal.symbol} - SELL trades disabled (historical WR: 27%)")
+            return
+
         try:
             if self.paper_mode:
                 # Paper trade - just log it
@@ -502,10 +509,10 @@ class FTMOEventRunner:
         if not self._zmq_client:
             raise RuntimeError("ZMQ client not connected")
 
-        result = self._zmq_client.place_trade(
+        result = self._zmq_client.trade(
             symbol=signal.symbol,
-            direction=signal.direction.lower(),
-            lot_size=signal.lot_size,
+            direction=signal.direction.upper(),  # ZMQ expects uppercase BUY/SELL
+            volume=signal.lot_size,
             sl=signal.stop_loss,
             tp=signal.take_profit,
             comment=f"HYDRA_{signal.bot_name}"

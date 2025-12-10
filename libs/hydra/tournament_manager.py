@@ -150,7 +150,8 @@ class TournamentManager:
                     if last_ts and isinstance(last_ts, str):
                         try:
                             s['last_trade_timestamp'] = datetime.fromisoformat(last_ts)
-                        except:
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"Failed to parse last_trade_timestamp '{last_ts}': {e}")
                             s['last_trade_timestamp'] = None
                     perf = StrategyPerformance(**s)
                     self.populations[pop_key].append(perf)
@@ -159,15 +160,15 @@ class TournamentManager:
             for key, ts_str in data.get('last_elimination', {}).items():
                 try:
                     self.last_elimination[key] = datetime.fromisoformat(ts_str)
-                except:
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Failed to parse elimination timestamp for {key}: {e}")
 
             # Restore breeding timestamps
             for key, ts_str in data.get('last_breeding', {}).items():
                 try:
                     self.last_breeding[key] = datetime.fromisoformat(ts_str)
-                except:
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Failed to parse breeding timestamp for {key}: {e}")
 
             # Restore history (limited to last 100 entries)
             self.tournament_history = data.get('tournament_history', [])[-100:]

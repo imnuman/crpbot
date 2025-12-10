@@ -260,16 +260,31 @@ autossh -M 0 -N -L 15556:localhost:5556 trader@45.82.167.195 &
 ### Development
 ```bash
 make setup              # Initial setup (deps + pre-commit hooks)
-make fmt                # Format with ruff
+make fmt                # Format with ruff (auto-fix + format)
 make lint               # Lint with ruff + mypy
 make test               # All tests
-make unit               # Unit tests only
+make unit               # Unit tests only (excludes smoke)
 make smoke              # Smoke tests (5-min backtest)
 
 # Run single test
 pytest tests/unit/test_ftmo_rules.py -v
 pytest tests/unit/test_ftmo_rules.py::test_specific_function -v
+
+# Run tests matching a pattern
+pytest tests/ -k "guardian" -v
+
+# Training (optional ML workflows)
+make train COIN=BTC EPOCHS=10   # Train LSTM model
+make rl STEPS=1000              # Train RL model
 ```
+
+### Code Style
+- **Line length**: 100 characters
+- **Python version**: 3.10+
+- **Formatter**: ruff (runs `ruff format .`)
+- **Linter**: ruff + mypy (config in `pyproject.toml`)
+- **Pre-commit**: Auto-runs on commit (installed via `make setup`)
+- **Build system**: hatchling (packages: apps, libs)
 
 ### HYDRA Runtime
 ```bash
@@ -478,24 +493,15 @@ cd /root/crpbot/monitoring && docker compose up -d
 ### ZMQ Connection Issues
 
 ```bash
-# Test ZMQ server connectivity
-python3 -c "
-import zmq
-ctx = zmq.Context()
-sock = ctx.socket(zmq.REQ)
-sock.setsockopt(zmq.RCVTIMEO, 5000)
-sock.connect('tcp://127.0.0.1:15555')
-sock.send_json({'cmd': 'PING'})
-print(sock.recv_json())
-"
-
-# Check SSH tunnel
+# Check SSH tunnel is running
 ss -tlnp | grep 15555
 
-# Restart SSH tunnel
+# Restart SSH tunnel if down
 pkill -f 'ssh -N -L 15555'
 ssh -N -L 15555:localhost:5555 trader@45.82.167.195 &
 ```
+
+Test ZMQ connectivity using the snippet in "FTMO Runner Commands" section above.
 
 ### No Price Ticks
 
@@ -639,6 +645,69 @@ def _in_session_window(self) -> bool:
 
 ---
 
+### Fix #6: BUY-Only Filter Deployed (SELL Trades Blocked)
+
+**Files**: `libs/hydra/trade_validator.py`, `libs/hydra/paper_trader.py`
+
+**Date**: 2025-12-10
+
+**Symptom**: SELL trades had only 27% win rate (8/31) vs BUY trades at 100% (13/13).
+
+**Root Cause**: Short detection algorithms across all 4 engines were underperforming.
+
+**Fix**: Added `ALLOW_SHORT_TRADES = False` flag in both files to block SELL/SHORT trades:
+
+1. `libs/hydra/trade_validator.py` (line 26):
+```python
+# LESSON LEARNED: BUY=100% WR, SELL=27% WR across all engines
+ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
+```
+
+2. `libs/hydra/paper_trader.py` (line 209):
+```python
+ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
+if not ALLOW_SHORT_TRADES and direction.upper() in ("SELL", "SHORT"):
+    logger.warning(f"[SellFilter] Trade blocked: {direction} {asset}")
+    return None
+```
+
+**To Re-enable**: Set `ALLOW_SHORT_TRADES = True` in both files when short detection improves.
+
+---
+
+### Fix #7: FTMO Crypto Symbol Support
+
+**Date**: 2025-12-10
+
+**Discovery**: FTMO MT5 only supports 5 crypto symbols (not all 15 paper trading coins):
+- BTCUSD (spread: ~$1.00)
+- ETHUSD (spread: ~$0.60)
+- LTCUSD (spread: ~$0.15)
+- XRPUSD (spread: ~$0.0015)
+- BCHUSD (spread: ~$0.59)
+
+**Note**: Paper trading uses Coinbase API (15 coins), but FTMO live trading is limited to these 5 crypto pairs.
+
+---
+
+### Fix #8: Trend Exhaustion Filter (RSI/Z-Score)
+
+**Date**: 2025-12-10
+
+**Symptom**: BUY signals at market tops and SELL signals at market bottoms leading to poor entries.
+
+**Root Cause**: Engines were not filtering out signals when trends were overextended.
+
+**Fix**: Added trend exhaustion detection in `trade_validator.py`:
+```python
+# Block BUY when RSI > 75 or z-score > 2.0 (price too far above mean)
+# Block SELL when RSI < 25 or z-score < -2.0 (price too far below mean)
+```
+
+**Note**: This filter works alongside the BUY-only filter (Fix #6) to improve entry quality.
+
+---
+
 ### Debugging Tips for Future Issues
 
 1. **Check tick counts match**: `hf_scalper.ticks` should equal sum of its tracked symbols
@@ -650,4 +719,4 @@ def _in_session_window(self) -> bool:
 
 ---
 
-**Last Updated**: 2025-12-09 | **Branch**: `main` | **System**: HYDRA 4.0 + FTMO Live Trading
+**Last Updated**: 2025-12-10 | **Branch**: `main` | **System**: HYDRA 4.0 + FTMO Live Trading

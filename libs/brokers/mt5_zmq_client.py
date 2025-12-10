@@ -116,8 +116,14 @@ class SSHTunnel:
         with self._lock:
             if self.process:
                 self.process.terminate()
-                self.process.wait(timeout=5)
-                self.process = None
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logger.warning("[SSH] Tunnel didn't terminate gracefully, killing...")
+                    self.process.kill()
+                    self.process.wait()
+                finally:
+                    self.process = None
                 logger.info("[SSH] Tunnel stopped")
     
     def is_running(self) -> bool:
@@ -186,34 +192,55 @@ class MT5ZMQClient:
         """Disconnect from MT5 executor."""
         with self._lock:
             if self.socket:
-                self.socket.close()
-                self.socket = None
+                try:
+                    self.socket.setsockopt(zmq.LINGER, 1000)  # Wait 1s for pending msgs
+                    self.socket.close()
+                except Exception:
+                    pass
+                finally:
+                    self.socket = None
+
             if self.context:
-                self.context.term()
-                self.context = None
+                try:
+                    self.context.term()
+                except Exception:
+                    pass
+                finally:
+                    self.context = None
+
             if self.tunnel:
                 self.tunnel.stop()
+
             self._connected = False
             logger.info("[ZMQ] Disconnected")
     
     def _send_command(self, cmd: Dict) -> Dict:
-        """Send command and get response."""
+        """Send command and get response (thread-safe)."""
+        with self._lock:
+            if not self._connected:
+                # Release lock for connect() which also acquires it
+                pass
+
+        # Try to connect if not connected (connect() has its own lock)
         if not self._connected:
             if not self.connect():
                 return {"success": False, "error": "Not connected"}
-        
-        try:
-            self.socket.send_json(cmd)
-            response = self.socket.recv_json()
-            return response
-        except zmq.Again:
-            logger.error("[ZMQ] Request timeout")
-            self._connected = False
-            return {"success": False, "error": "Request timeout"}
-        except zmq.ZMQError as e:
-            logger.error(f"[ZMQ] Error: {e}")
-            self._connected = False
-            return {"success": False, "error": str(e)}
+
+        with self._lock:
+            try:
+                if not self.socket:
+                    return {"success": False, "error": "Socket not available"}
+                self.socket.send_json(cmd)
+                response = self.socket.recv_json()
+                return response
+            except zmq.Again:
+                logger.error("[ZMQ] Request timeout")
+                self._connected = False
+                return {"success": False, "error": "Request timeout"}
+            except zmq.ZMQError as e:
+                logger.error(f"[ZMQ] Error: {e}")
+                self._connected = False
+                return {"success": False, "error": str(e)}
     
     def ping(self) -> Dict:
         """Check connection and MT5 status."""
@@ -307,13 +334,16 @@ class MT5ZMQClient:
 
 # Singleton instance
 _client: Optional[MT5ZMQClient] = None
+_client_lock = threading.Lock()
 
 
 def get_mt5_client() -> MT5ZMQClient:
-    """Get or create MT5 ZMQ client singleton."""
+    """Get or create MT5 ZMQ client singleton (thread-safe)."""
     global _client
     if _client is None:
-        _client = MT5ZMQClient()
+        with _client_lock:
+            if _client is None:
+                _client = MT5ZMQClient()
     return _client
 
 

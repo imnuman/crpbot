@@ -310,14 +310,25 @@ class FTMOEventBus:
 
     def stop(self):
         """Stop the event bus."""
-        self._running = False
+        with self._lock:
+            self._running = False
 
-        if self.sub_socket:
-            self.sub_socket.close()
-        if self.context:
-            self.context.term()
-        if self._tunnel:
-            self._tunnel.stop()
+            if self.sub_socket:
+                try:
+                    self.sub_socket.close()
+                except Exception:
+                    pass
+                self.sub_socket = None
+
+            if self.context:
+                try:
+                    self.context.term()
+                except Exception:
+                    pass
+                self.context = None
+
+            if self._tunnel:
+                self._tunnel.stop()
 
         logger.info("[EventBus] Event bus stopped")
 
@@ -491,21 +502,31 @@ class FTMOEventBus:
         logger.info(f"[EventBus] Reconnecting in {delay}s...")
         time.sleep(delay)
 
-        self._stats["reconnects"] += 1
+        with self._lock:
+            self._stats["reconnects"] += 1
 
-        # Close existing connection
-        if self.sub_socket:
-            self.sub_socket.close()
-        if self.context:
-            self.context.term()
+            # Close existing connection
+            if self.sub_socket:
+                try:
+                    self.sub_socket.close()
+                except Exception:
+                    pass
+                self.sub_socket = None
 
-        # Restart tunnel if needed
-        if self.use_ssh_tunnel and self._tunnel:
-            self._tunnel.stop()
-            self._tunnel.start()
+            if self.context:
+                try:
+                    self.context.term()
+                except Exception:
+                    pass
+                self.context = None
 
-        # Reconnect
-        self._connect()
+            # Restart tunnel if needed
+            if self.use_ssh_tunnel and self._tunnel:
+                self._tunnel.stop()
+                self._tunnel.start()
+
+            # Reconnect
+            self._connect()
 
     def get_latest_tick(self, symbol: str) -> Optional[TickEvent]:
         """Get most recent tick for a symbol."""
