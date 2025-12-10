@@ -431,6 +431,7 @@ class MultiSymbolBotWrapper(EventBotWrapper):
             # Buffer for this symbol
             self._symbol_buffers[tick.symbol].add_tick(tick)
             self._symbol_tick_counts[tick.symbol] += 1
+            self._tick_count += 1  # Also increment base counter for status reporting
             self._last_tick_time = time.time()
 
             # Build candles
@@ -474,11 +475,15 @@ class MultiSymbolBotWrapper(EventBotWrapper):
             if not all_candles:
                 return
 
-            # For multi-symbol bots, pass all symbol data
+            # For multi-symbol bots, pass candles in expected format: {symbol}_candles
             market_data = {
                 "candles_by_symbol": all_candles,
-                "candles": list(all_candles.values())[0] if all_candles else []
             }
+            # Add {symbol}_candles keys for HFScalper compatibility
+            for symbol, candles in all_candles.items():
+                market_data[f"{symbol}_candles"] = candles
+            # Keep generic candles for backwards compatibility
+            market_data["candles"] = list(all_candles.values())[0] if all_candles else []
 
             # Run bot cycle
             signal = self.bot.run_cycle(market_data)
@@ -486,6 +491,7 @@ class MultiSymbolBotWrapper(EventBotWrapper):
             # Reset counters
             for symbol in self.symbols:
                 self._symbol_tick_counts[symbol] = 0
+            self._tick_count = 0  # Also reset base counter
             self._last_analysis_time = time.time()
 
             processing_time = time.time() - start_time

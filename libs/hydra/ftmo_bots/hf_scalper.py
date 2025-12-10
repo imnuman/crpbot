@@ -339,7 +339,11 @@ class HFScalperBot(BaseFTMOBot):
 
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Override to use the current symbol being analyzed."""
-        actual_symbol = self._current_symbol or symbol
+        # Handle MULTI placeholder - use current symbol or default to first in list
+        if symbol == "MULTI":
+            actual_symbol = self._current_symbol or self.SYMBOLS[0]
+        else:
+            actual_symbol = self._current_symbol or symbol
         return super().get_current_price(actual_symbol)
 
 

@@ -63,7 +63,7 @@ class US30ORBBot(BaseFTMOBot):
     def __init__(self, paper_mode: bool = True):
         config = BotConfig(
             bot_name="US30ORB",
-            symbol="US30",  # Dow Jones
+            symbol="US30.cash",  # Dow Jones (FTMO broker symbol)
             risk_percent=0.015,
             max_daily_trades=1,
             stop_loss_pips=self.STOP_LOSS_POINTS,

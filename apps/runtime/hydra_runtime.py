@@ -756,13 +756,8 @@ class HydraRuntime:
                 import time
                 strategy_id = f"IND_{engine_name}_{asset}_{int(time.time())}"
 
-                # Record order with duplicate guard
-                duplicate_guard.record_order(
-                    symbol=asset,
-                    direction=action,
-                    engine=engine_name,
-                    entry_price=current_price
-                )
+                # NOTE: Don't record_order here - paper_trader.create_paper_trade()
+                # handles both the guard check and recording internally
 
                 # Create REAL paper trade (monitored for SL/TP by _check_paper_trades)
                 trade = self.paper_trader.create_paper_trade(

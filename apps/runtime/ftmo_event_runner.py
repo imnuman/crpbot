@@ -78,8 +78,8 @@ class FTMOEventRunner:
     - Prometheus metrics for monitoring
     """
 
-    # Symbols tracked by the system
-    ALL_SYMBOLS = ["XAUUSD", "EURUSD", "US30", "NAS100", "GBPUSD"]
+    # Symbols tracked by the system (using FTMO broker symbol names)
+    ALL_SYMBOLS = ["XAUUSD", "EURUSD", "US30.cash", "US100.cash", "GBPUSD"]
 
     def __init__(
         self,
@@ -240,8 +240,8 @@ class FTMOEventRunner:
             bots_config = [
                 ("gold_london", get_gold_london_bot(self.paper_mode, turbo_mode=self.turbo_mode), "XAUUSD"),
                 ("eurusd", get_eurusd_bot(self.paper_mode), "EURUSD"),
-                ("us30", get_us30_bot(self.paper_mode), "US30"),
-                ("nas100", get_nas100_bot(self.paper_mode), "NAS100"),
+                ("us30", get_us30_bot(self.paper_mode), "US30.cash"),
+                ("nas100", get_nas100_bot(self.paper_mode), "US100.cash"),
                 ("gold_ny", get_gold_ny_bot(self.paper_mode), "XAUUSD"),
             ]
 
@@ -259,7 +259,7 @@ class FTMOEventRunner:
 
             # HF Scalper is multi-symbol
             hf_bot = get_hf_scalper(self.paper_mode, turbo_mode=self.turbo_mode)
-            hf_symbols = ["XAUUSD", "EURUSD", "US30", "NAS100"]
+            hf_symbols = ["XAUUSD", "EURUSD", "US30.cash", "US100.cash"]
             hf_wrapper = MultiSymbolBotWrapper(
                 bot=hf_bot,
                 symbols=hf_symbols,

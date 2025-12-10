@@ -61,7 +61,7 @@ class NAS100GapBot(BaseFTMOBot):
     def __init__(self, paper_mode: bool = True):
         config = BotConfig(
             bot_name="NAS100Gap",
-            symbol="NAS100",  # NASDAQ 100
+            symbol="US100.cash",  # NASDAQ 100 (FTMO broker symbol)
             risk_percent=0.015,
             max_daily_trades=1,
             stop_loss_pips=self.STOP_LOSS_POINTS,

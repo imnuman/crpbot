@@ -74,18 +74,19 @@ class FTMOOrchestrator:
 
     # Correlation matrix for position management
     # Highly correlated pairs should not be traded together
+    # Note: Uses FTMO broker symbol names (US30.cash, US100.cash)
     CORRELATIONS = {
         ("XAUUSD", "XAUUSD"): 1.0,
-        ("XAUUSD", "US30"): -0.3,  # Gold vs Dow - low inverse
-        ("XAUUSD", "NAS100"): -0.2,  # Gold vs NASDAQ - low inverse
+        ("XAUUSD", "US30.cash"): -0.3,  # Gold vs Dow - low inverse
+        ("XAUUSD", "US100.cash"): -0.2,  # Gold vs NASDAQ - low inverse
         ("XAUUSD", "EURUSD"): 0.4,  # Gold vs EUR - moderate positive
-        ("US30", "NAS100"): 0.85,  # Dow vs NASDAQ - high positive
-        ("EURUSD", "US30"): -0.2,
-        ("EURUSD", "NAS100"): -0.2,
+        ("US30.cash", "US100.cash"): 0.85,  # Dow vs NASDAQ - high positive
+        ("EURUSD", "US30.cash"): -0.2,
+        ("EURUSD", "US100.cash"): -0.2,
         ("EURUSD", "GBPUSD"): 0.85,  # EUR vs GBP - highly correlated
         ("GBPUSD", "XAUUSD"): 0.35,  # GBP vs Gold - moderate
-        ("GBPUSD", "US30"): -0.25,  # GBP vs Dow
-        ("GBPUSD", "NAS100"): -0.20,  # GBP vs NASDAQ
+        ("GBPUSD", "US30.cash"): -0.25,  # GBP vs Dow
+        ("GBPUSD", "US100.cash"): -0.20,  # GBP vs NASDAQ
     }
 
     MT5_EXECUTOR_URL = os.getenv("MT5_EXECUTOR_URL", "http://45.82.167.195:5000")

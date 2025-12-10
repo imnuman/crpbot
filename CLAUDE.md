@@ -608,6 +608,37 @@ def _in_session_window(self) -> bool:
 
 ---
 
+### Bug #5: US30/NAS100 Symbol Name Mismatch (No Ticks)
+
+**Files**: Multiple (`ftmo_event_runner.py`, `us30_orb.py`, `nas100_gap.py`, `orchestrator.py`, `metalearning.py`)
+
+**Symptom**: US30 and NAS100 bots showing `ticks=0` in status reports while XAUUSD and EURUSD received ticks normally.
+
+**Root Cause**: Windows price streamer was updated to publish FTMO broker symbol names (`US30.cash`, `US100.cash`), but Linux ftmo-runner was still subscribing to plain names (`US30`, `NAS100`).
+
+**Fix**: Updated all Linux-side code to use FTMO's actual broker symbol names:
+
+1. `apps/runtime/ftmo_event_runner.py`:
+   - `ALL_SYMBOLS`: `"US30"` → `"US30.cash"`, `"NAS100"` → `"US100.cash"`
+   - Bot configs: `("us30", ..., "US30.cash")`, `("nas100", ..., "US100.cash")`
+   - `hf_symbols`: Added `"US30.cash"`, `"US100.cash"`
+
+2. `libs/hydra/ftmo_bots/us30_orb.py`:
+   - `symbol="US30"` → `symbol="US30.cash"`
+
+3. `libs/hydra/ftmo_bots/nas100_gap.py`:
+   - `symbol="NAS100"` → `symbol="US100.cash"`
+
+4. `libs/hydra/ftmo_bots/orchestrator.py`:
+   - Correlation matrix keys: `"US30"` → `"US30.cash"`, `"NAS100"` → `"US100.cash"`
+
+5. `libs/hydra/ftmo_bots/metalearning.py`:
+   - `RISK_ASSETS` list: Updated to use `.cash` suffix
+
+**Note**: US equity indices (US30/US100) have limited market hours (14:30-21:00 UTC / 09:30-16:00 EST). They will show 0 ticks outside these hours even when properly configured.
+
+---
+
 ### Debugging Tips for Future Issues
 
 1. **Check tick counts match**: `hf_scalper.ticks` should equal sum of its tracked symbols
@@ -615,6 +646,7 @@ def _in_session_window(self) -> bool:
 3. **Always rebuild with `--no-cache`** after code changes
 4. **Verify container code**: `docker exec container grep pattern /app/file.py`
 5. **Monitor status reports**: Look for `ticks=0` on multi-symbol bots as a red flag
+6. **Check symbol names match**: Windows price streamer publishes `TICK:<symbol>`, ensure Linux subscribes to exact same symbol name
 
 ---
 
