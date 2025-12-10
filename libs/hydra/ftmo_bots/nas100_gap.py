@@ -176,7 +176,8 @@ class NAS100GapBot(BaseFTMOBot):
         risk_amount = balance * self.config.risk_percent
         point_value_per_lot = 1.0
         lot_size = risk_amount / (self.STOP_LOSS_POINTS * point_value_per_lot)
-        return round(max(0.1, min(lot_size, 10.0)), 2)
+        # SAFETY: Max 0.5 lots after $503 loss on 2025-12-10
+        return round(max(0.1, min(lot_size, 0.5)), 2)
 
     def _is_trading_window(self, now: datetime) -> bool:
         """Check if in trading window (after open, before exit time)."""

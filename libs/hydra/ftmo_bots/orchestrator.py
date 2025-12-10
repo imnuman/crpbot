@@ -437,7 +437,8 @@ class FTMOOrchestrator:
 
         # Adjust lot size
         adjusted_lot = signal.lot_size * params["size_multiplier"]
-        adjusted_lot = round(max(0.01, min(5.0, adjusted_lot)), 2)
+        # SAFETY: Max 0.5 lots after $503 loss on 2025-12-10
+        adjusted_lot = round(max(0.01, min(0.5, adjusted_lot)), 2)
 
         # Create adjusted signal
         adjusted_signal = TradeSignal(
