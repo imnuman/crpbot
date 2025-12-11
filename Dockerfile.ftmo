@@ -24,16 +24,19 @@ RUN pip install --no-cache-dir \
     numpy>=1.24.0 \
     pandas>=2.0.0 \
     httpx>=0.25.0 \
-    pydantic>=2.0.0
+    pydantic>=2.0.0 \
+    chromadb>=0.4.0 \
+    beautifulsoup4>=4.12 \
+    apscheduler>=3.10
 
 # ============================================
 # SOURCE CODE - Copy only what FTMO needs
 # ============================================
 # Create directory structure first
-RUN mkdir -p apps/runtime libs/hydra libs/brokers
+RUN mkdir -p apps/runtime libs/hydra libs/brokers libs/knowledge
 
 # Create __init__.py files
-RUN touch apps/__init__.py apps/runtime/__init__.py libs/__init__.py libs/hydra/__init__.py libs/brokers/__init__.py
+RUN touch apps/__init__.py apps/runtime/__init__.py libs/__init__.py libs/hydra/__init__.py libs/brokers/__init__.py libs/knowledge/__init__.py
 
 # Copy FTMO runner
 COPY apps/runtime/ftmo_event_runner.py ./apps/runtime/
@@ -43,6 +46,9 @@ COPY libs/hydra/ftmo_bots/ ./libs/hydra/ftmo_bots/
 
 # Copy broker client
 COPY libs/brokers/mt5_zmq_client.py ./libs/brokers/
+
+# Copy knowledge library for sentiment/COT integration
+COPY libs/knowledge/ ./libs/knowledge/
 
 # Create data directories
 RUN mkdir -p /app/data/hydra/ftmo /app/logs && \

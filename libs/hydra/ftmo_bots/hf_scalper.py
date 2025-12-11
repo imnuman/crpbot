@@ -8,6 +8,12 @@ Strategy:
 - Trade frequently to generate L3 metalearning data
 - Max trades per day: 10 (30 in turbo mode)
 
+SESSION-AWARE TRADING (based on 126-trade analysis):
+- London (08:00-16:00 UTC): Best session, 57.1% WR, $1,047 P&L → Normal trading
+- NY (13:00-21:00 UTC): Good session, 53.3% WR, $654 P&L → Normal trading
+- Overlap (13:00-16:00 UTC): Underperforms, 42.9% WR, $98 P&L → Higher threshold
+- Asian (22:00-06:00 UTC): Limited data → Reduced activity
+
 Expected Performance:
 - Win rate: 52%
 - Avg win: +18 pips
@@ -62,6 +68,13 @@ class HFScalperBot(BaseFTMOBot):
 
     # Cooldown between trades (minutes)
     MIN_TRADE_INTERVAL = 15
+
+    # Session-aware trading adjustments (based on 126-trade analysis)
+    # Overlap (13:00-16:00 UTC) has 42.9% WR vs 57.1% London - be more selective
+    SESSION_OVERLAP_START = 13  # 13:00 UTC
+    SESSION_OVERLAP_END = 16    # 16:00 UTC
+    OVERLAP_MOMENTUM_MULTIPLIER = 1.3  # Require 30% higher momentum during overlap
+    OVERLAP_COOLDOWN_MULTIPLIER = 1.5  # 50% longer cooldown during overlap
 
     def __init__(self, paper_mode: bool = True, turbo_mode: bool = False):
         config = BotConfig(
@@ -147,7 +160,7 @@ class HFScalperBot(BaseFTMOBot):
         }
 
     def should_trade(self, analysis: Dict[str, Any]) -> Tuple[bool, str]:
-        """Check if momentum setup is strong enough."""
+        """Check if momentum setup is strong enough (session-aware)."""
         if not analysis.get("tradeable"):
             return False, analysis.get("reason", "Not tradeable")
 
@@ -155,12 +168,19 @@ class HFScalperBot(BaseFTMOBot):
         if not setup:
             return False, "No setup found"
 
-        # Require minimum momentum score
-        min_score = 0.5 * self.config.get_turbo_multiplier()
-        if setup.momentum_score < min_score:
-            return False, f"Momentum too weak ({setup.momentum_score:.2f} < {min_score})"
+        now = datetime.now(timezone.utc)
+        session = self._get_session_name(now)
 
-        return True, f"{setup.direction} on {setup.symbol} (momentum: {setup.momentum_score:.2f})"
+        # Require minimum momentum score (higher during overlap due to 42.9% WR)
+        min_score = 0.5 * self.config.get_turbo_multiplier()
+        if self._is_overlap_session(now):
+            min_score *= self.OVERLAP_MOMENTUM_MULTIPLIER
+            logger.debug(f"[{self.config.bot_name}] Overlap session - raised threshold to {min_score:.2f}")
+
+        if setup.momentum_score < min_score:
+            return False, f"Momentum too weak ({setup.momentum_score:.2f} < {min_score}) [{session}]"
+
+        return True, f"{setup.direction} on {setup.symbol} (momentum: {setup.momentum_score:.2f}) [{session}]"
 
     def generate_signal(self, analysis: Dict[str, Any], current_price: float) -> Optional[TradeSignal]:
         """Generate scalp signal from momentum setup."""
@@ -211,12 +231,14 @@ class HFScalperBot(BaseFTMOBot):
         )
 
         # Record trade time for cooldown
-        self._last_trade_times[setup.symbol] = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        self._last_trade_times[setup.symbol] = now
+        session = self._get_session_name(now)
 
         logger.info(
             f"[{self.config.bot_name}] SCALP SIGNAL: {setup.direction} {setup.symbol} "
             f"@ {setup.entry_price:.5f} (SL: {sl_pips:.0f} pips, TP: {tp_pips:.0f} pips, "
-            f"momentum: {setup.momentum_score:.2f})"
+            f"momentum: {setup.momentum_score:.2f}) [{session}]"
         )
 
         return signal
@@ -225,14 +247,38 @@ class HFScalperBot(BaseFTMOBot):
         """Check if within trading hours."""
         return self.TRADE_START_HOUR <= now.hour < self.TRADE_END_HOUR
 
+    def _is_overlap_session(self, now: datetime) -> bool:
+        """Check if in London-NY overlap (13:00-16:00 UTC) - underperforming session."""
+        return self.SESSION_OVERLAP_START <= now.hour < self.SESSION_OVERLAP_END
+
+    def _get_session_name(self, now: datetime) -> str:
+        """Get current session name for logging."""
+        hour = now.hour
+        if hour >= 22 or hour < 6:
+            return "Asian"
+        elif 8 <= hour < 13:
+            return "London"
+        elif 13 <= hour < 16:
+            return "Overlap"
+        elif 16 <= hour < 21:
+            return "NY"
+        else:
+            return "Transition"
+
     def _can_trade_symbol(self, symbol: str, now: datetime) -> bool:
-        """Check if symbol is off cooldown."""
+        """Check if symbol is off cooldown (extended during overlap session)."""
         last_trade = self._last_trade_times.get(symbol)
         if last_trade is None:
             return True
 
         elapsed = (now - last_trade).total_seconds() / 60
-        return elapsed >= self._min_interval
+
+        # Apply longer cooldown during overlap session (42.9% WR vs 57.1% London)
+        interval = self._min_interval
+        if self._is_overlap_session(now):
+            interval = self._min_interval * self.OVERLAP_COOLDOWN_MULTIPLIER
+
+        return elapsed >= interval
 
     def _analyze_momentum(self, symbol: str, candles: List[Dict]) -> Optional[MomentumSetup]:
         """

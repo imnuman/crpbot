@@ -26,6 +26,14 @@ except ImportError:
     ZMQ_AVAILABLE = False
     logger.warning("MT5 ZMQ client not available")
 
+# Import knowledge query for sentiment/risk analysis
+try:
+    from libs.knowledge.query import get_trading_context, RiskLevel
+    KNOWLEDGE_AVAILABLE = True
+except ImportError:
+    KNOWLEDGE_AVAILABLE = False
+    logger.info("Knowledge system not available - trading without sentiment data")
+
 
 @dataclass
 class BotConfig:
@@ -256,6 +264,48 @@ class BaseFTMOBot(ABC):
     def _execute_live(self, signal: TradeSignal) -> Dict[str, Any]:
         """Execute via MT5 on Windows VPS using ZMQ."""
         try:
+            # KNOWLEDGE CHECK: Get sentiment, central bank risk, fear/greed
+            knowledge_modifier = 1.0
+            if KNOWLEDGE_AVAILABLE:
+                try:
+                    ctx = get_trading_context(signal.symbol, signal.direction)
+
+                    # CRITICAL: Skip trade if central bank meeting imminent
+                    if ctx.get("central_bank") and ctx["central_bank"].get("risk_level") == "critical":
+                        logger.warning(
+                            f"[{self.config.bot_name}] [Knowledge] Trade blocked: "
+                            f"Central bank meeting imminent ({ctx['central_bank']['bank']})"
+                        )
+                        return {"success": False, "error": "Central bank risk too high"}
+
+                    knowledge_modifier = ctx.get("confidence_modifier", 1.0)
+
+                    # Log knowledge context
+                    if ctx.get("warnings"):
+                        logger.warning(f"[{self.config.bot_name}] [Knowledge] Warnings: {ctx['warnings']}")
+                    if ctx.get("recommendations"):
+                        logger.info(f"[{self.config.bot_name}] [Knowledge] Recommendations: {ctx['recommendations']}")
+
+                    logger.info(
+                        f"[{self.config.bot_name}] [Knowledge] Modifier: {knowledge_modifier:.2f} "
+                        f"(sentiment: {ctx.get('sentiment', {}).get('bias', 'N/A')}, "
+                        f"CB: {ctx.get('central_bank', {}).get('risk_level', 'N/A')}, "
+                        f"F&G: {ctx.get('fear_greed', {}).get('classification', 'N/A')})"
+                    )
+
+                    # Adjust lot size based on knowledge
+                    if knowledge_modifier < 1.0:
+                        original_lot = signal.lot_size
+                        signal.lot_size = round(signal.lot_size * knowledge_modifier, 2)
+                        signal.lot_size = max(0.01, signal.lot_size)  # Minimum 0.01
+                        logger.info(
+                            f"[{self.config.bot_name}] [Knowledge] Lot adjusted: "
+                            f"{original_lot} → {signal.lot_size} (mod: {knowledge_modifier:.2f})"
+                        )
+
+                except Exception as e:
+                    logger.debug(f"[{self.config.bot_name}] Knowledge check failed: {e}")
+
             # SELL FILTER: Block SELL for most bots, but allow proven performers
             # gold_london has 71% WR on SELL (7 trades) - allow it
             SELL_WHITELIST = ["GoldLondonReversal"]  # Bots with proven SELL performance

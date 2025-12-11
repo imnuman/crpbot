@@ -58,6 +58,16 @@ dashboard = [
     "flask-cors>=6.0.1",
 ]
 
+# Knowledge aggregation system
+knowledge = [
+    "praw>=7.7.0",              # Reddit API
+    "beautifulsoup4>=4.12.0",   # Web scraping
+    "chromadb>=0.4.0",          # Vector database
+    "openai>=1.0.0",            # Embeddings
+    "apscheduler>=3.10.0",      # Job scheduling
+    "feedparser>=6.0.0",        # RSS feeds
+]
+
 # Development tools
 dev = [
     "ruff>=0.1.0",

@@ -708,6 +708,60 @@ if not ALLOW_SHORT_TRADES and direction.upper() in ("SELL", "SHORT"):
 
 ---
 
+### Fix #9: ZMQ Trade Execution Timeout in Docker (Direct Connection)
+
+**Date**: 2025-12-11
+
+**Files**: `libs/brokers/mt5_zmq_client.py`, `docker-compose.yml`
+
+**Symptom**: ZMQ trade commands timing out (`zmq.error.Again: Resource temporarily unavailable`) while price streaming worked fine. ftmo-runner in Docker couldn't execute trades even though SSH tunnel was established on host.
+
+**Root Cause**: The ZMQ client used SSH tunnel (`tcp://127.0.0.1:15555`) which binds to localhost on the host machine. Docker containers can't reach host's localhost without special networking configuration.
+
+**Architecture**:
+```
+BEFORE (broken):
+Docker Container → tcp://127.0.0.1:15555 → ❌ Can't reach host localhost
+
+AFTER (fixed):
+Docker Container → tcp://45.82.167.195:5555 → ✅ Direct to Windows VPS
+```
+
+**Fix** (`libs/brokers/mt5_zmq_client.py`):
+```python
+# Added direct_connect config option (line 59-60)
+@dataclass
+class MT5ZMQConfig:
+    # ... existing config ...
+    direct_connect: bool = os.getenv("ZMQ_DIRECT", "false").lower() == "true"
+
+# Updated connect() to use direct connection when enabled (line 181-185)
+if self.config.direct_connect:
+    endpoint = f"tcp://{self.config.windows_host}:{self.config.zmq_port}"
+else:
+    endpoint = f"tcp://127.0.0.1:{self.config.local_port}"
+```
+
+**Fix** (`docker-compose.yml`):
+```yaml
+ftmo-runner:
+    environment:
+      - ZMQ_DIRECT=true  # Direct connection to Windows VPS (bypass SSH tunnel in Docker)
+```
+
+**When to use**:
+- `ZMQ_DIRECT=true`: For Docker containers or when both servers are on same network (low latency)
+- `ZMQ_DIRECT=false` (default): For running on host directly with SSH tunnel
+
+**Verification**:
+```bash
+# Check logs for direct connection
+docker logs ftmo-runner 2>&1 | grep "ZMQ.*Connected"
+# Should show: [ZMQ] Connected to tcp://45.82.167.195:5555 (direct=True)
+```
+
+---
+
 ### Debugging Tips for Future Issues
 
 1. **Check tick counts match**: `hf_scalper.ticks` should equal sum of its tracked symbols
@@ -719,4 +773,4 @@ if not ALLOW_SHORT_TRADES and direction.upper() in ("SELL", "SHORT"):
 
 ---
 
-**Last Updated**: 2025-12-10 | **Branch**: `main` | **System**: HYDRA 4.0 + FTMO Live Trading
+**Last Updated**: 2025-12-11 | **Branch**: `main` | **System**: HYDRA 4.0 + FTMO Live Trading

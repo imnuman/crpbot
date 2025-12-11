@@ -24,6 +24,7 @@ from .us30_orb import US30ORBBot, get_us30_bot
 from .nas100_gap import NAS100GapBot, get_nas100_bot
 from .gold_ny_reversion import GoldNYReversionBot, get_gold_ny_bot
 from .hf_scalper import HFScalperBot, get_hf_scalper
+from .london_breakout import LondonBreakoutBot, get_london_breakout_bot
 from .orchestrator import FTMOOrchestrator, get_ftmo_orchestrator
 from .metalearning import (
     FTMOMetalearner,
@@ -54,6 +55,8 @@ __all__ = [
     "get_gold_ny_bot",
     "HFScalperBot",
     "get_hf_scalper",
+    "LondonBreakoutBot",
+    "get_london_breakout_bot",
     "FTMOOrchestrator",
     "get_ftmo_orchestrator",
     "FTMOMetalearner",

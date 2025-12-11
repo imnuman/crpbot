@@ -17,6 +17,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - ZMQ_DIRECT=true  # Direct connection to Windows VPS (bypass SSH tunnel in Docker)
     ports:
       - "9101:9100"  # Prometheus metrics for FTMO bots
     volumes:

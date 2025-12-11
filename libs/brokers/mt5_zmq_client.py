@@ -56,6 +56,9 @@ class MT5ZMQConfig:
     # Auto SSH tunnel
     auto_tunnel: bool = True
 
+    # Direct connection (bypass tunnel - for Docker or when tunnel not needed)
+    direct_connect: bool = os.getenv("ZMQ_DIRECT", "false").lower() == "true"
+
 
 class SSHTunnel:
     """Manages SSH tunnel to Windows VPS."""
@@ -158,8 +161,8 @@ class MT5ZMQClient:
         """Connect to MT5 executor."""
         with self._lock:
             try:
-                # Start SSH tunnel if configured
-                if self.tunnel and not self.tunnel.ensure_running():
+                # Start SSH tunnel if configured (skip if using direct connection)
+                if not self.config.direct_connect and self.tunnel and not self.tunnel.ensure_running():
                     logger.error("[ZMQ] Failed to establish SSH tunnel")
                     return False
                 
@@ -175,11 +178,14 @@ class MT5ZMQClient:
                 self.socket.setsockopt(zmq.SNDTIMEO, self.config.request_timeout)
                 self.socket.setsockopt(zmq.LINGER, 0)
                 
-                # Connect to local tunnel endpoint
-                endpoint = f"tcp://127.0.0.1:{self.config.local_port}"
+                # Connect to endpoint (direct or via tunnel)
+                if self.config.direct_connect:
+                    endpoint = f"tcp://{self.config.windows_host}:{self.config.zmq_port}"
+                else:
+                    endpoint = f"tcp://127.0.0.1:{self.config.local_port}"
                 self.socket.connect(endpoint)
-                
-                logger.info(f"[ZMQ] Connected to {endpoint}")
+
+                logger.info(f"[ZMQ] Connected to {endpoint} (direct={self.config.direct_connect})")
                 self._connected = True
                 return True
                 
@@ -227,10 +233,13 @@ class MT5ZMQClient:
                 self.socket.setsockopt(zmq.RCVTIMEO, self.config.request_timeout)
                 self.socket.setsockopt(zmq.SNDTIMEO, self.config.request_timeout)
                 self.socket.setsockopt(zmq.LINGER, 0)
-                endpoint = f"tcp://127.0.0.1:{self.config.local_port}"
+                if self.config.direct_connect:
+                    endpoint = f"tcp://{self.config.windows_host}:{self.config.zmq_port}"
+                else:
+                    endpoint = f"tcp://127.0.0.1:{self.config.local_port}"
                 self.socket.connect(endpoint)
                 self._connected = True
-                logger.debug("[ZMQ] Socket recreated after error")
+                logger.debug(f"[ZMQ] Socket recreated after error (direct={self.config.direct_connect})")
         except Exception as e:
             logger.error(f"[ZMQ] Failed to recreate socket: {e}")
             self._connected = False

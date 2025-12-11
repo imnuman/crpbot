@@ -230,7 +230,8 @@ class FTMOEventRunner:
                 get_us30_bot,
                 get_nas100_bot,
                 get_gold_ny_bot,
-                get_hf_scalper
+                get_hf_scalper,
+                get_london_breakout_bot
             )
             from libs.hydra.ftmo_bots.event_bot_wrapper import (
                 EventBotWrapper,
@@ -244,6 +245,8 @@ class FTMOEventRunner:
                 ("eurusd", get_eurusd_bot(self.paper_mode), "EURUSD"),
                 ("us30", get_us30_bot(self.paper_mode), "US30.cash"),
                 ("gold_ny", get_gold_ny_bot(self.paper_mode), "XAUUSD"),  # RE-ENABLED: $8.79/trade expectancy
+                # London Breakout - NEW: Asian range breakout at London open
+                ("london_eur", get_london_breakout_bot("EURUSD", self.paper_mode), "EURUSD"),
                 # DISABLED: nas100 (47.6% WR, only $0.30/trade - negligible P&L)
             ]
             print("    - nas100: DISABLED (47.6% WR, only $0.30/trade)")
