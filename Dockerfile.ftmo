@@ -44,6 +44,9 @@ COPY apps/runtime/ftmo_event_runner.py ./apps/runtime/
 # Copy FTMO bots
 COPY libs/hydra/ftmo_bots/ ./libs/hydra/ftmo_bots/
 
+# Copy position manager for ATR trailing stops (Phase 5)
+COPY libs/hydra/position_manager.py ./libs/hydra/
+
 # Copy broker client
 COPY libs/brokers/mt5_zmq_client.py ./libs/brokers/
 
