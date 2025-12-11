@@ -44,6 +44,7 @@ class ActionType(Enum):
     PARTIAL_CLOSE = "partial_close"
     PYRAMID = "pyramid"
     TRAIL_UPDATE = "trail_update"
+    TIME_EXIT = "time_exit"  # Force close after max hold time
 
 
 # ==================== DATA CLASSES ====================
@@ -78,6 +79,12 @@ class ManagementConfig:
     trail_distance_percent: float = 0.003      # Trail 0.3% behind
     trail_step_pips: float = 5.0               # Minimum step
 
+    # Time-based exit (Phase 3 - 2025-12-11)
+    time_exit_enabled: bool = True
+    max_hold_hours: float = 8.0                # Force close after 8 hours
+    time_exit_warning_hours: float = 6.0       # Log warning at 6 hours
+    time_exit_at_profit_only: bool = False     # If True, only exit if position is profitable
+
 
 @dataclass
 class PositionState:
@@ -103,6 +110,7 @@ class PositionState:
     pyramid_entries: List[Dict] = field(default_factory=list)
     partial_takes: List[Dict] = field(default_factory=list)
     trail_stop_active: bool = False
+    time_exit_warned: bool = False  # Track if we've warned about approaching timeout
 
     # Performance tracking
     max_favorable_excursion: float = 0.0  # Best unrealized P&L
@@ -130,6 +138,7 @@ class PositionState:
             "pyramid_entries": self.pyramid_entries,
             "partial_takes": self.partial_takes,
             "trail_stop_active": self.trail_stop_active,
+            "time_exit_warned": self.time_exit_warned,
             "max_favorable_excursion": self.max_favorable_excursion,
             "max_adverse_excursion": self.max_adverse_excursion,
             "last_price": self.last_price,
@@ -156,6 +165,7 @@ class PositionState:
         state.pyramid_entries = data.get("pyramid_entries", [])
         state.partial_takes = data.get("partial_takes", [])
         state.trail_stop_active = data.get("trail_stop_active", False)
+        state.time_exit_warned = data.get("time_exit_warned", False)
         state.max_favorable_excursion = data.get("max_favorable_excursion", 0.0)
         state.max_adverse_excursion = data.get("max_adverse_excursion", 0.0)
         state.last_price = data.get("last_price", 0.0)
@@ -221,7 +231,8 @@ class PositionManager:
             f"(BE={self.config.breakeven_enabled}, "
             f"Pyramid={self.config.pyramid_enabled}, "
             f"Partial={self.config.partial_enabled}, "
-            f"Trail={self.config.trail_enabled})"
+            f"Trail={self.config.trail_enabled}, "
+            f"TimeExit={self.config.time_exit_enabled}/{self.config.max_hold_hours}h)"
         )
 
     # ==================== PUBLIC METHODS ====================
@@ -314,7 +325,14 @@ class PositionManager:
                 state.max_adverse_excursion = pnl_percent
 
         # Check management actions in order of priority
-        # 1. Breakeven (safest, highest priority)
+        # 0. Time-based exit (highest priority - prevents holding losers too long)
+        if self.config.time_exit_enabled:
+            action = self._check_time_exit(state, current_price)
+            if action:
+                self._save_state()
+                return action
+
+        # 1. Breakeven (safest, high priority)
         if self.config.breakeven_enabled:
             action = self._check_breakeven(state, current_price)
             if action:
@@ -368,6 +386,67 @@ class PositionManager:
             return dict(self._positions)
 
     # ==================== MANAGEMENT CHECKS ====================
+
+    def _check_time_exit(
+        self,
+        state: PositionState,
+        current_price: float,
+    ) -> Optional[ManagementAction]:
+        """
+        Check if position should be force-closed due to holding time.
+
+        Time-based exit prevents:
+        - Holding losers hoping they'll recover
+        - Overnight position risk
+        - Weekend gap risk
+
+        Returns TIME_EXIT action if position exceeded max hold time.
+        """
+        now = datetime.now(timezone.utc)
+        hold_duration = (now - state.created_at).total_seconds() / 3600  # Hours
+
+        # Warning at configured threshold
+        if hold_duration >= self.config.time_exit_warning_hours and not state.time_exit_warned:
+            remaining = self.config.max_hold_hours - hold_duration
+            logger.warning(
+                f"[PositionManager] TIME WARNING: {state.trade_id} held for {hold_duration:.1f}h, "
+                f"will be closed in {remaining:.1f}h"
+            )
+            with self._lock:
+                state.time_exit_warned = True
+
+        # Check if max hold time exceeded
+        if hold_duration < self.config.max_hold_hours:
+            return None  # Still within allowed time
+
+        # If profit-only mode, check P&L
+        if self.config.time_exit_at_profit_only:
+            pnl_percent = self._calc_pnl_percent(state, current_price)
+            if pnl_percent <= 0:
+                # Losing - let SL handle it instead of time exit
+                logger.debug(
+                    f"[PositionManager] Time exit skipped (in loss): {state.trade_id} at {pnl_percent:.2%}"
+                )
+                return None
+
+        # Force close position
+        pnl_percent = self._calc_pnl_percent(state, current_price)
+        logger.warning(
+            f"[PositionManager] TIME EXIT: {state.trade_id} force close after {hold_duration:.1f}h "
+            f"(P&L: {pnl_percent:.2%}, price: {current_price:.2f})"
+        )
+
+        return ManagementAction(
+            action_type=ActionType.TIME_EXIT,
+            trade_id=state.trade_id,
+            reason=f"Max hold time exceeded ({hold_duration:.1f}h > {self.config.max_hold_hours}h)",
+            details={
+                "hold_hours": hold_duration,
+                "max_hours": self.config.max_hold_hours,
+                "pnl_percent": pnl_percent,
+                "close_price": current_price,
+            },
+        )
 
     def _check_breakeven(
         self,

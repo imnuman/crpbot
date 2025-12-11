@@ -115,6 +115,29 @@ class FTMOEventRunner:
         self._signal_queue: List[Any] = []
         self._signal_lock = threading.Lock()
 
+        # Position time tracking for time-based exits (Phase 3 - 2025-12-11)
+        # Maps ticket -> (open_time, bot_name, max_hold_hours)
+        self._position_times: Dict[int, tuple] = {}
+        self._default_max_hold_hours = 8.0  # Default max hold time
+
+        # Bot-specific max hold times (from BotConfig in each bot)
+        self._bot_max_hold_hours = {
+            "gold_london": 2.0,
+            "GoldLondonReversal": 2.0,
+            "eurusd": 4.0,
+            "EURUSDBreakout": 4.0,
+            "us30": 2.0,
+            "US30ORB": 2.0,
+            "nas100": 2.0,
+            "NAS100Gap": 2.0,
+            "gold_ny": 3.0,
+            "GoldNYReversion": 3.0,
+            "hf_scalper": 1.0,
+            "HFScalper": 1.0,
+            "london_eur": 4.0,
+            "LondonBreakout": 4.0,
+        }
+
         logger.info(f"[EventRunner] Initialized (paper={paper_mode}, turbo={turbo_mode})")
 
     def start(self) -> bool:
@@ -385,6 +408,7 @@ class FTMOEventRunner:
         while self._running:
             try:
                 self._check_risk_limits()
+                self._check_time_exits()  # Time-based exit check (Phase 3 - 2025-12-11)
                 time.sleep(10)  # Check every 10 seconds
             except Exception as e:
                 logger.error(f"[EventRunner] Risk monitor error: {e}")
@@ -426,6 +450,77 @@ class FTMOEventRunner:
 
         except Exception as e:
             logger.error(f"[EventRunner] Risk check error: {e}")
+
+    def _check_time_exits(self):
+        """
+        Check positions for time-based exits (Phase 3 - 2025-12-11).
+
+        Closes positions that have been held longer than their max_hold_hours.
+        This prevents:
+        - Holding losers hoping they recover
+        - Overnight/weekend gap risk
+        - Capital being tied up in stale trades
+        """
+        if not self._zmq_client or self.paper_mode:
+            return  # Only for live trading
+
+        try:
+            positions = self._zmq_client.get_positions()
+            if not positions:
+                return
+
+            now = datetime.now(timezone.utc)
+
+            for pos in positions:
+                ticket = pos.get("ticket")
+                if not ticket:
+                    continue
+
+                # Check if we're tracking this position
+                if ticket in self._position_times:
+                    open_time, bot_name, max_hold = self._position_times[ticket]
+                    hold_hours = (now - open_time).total_seconds() / 3600
+
+                    # Warning at 75% of max hold time
+                    warning_threshold = max_hold * 0.75
+                    if hold_hours >= warning_threshold and hold_hours < max_hold:
+                        remaining = max_hold - hold_hours
+                        logger.warning(
+                            f"[TimeExit] Position {ticket} ({bot_name}) held {hold_hours:.1f}h, "
+                            f"will auto-close in {remaining:.1f}h"
+                        )
+
+                    # Force close if exceeded
+                    if hold_hours >= max_hold:
+                        logger.warning(
+                            f"[TimeExit] CLOSING position {ticket} ({bot_name}) - "
+                            f"held {hold_hours:.1f}h > max {max_hold}h"
+                        )
+                        result = self._zmq_client.close(ticket)
+                        if result.get("success"):
+                            logger.info(f"[TimeExit] Position {ticket} closed successfully")
+                            del self._position_times[ticket]
+                        else:
+                            logger.error(f"[TimeExit] Failed to close {ticket}: {result.get('error')}")
+
+                else:
+                    # New position we don't have a record for - track it now with default max hold
+                    # This handles positions that existed before the runner started
+                    self._position_times[ticket] = (
+                        now,  # Use now as best estimate
+                        pos.get("comment", "unknown"),
+                        self._default_max_hold_hours
+                    )
+                    logger.debug(f"[TimeExit] Tracking new position {ticket}")
+
+            # Clean up closed positions from tracking
+            active_tickets = {p.get("ticket") for p in positions}
+            closed_tickets = [t for t in self._position_times if t not in active_tickets]
+            for ticket in closed_tickets:
+                del self._position_times[ticket]
+
+        except Exception as e:
+            logger.error(f"[EventRunner] Time exit check error: {e}")
 
     def _trigger_kill_switch(self, reason: str):
         """Trigger emergency stop."""
@@ -494,6 +589,16 @@ class FTMOEventRunner:
                 f"P&L ${current_bot_pnl:.2f} <= -${max_bot_loss:.2f} limit"
             )
             return
+
+        # NEWS FILTER: Avoid trading around high-impact news events (Phase 3 - 2025-12-11)
+        try:
+            from libs.hydra.ftmo_bots.news_filter import should_avoid_news
+            avoid, reason = should_avoid_news(signal.symbol)
+            if avoid:
+                logger.warning(f"[NewsFilter] Trade blocked: {signal.bot_name} {signal.symbol} - {reason}")
+                return
+        except ImportError:
+            pass  # News filter not available
 
         # SELL FILTER: Block SELL for most bots, but allow proven performers
         # gold_london has 71% WR on SELL (7 trades) - allow it
@@ -569,7 +674,18 @@ class FTMOEventRunner:
         if not result.get("success"):
             raise RuntimeError(f"Trade failed: {result.get('error', 'Unknown')}")
 
-        logger.info(f"[EventRunner] Live trade executed: ticket={result.get('ticket')}")
+        ticket = result.get('ticket')
+        logger.info(f"[EventRunner] Live trade executed: ticket={ticket}")
+
+        # Track position time for time-based exits (Phase 3 - 2025-12-11)
+        if ticket:
+            max_hold = self._bot_max_hold_hours.get(signal.bot_name, self._default_max_hold_hours)
+            self._position_times[ticket] = (
+                datetime.now(timezone.utc),
+                signal.bot_name,
+                max_hold
+            )
+            logger.debug(f"[TimeExit] Tracking ticket {ticket} ({signal.bot_name}), max hold: {max_hold}h")
 
     def _send_trade_alert(self, signal):
         """Send trade alert via Telegram."""
