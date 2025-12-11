@@ -138,6 +138,26 @@ class FTMOEventRunner:
             "LondonBreakout": 4.0,
         }
 
+        # Weekend gap protection (Phase 4 - 2025-12-11)
+        # Close all positions 30 min before Friday market close (21:30 UTC = 16:30 EST)
+        self._friday_close_hour = 21  # 21:00 UTC
+        self._friday_close_minute = 30  # Close at 21:30 UTC
+        self._weekend_closeout_done = False
+
+        # Trade clustering prevention (Phase 4 - 2025-12-11)
+        # Prevent rapid-fire signals on same symbol
+        self._last_trade_time: Dict[str, datetime] = {}  # symbol -> last trade time
+        self._trade_cooldown_minutes = 5  # Minutes between trades on same symbol
+        self._max_pending_signals = 3  # Max signals in queue before pause
+
+        # Correlation-based position blocking (Phase 4 - 2025-12-11)
+        # Prevent multiple positions in same direction on correlated assets
+        self._correlation_groups = {
+            "gold": ["XAUUSD"],
+            "indices": ["US30.cash", "US100.cash"],
+            "majors": ["EURUSD", "GBPUSD"],
+        }
+
         logger.info(f"[EventRunner] Initialized (paper={paper_mode}, turbo={turbo_mode})")
 
     def start(self) -> bool:
@@ -409,6 +429,7 @@ class FTMOEventRunner:
             try:
                 self._check_risk_limits()
                 self._check_time_exits()  # Time-based exit check (Phase 3 - 2025-12-11)
+                self._check_weekend_closeout()  # Weekend gap protection (Phase 4 - 2025-12-11)
                 time.sleep(10)  # Check every 10 seconds
             except Exception as e:
                 logger.error(f"[EventRunner] Risk monitor error: {e}")
@@ -522,6 +543,76 @@ class FTMOEventRunner:
         except Exception as e:
             logger.error(f"[EventRunner] Time exit check error: {e}")
 
+    def _check_weekend_closeout(self):
+        """
+        Close all positions before Friday market close (Phase 4 - 2025-12-11).
+
+        Protects against weekend gap risk by closing positions
+        30 minutes before Friday market close (21:30 UTC).
+        """
+        if not self._zmq_client or self.paper_mode:
+            return  # Only for live trading
+
+        now = datetime.now(timezone.utc)
+
+        # Check if it's Friday
+        if now.weekday() != 4:  # 0=Mon, 4=Fri
+            self._weekend_closeout_done = False  # Reset for next week
+            return
+
+        # Check if we're past the closeout time
+        closeout_time = now.replace(hour=self._friday_close_hour, minute=self._friday_close_minute, second=0)
+        if now < closeout_time:
+            return  # Not yet time
+
+        # Already done for today?
+        if self._weekend_closeout_done:
+            return
+
+        try:
+            positions = self._zmq_client.get_positions()
+            if not positions:
+                self._weekend_closeout_done = True
+                return
+
+            logger.warning(
+                f"[WeekendProtection] Friday {self._friday_close_hour}:{self._friday_close_minute:02d} UTC - "
+                f"Closing {len(positions)} positions for weekend protection"
+            )
+
+            for pos in positions:
+                ticket = pos.get("ticket")
+                if not ticket:
+                    continue
+
+                symbol = pos.get("symbol", "unknown")
+                profit = pos.get("profit", 0)
+
+                logger.info(f"[WeekendProtection] Closing position {ticket} ({symbol}), P&L: ${profit:.2f}")
+                result = self._zmq_client.close(ticket)
+
+                if result.get("success"):
+                    logger.info(f"[WeekendProtection] Position {ticket} closed")
+                    # Clean up tracking
+                    if ticket in self._position_times:
+                        del self._position_times[ticket]
+                else:
+                    logger.error(f"[WeekendProtection] Failed to close {ticket}: {result.get('error')}")
+
+            self._weekend_closeout_done = True
+
+            # Send notification
+            try:
+                from libs.notifications.telegram_bot import send_telegram_message
+                send_telegram_message(
+                    f"[WeekendProtection] Closed {len(positions)} positions before weekend at {now.strftime('%H:%M')} UTC"
+                )
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.error(f"[WeekendProtection] Error during closeout: {e}")
+
     def _trigger_kill_switch(self, reason: str):
         """Trigger emergency stop."""
         if self._kill_switch:
@@ -600,6 +691,63 @@ class FTMOEventRunner:
         except ImportError:
             pass  # News filter not available
 
+        # TRADE CLUSTERING PREVENTION: Avoid rapid-fire signals on same symbol (Phase 4 - 2025-12-11)
+        now = datetime.now(timezone.utc)
+        last_trade = self._last_trade_time.get(signal.symbol)
+        if last_trade:
+            minutes_since = (now - last_trade).total_seconds() / 60
+            if minutes_since < self._trade_cooldown_minutes:
+                logger.warning(
+                    f"[ClusterFilter] Trade blocked: {signal.bot_name} {signal.symbol} - "
+                    f"only {minutes_since:.1f}m since last trade (cooldown={self._trade_cooldown_minutes}m)"
+                )
+                return
+
+        # Check max pending signals queue
+        with self._signal_lock:
+            pending_count = len(self._signal_queue)
+        if pending_count >= self._max_pending_signals:
+            logger.warning(
+                f"[ClusterFilter] Trade blocked: {signal.bot_name} {signal.symbol} - "
+                f"{pending_count} signals pending (max={self._max_pending_signals})"
+            )
+            return
+
+        # CORRELATION-BASED POSITION BLOCKING: Prevent multiple positions in same direction (Phase 4 - 2025-12-11)
+        try:
+            # Get current open positions
+            if self._zmq_client and not self.paper_mode:
+                positions_result = self._zmq_client.get_positions()
+                if positions_result.get("success"):
+                    open_positions = positions_result.get("positions", [])
+
+                    # Find which correlation group this symbol belongs to
+                    signal_group = None
+                    for group_name, symbols in self._correlation_groups.items():
+                        if signal.symbol in symbols:
+                            signal_group = group_name
+                            break
+
+                    if signal_group:
+                        # Check if any correlated position exists in same direction
+                        group_symbols = self._correlation_groups[signal_group]
+                        for pos in open_positions:
+                            pos_symbol = pos.get("symbol", "")
+                            pos_type = pos.get("type", "")  # 0=BUY, 1=SELL
+
+                            if pos_symbol in group_symbols:
+                                # Map position type to direction
+                                pos_direction = "BUY" if pos_type == 0 else "SELL"
+
+                                if pos_direction == signal.direction.upper():
+                                    logger.warning(
+                                        f"[CorrelationFilter] Trade blocked: {signal.bot_name} {signal.direction} {signal.symbol} - "
+                                        f"correlated position exists: {pos_direction} {pos_symbol} (group={signal_group})"
+                                    )
+                                    return
+        except Exception as e:
+            logger.debug(f"[CorrelationFilter] Check failed (non-blocking): {e}")
+
         # SELL FILTER: Block SELL for most bots, but allow proven performers
         # gold_london has 71% WR on SELL (7 trades) - allow it
         SELL_WHITELIST = ["GoldLondonReversal", "gold_london"]
@@ -618,6 +766,9 @@ class FTMOEventRunner:
             else:
                 # Live trade via ZMQ
                 self._execute_live_trade(signal)
+
+            # Update last trade time for clustering prevention (Phase 4 - 2025-12-11)
+            self._last_trade_time[signal.symbol] = datetime.now(timezone.utc)
 
             if self._metrics:
                 self._metrics.record_trade_opened(signal.bot_name)

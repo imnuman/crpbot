@@ -14,7 +14,7 @@ import os
 import threading
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from loguru import logger
 
@@ -64,6 +64,13 @@ class BotConfig:
     enabled: bool = True
     paper_mode: bool = True  # Set False for live trading
     turbo_mode: bool = False  # Turbo mode: loosen thresholds for more trades
+
+    # ATR-based dynamic stop losses (Phase 4 - 2025-12-11)
+    use_atr_stops: bool = True  # Use ATR for SL/TP instead of fixed pips
+    atr_sl_multiplier: float = 1.5  # SL = 1.5x ATR
+    atr_tp_multiplier: float = 2.0  # TP = 2.0x ATR (R:R = 1.33)
+    atr_min_sl_pips: float = 20.0  # Minimum SL in pips (floor)
+    atr_max_sl_pips: float = 100.0  # Maximum SL in pips (ceiling)
 
     def get_turbo_multiplier(self) -> float:
         """Get threshold multiplier for turbo mode (looser = more trades)."""
@@ -274,6 +281,98 @@ class BaseFTMOBot(ABC):
         )
 
         return lot_size
+
+    def calculate_atr_stops(
+        self,
+        candles: List[Dict[str, float]],
+        entry_price: float,
+        direction: str
+    ) -> Tuple[float, float, float]:
+        """
+        Calculate ATR-based stop loss and take profit (Phase 4 - 2025-12-11).
+
+        Uses ATR to adapt SL/TP to current volatility conditions.
+
+        Args:
+            candles: List of candle dicts with 'high', 'low', 'close' keys
+            entry_price: Proposed entry price
+            direction: "BUY" or "SELL"
+
+        Returns:
+            Tuple of (stop_loss_price, take_profit_price, sl_pips)
+        """
+        if not self.config.use_atr_stops:
+            # Fall back to fixed pips
+            pip_multiplier = self._get_pip_multiplier()
+            sl_distance = self.config.stop_loss_pips * pip_multiplier
+            tp_distance = self.config.take_profit_pips * pip_multiplier
+
+            if direction.upper() == "BUY":
+                return entry_price - sl_distance, entry_price + tp_distance, self.config.stop_loss_pips
+            else:
+                return entry_price + sl_distance, entry_price - tp_distance, self.config.stop_loss_pips
+
+        # Calculate ATR using technical_utils
+        try:
+            if TECHNICAL_UTILS_AVAILABLE:
+                from libs.hydra.ftmo_bots.technical_utils import calculate_atr
+                atr = calculate_atr(candles, period=14)
+            else:
+                atr = None
+        except Exception as e:
+            logger.debug(f"[{self.config.bot_name}] ATR calculation failed: {e}")
+            atr = None
+
+        if atr is None or atr <= 0:
+            # Fall back to fixed pips if ATR unavailable
+            logger.debug(f"[{self.config.bot_name}] ATR unavailable, using fixed stops")
+            pip_multiplier = self._get_pip_multiplier()
+            sl_distance = self.config.stop_loss_pips * pip_multiplier
+            tp_distance = self.config.take_profit_pips * pip_multiplier
+
+            if direction.upper() == "BUY":
+                return entry_price - sl_distance, entry_price + tp_distance, self.config.stop_loss_pips
+            else:
+                return entry_price + sl_distance, entry_price - tp_distance, self.config.stop_loss_pips
+
+        # Calculate ATR-based distances
+        sl_distance = atr * self.config.atr_sl_multiplier
+        tp_distance = atr * self.config.atr_tp_multiplier
+
+        # Convert to pips for logging/lot sizing
+        pip_multiplier = self._get_pip_multiplier()
+        sl_pips = sl_distance / pip_multiplier if pip_multiplier > 0 else self.config.stop_loss_pips
+
+        # Apply min/max limits
+        sl_pips = max(self.config.atr_min_sl_pips, min(sl_pips, self.config.atr_max_sl_pips))
+        sl_distance = sl_pips * pip_multiplier
+        tp_distance = sl_distance * (self.config.atr_tp_multiplier / self.config.atr_sl_multiplier)
+
+        if direction.upper() == "BUY":
+            stop_loss = entry_price - sl_distance
+            take_profit = entry_price + tp_distance
+        else:
+            stop_loss = entry_price + sl_distance
+            take_profit = entry_price - tp_distance
+
+        logger.debug(
+            f"[{self.config.bot_name}] ATR stops: ATR={atr:.4f}, "
+            f"SL={sl_pips:.1f} pips, TP={sl_pips * self.config.atr_tp_multiplier / self.config.atr_sl_multiplier:.1f} pips"
+        )
+
+        return stop_loss, take_profit, sl_pips
+
+    def _get_pip_multiplier(self) -> float:
+        """Get pip multiplier for the symbol (price distance per pip)."""
+        symbol = self.config.symbol.upper()
+        if symbol.startswith("XAU"):
+            return 0.1  # Gold: 1 pip = $0.10 price move
+        elif symbol.startswith("US30") or symbol.startswith("US100"):
+            return 1.0  # Indices: 1 pip = 1 point
+        elif "JPY" in symbol:
+            return 0.01  # JPY pairs: 1 pip = 0.01
+        else:
+            return 0.0001  # Standard forex: 1 pip = 0.0001
 
     def can_trade_today(self) -> Tuple[bool, str]:
         """Check if bot can place more trades today."""
