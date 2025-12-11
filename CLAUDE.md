@@ -762,6 +762,60 @@ docker logs ftmo-runner 2>&1 | grep "ZMQ.*Connected"
 
 ---
 
+### Fix #10: London Breakout v2 - RETEST Confirmation + Trend Filter
+
+**Date**: 2025-12-11
+
+**File**: `libs/hydra/ftmo_bots/london_breakout.py`
+
+**Symptom**: Original London Breakout strategy had 0% win rate (8 trades, -217 pips loss). Analysis showed 7 out of 9 days had FALSE BREAKOUTS where price broke Asian range then immediately reversed ("liquidity grab" pattern).
+
+**Root Cause**: Strategy entered immediately on range break without confirmation, getting caught in false breakouts.
+
+**Backtest Results**:
+| Version | Trades | Win Rate | P&L |
+|---------|--------|----------|-----|
+| v1 (original) | 8 | 0% | -217 pips |
+| v2 (retest) | 1 | 100% | +20.3 pips |
+
+**v2 Changes**:
+
+1. **RETEST Confirmation Pattern**:
+   - Initial break: candle CLOSES beyond Asian range
+   - Retest: price pulls back within 10 pips of range boundary
+   - Confirmation: price moves 5+ pips beyond range again
+   ```python
+   RETEST_THRESHOLD_PIPS = 10.0   # How close to range for "retest"
+   CONTINUATION_BUFFER_PIPS = 5.0  # Must move X pips beyond range after retest
+   ```
+
+2. **Trend Filter (20 SMA)**:
+   - BUY only when price > 20 SMA (uptrend)
+   - SELL only when price < 20 SMA (downtrend)
+   - Prevented 4 counter-trend trades in backtest
+
+3. **Tighter Stop Loss**:
+   - After retest, SL is 10 pips from range boundary (not opposite side)
+   - Better R:R since entry is confirmed
+
+4. **Reduced TP Multiplier**:
+   - Changed from 1.5x to 1.0x range size
+   - Faster exits, more realistic targets
+
+**Filter Breakdown (21-day backtest)**:
+- 4 trades blocked by trend filter
+- 1 trade blocked by no retest confirmation
+- 1 trade passed all filters → WIN (+20.3 pips)
+
+**Status**: Bot remains **DISABLED** in production until more testing confirms v2 filters work consistently.
+
+**To Re-enable**: Uncomment in `apps/runtime/ftmo_event_runner.py`:
+```python
+# ("london_eur", get_london_breakout_bot("EURUSD", self.paper_mode), "EURUSD"),
+```
+
+---
+
 ### Debugging Tips for Future Issues
 
 1. **Check tick counts match**: `hf_scalper.ticks` should equal sum of its tracked symbols
