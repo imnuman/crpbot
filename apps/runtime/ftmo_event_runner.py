@@ -104,6 +104,13 @@ class FTMOEventRunner:
         self._max_daily_loss_percent = 2.0  # Was 4.5% - now 2% for safety
         self._max_total_drawdown_percent = 8.0  # Was 8.5% - trigger earlier
 
+        # Per-bot P&L tracking (added 2025-12-11)
+        # Kill individual bots at 1% loss instead of waiting for full system drawdown
+        self._bot_daily_pnl: Dict[str, float] = {}  # bot_name -> daily P&L
+        self._bot_disabled: Dict[str, bool] = {}  # bot_name -> is_disabled
+        self._max_per_bot_loss_percent = 1.0  # 1% max loss per bot per day
+        self._last_reset_date: Optional[datetime] = None
+
         # Signal queue for trade execution
         self._signal_queue: List[Any] = []
         self._signal_lock = threading.Lock()
@@ -245,12 +252,14 @@ class FTMOEventRunner:
                 ("eurusd", get_eurusd_bot(self.paper_mode), "EURUSD"),
                 ("us30", get_us30_bot(self.paper_mode), "US30.cash"),
                 ("gold_ny", get_gold_ny_bot(self.paper_mode), "XAUUSD"),  # RE-ENABLED: $8.79/trade expectancy
-                # DISABLED: london_eur - Backtest shows 0% WR, -217 pips loss (2025-12-11)
-                # ("london_eur", get_london_breakout_bot("EURUSD", self.paper_mode), "EURUSD"),
-                # DISABLED: nas100 (47.6% WR, only $0.30/trade - negligible P&L)
+                # PAPER MODE TESTING (2025-12-11):
+                # - London Breakout v3: Bug fixes for SL placement + SMA filter
+                # - NAS100 Gap v2: Stricter 0.6% threshold + ADR filter
+                ("london_eur", get_london_breakout_bot("EURUSD", paper_mode=True), "EURUSD"),  # PAPER: v3 bug fixes
+                ("nas100", get_nas100_bot(paper_mode=True), "US100.cash"),  # PAPER: v2 improvements
             ]
-            print("    - london_eur: DISABLED (0% WR backtest, -217 pips)")
-            print("    - nas100: DISABLED (47.6% WR, only $0.30/trade)")
+            print("    - london_eur: PAPER MODE (v3 bug fixes)")
+            print("    - nas100: PAPER MODE (v2 improvements)")
 
             for name, bot, symbol in bots_config:
                 wrapper = EventBotWrapper(
@@ -460,6 +469,32 @@ class FTMOEventRunner:
         """Execute a trading signal."""
         logger.info(f"[EventRunner] Executing: {signal.bot_name} {signal.direction} {signal.symbol}")
 
+        # Per-bot risk limit check (added 2025-12-11)
+        # Reset at midnight UTC
+        now = datetime.now(timezone.utc)
+        if self._last_reset_date is None or now.date() != self._last_reset_date.date():
+            self._bot_daily_pnl.clear()
+            self._bot_disabled.clear()
+            self._last_reset_date = now
+            logger.info("[PerBotRisk] Daily P&L reset at midnight UTC")
+
+        # Check if this bot is disabled for the day
+        if self._bot_disabled.get(signal.bot_name, False):
+            logger.warning(f"[PerBotRisk] Trade blocked: {signal.bot_name} disabled for day (hit loss limit)")
+            return
+
+        # Calculate max loss in dollars (1% of account balance)
+        max_bot_loss = self._daily_starting_balance * (self._max_per_bot_loss_percent / 100)
+        current_bot_pnl = self._bot_daily_pnl.get(signal.bot_name, 0)
+
+        if current_bot_pnl <= -max_bot_loss:
+            self._bot_disabled[signal.bot_name] = True
+            logger.warning(
+                f"[PerBotRisk] Bot {signal.bot_name} DISABLED for day: "
+                f"P&L ${current_bot_pnl:.2f} <= -${max_bot_loss:.2f} limit"
+            )
+            return
+
         # SELL FILTER: Block SELL for most bots, but allow proven performers
         # gold_london has 71% WR on SELL (7 trades) - allow it
         SELL_WHITELIST = ["GoldLondonReversal", "gold_london"]
@@ -554,6 +589,25 @@ class FTMOEventRunner:
             )
         except Exception as e:
             logger.warning(f"[EventRunner] Telegram alert failed: {e}")
+
+    def update_bot_pnl(self, bot_name: str, pnl: float):
+        """
+        Update bot P&L (called when trade closes).
+
+        Args:
+            bot_name: Name of the bot
+            pnl: P&L from the closed trade (positive or negative)
+        """
+        current = self._bot_daily_pnl.get(bot_name, 0)
+        self._bot_daily_pnl[bot_name] = current + pnl
+
+        max_loss = self._daily_starting_balance * (self._max_per_bot_loss_percent / 100)
+
+        logger.info(f"[PerBotRisk] {bot_name}: trade P&L ${pnl:.2f}, daily total ${current + pnl:.2f}")
+
+        if self._bot_daily_pnl[bot_name] <= -max_loss:
+            self._bot_disabled[bot_name] = True
+            logger.warning(f"[PerBotRisk] Bot {bot_name} DISABLED: daily loss ${-self._bot_daily_pnl[bot_name]:.2f} >= limit ${max_loss:.2f}")
 
     def _status_reporter_loop(self):
         """Print periodic status updates."""

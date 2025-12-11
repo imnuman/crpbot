@@ -256,9 +256,34 @@ class PaperTradingSystem:
         # SELL FILTER: Block SELL/SHORT trades until short detection improves
         # LESSON LEARNED: BUY=100% WR (13/13), SELL=27% WR (8/31)
         ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
-        if not ALLOW_SHORT_TRADES and direction.upper() in ("SELL", "SHORT"):
-            logger.warning(f"[SellFilter] Trade blocked: {direction} {asset} - SELL trades disabled (historical WR: 27%)")
-            return None
+        ALLOW_FILTERED_SHORTS = True  # Allow shorts with strict overbought filters (2025-12-11)
+
+        if direction.upper() in ("SELL", "SHORT"):
+            if ALLOW_SHORT_TRADES:
+                pass  # Shorts fully enabled
+            elif ALLOW_FILTERED_SHORTS:
+                # Check for RSI and z-score in market_data or signal
+                rsi = signal.get("rsi") or (market_data.get("rsi") if market_data else None)
+                zscore = signal.get("zscore") or (market_data.get("zscore") if market_data else None)
+
+                # Thresholds for filtered shorts
+                RSI_THRESHOLD = 70  # Overbought
+                ZSCORE_THRESHOLD = 2.0  # 2+ std devs above mean
+
+                if rsi is not None and zscore is not None:
+                    if rsi >= RSI_THRESHOLD and zscore >= ZSCORE_THRESHOLD:
+                        logger.info(f"[FilteredShort] ALLOWED: {direction} {asset} (RSI={rsi:.1f}, z={zscore:.2f})")
+                        # Reduce position size by 50% for filtered shorts
+                        signal["position_size_usd"] = signal.get("position_size_usd", 100) * 0.5
+                    else:
+                        logger.warning(f"[FilteredShort] BLOCKED: {direction} {asset} - RSI={rsi:.1f}<{RSI_THRESHOLD} or z={zscore:.2f}<{ZSCORE_THRESHOLD}")
+                        return None
+                else:
+                    logger.warning(f"[FilteredShort] BLOCKED: {direction} {asset} - No RSI/z-score data (need RSI>={RSI_THRESHOLD}, z>={ZSCORE_THRESHOLD})")
+                    return None
+            else:
+                logger.warning(f"[SellFilter] Trade blocked: {direction} {asset} - SELL trades disabled (historical WR: 27%)")
+                return None
 
         # Check hybrid mode - log if engine is validated
         engine_validated = False

@@ -25,6 +25,13 @@ MIN_HISTORICAL_TRADES = 5  # Need 5 trades before correlation check kicks in
 # Disable SELL until short detection improves
 ALLOW_SHORT_TRADES = False  # Set to True when short detection is fixed
 
+# FILTERED SHORTS (2025-12-11): Allow SELL only with strict overbought filters
+# Only allow shorts when: RSI > 70, Price > 2 std dev above SMA
+ALLOW_FILTERED_SHORTS = True  # Enable strict short filtering
+FILTERED_SHORT_RSI_THRESHOLD = 70  # RSI must be overbought
+FILTERED_SHORT_ZSCORE_THRESHOLD = 2.0  # Price must be 2+ std devs above mean
+FILTERED_SHORT_SIZE_MULTIPLIER = 0.5  # 50% position size for filtered shorts
+
 
 @dataclass
 class TradeProposal:
@@ -40,6 +47,9 @@ class TradeProposal:
     take_profit: float
     reasoning: str
     timestamp: datetime = None
+    # Optional market data for filtered shorts (2025-12-11)
+    rsi: Optional[float] = None  # RSI value (0-100)
+    zscore: Optional[float] = None  # Price z-score (std devs from mean)
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -172,12 +182,13 @@ class TradeValidator:
         - SELL trades: 27% win rate (8/31)
 
         Until short detection improves, only allow BUY/LONG.
+        With ALLOW_FILTERED_SHORTS=True, allow SELL when overbought conditions met.
         """
         direction = proposal.direction.upper()
         is_long = direction in ("LONG", "BUY")
 
         if ALLOW_SHORT_TRADES:
-            # Shorts enabled - allow all directions
+            # Shorts fully enabled - allow all directions
             return {
                 "passed": True,
                 "direction": direction,
@@ -190,12 +201,45 @@ class TradeValidator:
                 "direction": direction,
                 "reason": f"Direction {direction} allowed (BUY only mode)",
             }
-        else:
-            return {
-                "passed": False,
-                "direction": direction,
-                "reason": f"SHORT/SELL disabled (historical WR: 27%). Set ALLOW_SHORT_TRADES=True to enable.",
-            }
+
+        # Short trade - check if filtered shorts are allowed
+        if ALLOW_FILTERED_SHORTS:
+            # Check RSI filter (overbought)
+            rsi_check = proposal.rsi is not None and proposal.rsi >= FILTERED_SHORT_RSI_THRESHOLD
+            # Check Z-score filter (price > 2 std devs above mean)
+            zscore_check = proposal.zscore is not None and proposal.zscore >= FILTERED_SHORT_ZSCORE_THRESHOLD
+
+            if rsi_check and zscore_check:
+                return {
+                    "passed": True,
+                    "direction": direction,
+                    "reason": f"FILTERED SHORT allowed (RSI={proposal.rsi:.1f}>={FILTERED_SHORT_RSI_THRESHOLD}, z={proposal.zscore:.2f}>={FILTERED_SHORT_ZSCORE_THRESHOLD})",
+                    "size_multiplier": FILTERED_SHORT_SIZE_MULTIPLIER,  # Use 50% size
+                }
+            elif rsi_check:
+                return {
+                    "passed": False,
+                    "direction": direction,
+                    "reason": f"SHORT blocked: RSI={proposal.rsi:.1f} OK, but z-score={proposal.zscore if proposal.zscore else 'N/A'} < {FILTERED_SHORT_ZSCORE_THRESHOLD}",
+                }
+            elif zscore_check:
+                return {
+                    "passed": False,
+                    "direction": direction,
+                    "reason": f"SHORT blocked: z-score={proposal.zscore:.2f} OK, but RSI={proposal.rsi if proposal.rsi else 'N/A'} < {FILTERED_SHORT_RSI_THRESHOLD}",
+                }
+            else:
+                return {
+                    "passed": False,
+                    "direction": direction,
+                    "reason": f"SHORT blocked: Need RSI>={FILTERED_SHORT_RSI_THRESHOLD} AND z-score>={FILTERED_SHORT_ZSCORE_THRESHOLD} (got RSI={proposal.rsi}, z={proposal.zscore})",
+                }
+
+        return {
+            "passed": False,
+            "direction": direction,
+            "reason": f"SHORT/SELL disabled (historical WR: 27%). Set ALLOW_SHORT_TRADES=True to enable.",
+        }
 
     def _check_confidence(self, proposal: TradeProposal) -> dict:
         """Check minimum 70% confidence."""

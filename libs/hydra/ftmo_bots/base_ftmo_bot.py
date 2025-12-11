@@ -34,6 +34,14 @@ except ImportError:
     KNOWLEDGE_AVAILABLE = False
     logger.info("Knowledge system not available - trading without sentiment data")
 
+# Import Certainty Engine for multi-factor confidence scoring
+try:
+    from libs.hydra.certainty_engine import get_certainty_engine, CertaintyResult
+    CERTAINTY_AVAILABLE = True
+except ImportError:
+    CERTAINTY_AVAILABLE = False
+    logger.info("Certainty Engine not available - trading without certainty scoring")
+
 
 @dataclass
 class BotConfig:
@@ -100,6 +108,21 @@ class BaseFTMOBot(ABC):
     # ZMQ client (singleton) for MT5 communication
     _zmq_client: Optional['MT5ZMQClient'] = None
 
+    # Certainty Engine integration (added 2025-12-11)
+    USE_CERTAINTY_ENGINE = True  # Set False to bypass certainty checks
+    CERTAINTY_THRESHOLD = 0.65  # Lower than engine's 80% - bot-level confidence matters too
+
+    # Session-aware position sizing (added 2025-12-11)
+    # Session overlap (13:00-16:00 UTC) has 42.9% WR - reduce exposure
+    USE_SESSION_SIZING = True
+    SESSION_MULTIPLIERS = {
+        "london": 1.0,       # London (08:00-13:00 UTC) - best session
+        "overlap": 0.8,      # London-NY overlap (13:00-16:00 UTC) - reduce 20%
+        "ny": 0.9,           # NY session (16:00-21:00 UTC) - slight reduction
+        "asian": 0.7,        # Asian session (22:00-08:00 UTC) - lower volume
+        "off_hours": 0.5,    # Off hours (21:00-22:00 UTC) - avoid if possible
+    }
+
     def __init__(self, config: BotConfig):
         self.config = config
         self._lock = threading.Lock()
@@ -158,6 +181,38 @@ class BaseFTMOBot(ABC):
         """
         pass
 
+    def get_session_multiplier(self) -> float:
+        """
+        Get position size multiplier based on current trading session.
+
+        Returns:
+            Multiplier (0.5 - 1.0) based on session quality
+        """
+        if not self.USE_SESSION_SIZING:
+            return 1.0
+
+        now = datetime.now(timezone.utc)
+        hour = now.hour
+
+        # Determine current session
+        if 8 <= hour < 13:
+            session = "london"
+        elif 13 <= hour < 16:
+            session = "overlap"
+        elif 16 <= hour < 21:
+            session = "ny"
+        elif hour == 21:
+            session = "off_hours"
+        else:  # 22:00 - 08:00
+            session = "asian"
+
+        multiplier = self.SESSION_MULTIPLIERS.get(session, 1.0)
+
+        if multiplier < 1.0:
+            logger.debug(f"[{self.config.bot_name}] Session sizing: {session} = {multiplier}x")
+
+        return multiplier
+
     def calculate_lot_size(self, account_balance: float, stop_loss_pips: float) -> float:
         """
         Calculate lot size based on risk percentage.
@@ -174,6 +229,10 @@ class BaseFTMOBot(ABC):
             Lot size (e.g., 0.1 for mini lot)
         """
         risk_amount = account_balance * self.config.risk_percent
+
+        # Apply session multiplier (added 2025-12-11)
+        session_mult = self.get_session_multiplier()
+        risk_amount *= session_mult
 
         # Pip value calculation (simplified - adjust for specific symbols)
         if self.config.symbol.startswith("XAU"):
@@ -460,6 +519,39 @@ class BaseFTMOBot(ABC):
         signal = self.generate_signal(analysis, current_price)
         if signal is None:
             return None
+
+        # Certainty Engine check (added 2025-12-11)
+        if self.USE_CERTAINTY_ENGINE and CERTAINTY_AVAILABLE:
+            try:
+                candles = market_data.get("candles", [])
+                if candles and len(candles) >= 20:
+                    certainty_engine = get_certainty_engine()
+                    certainty_result = certainty_engine.calculate_certainty(
+                        symbol=signal.symbol,
+                        direction=signal.direction,
+                        candles=candles,
+                        current_price=current_price,
+                    )
+
+                    # Log certainty score
+                    logger.info(
+                        f"[{self.config.bot_name}] [Certainty] Score: {certainty_result.total_score:.0%} "
+                        f"(tech={certainty_result.factors.technical_confluence:.0%}, "
+                        f"struct={certainty_result.factors.market_structure:.0%})"
+                    )
+
+                    # Check if certainty is too low
+                    if certainty_result.total_score < self.CERTAINTY_THRESHOLD:
+                        logger.warning(
+                            f"[{self.config.bot_name}] [Certainty] Trade blocked: "
+                            f"{certainty_result.total_score:.0%} < {self.CERTAINTY_THRESHOLD:.0%} threshold"
+                        )
+                        return None
+
+                    # Update signal confidence with certainty score
+                    signal.confidence = min(signal.confidence, certainty_result.total_score)
+            except Exception as e:
+                logger.debug(f"[{self.config.bot_name}] Certainty check failed: {e}")
 
         # Execute signal
         result = self.execute_signal(signal)

@@ -1,23 +1,29 @@
 """
-NAS100 Gap Fill Bot
+NAS100 Gap Fill Bot (v2 - stricter filters)
 
 Strategy:
 - Detect gap at NASDAQ open (14:30 UTC / 09:30 EST)
-- If gap UP >0.4% from previous close → SELL (to fill gap)
-- If gap DOWN >0.4% from previous close → BUY (to fill gap)
+- If gap UP >0.6% from previous close → SELL (to fill gap)
+- If gap DOWN >0.6% from previous close → BUY (to fill gap)
 - Target: 70% of gap filled
-- Stop: 25 points
+- Stop: 80 points
 - Exit by 16:30 UTC (11:30 EST) maximum
 
+v2 IMPROVEMENTS (2025-12-11):
+- Increased MIN_GAP_PERCENT from 0.4% to 0.6% (filter weak gaps)
+- Added ADR filter - skip when expected daily range < 150 points
+- Skip gap trades on low-volatility days (poor fill probability)
+
 Rationale:
-- Index gaps tend to fill within first few hours
-- 70-80% of gaps fill on same day
+- Larger gaps (0.6%+) have higher fill probability
+- Low volatility days = gaps don't fill reliably
+- 65-70% of significant gaps fill on same day
 
 Expected Performance:
-- Win rate: 65%
+- Win rate: 55-60% (fewer but better quality trades)
 - Avg win: Variable (depends on gap size)
-- Avg loss: -25 points
-- Daily EV: +$150 (at 1.5% risk, $15k account)
+- Avg loss: -80 points
+- Daily EV: Better than v1 (was -$9.46 total P&L)
 """
 
 import threading
@@ -50,13 +56,17 @@ class NAS100GapBot(BaseFTMOBot):
     OPEN_HOUR = 14  # 14:30 UTC (09:30 EST)
     OPEN_MINUTE = 30
 
-    MIN_GAP_PERCENT = 0.4  # Minimum gap to trade
+    # v2: Increased from 0.4 to 0.6 to filter weak gaps (45.5% WR with 0.4%)
+    MIN_GAP_PERCENT = 0.6  # Minimum gap to trade
     MAX_GAP_PERCENT = 2.0  # Skip huge gaps
     GAP_FILL_TARGET_PERCENT = 0.7  # Target 70% fill
 
     STOP_LOSS_POINTS = 80.0  # Increased from 25 (backtest showed 40-50 point losses hitting SL)
     EXIT_HOUR = 16  # 16:30 UTC (11:30 EST)
     EXIT_MINUTE = 30
+
+    # v2: ADR filter - skip low volatility days
+    MIN_ADR_POINTS = 150.0  # Minimum average daily range to trade
 
     def __init__(self, paper_mode: bool = True):
         config = BotConfig(
@@ -112,6 +122,11 @@ class NAS100GapBot(BaseFTMOBot):
 
         if abs(self._gap_data.gap_percent) > self.MAX_GAP_PERCENT:
             return {"tradeable": False, "reason": f"Gap too large ({self._gap_data.gap_percent:.2f}%)"}
+
+        # v2: ADR filter - skip low volatility days
+        adr = self._calculate_adr(market_data)
+        if adr < self.MIN_ADR_POINTS:
+            return {"tradeable": False, "reason": f"Low volatility day (ADR: {adr:.0f} pts < {self.MIN_ADR_POINTS:.0f})"}
 
         # Check if gap already filled
         if self._gap_data.gap_direction == "UP":
@@ -260,6 +275,33 @@ class NAS100GapBot(BaseFTMOBot):
                 f"[{self.config.bot_name}] Gap detected: {gap_direction} {gap_percent:+.2f}% "
                 f"(prev: {previous_close:.1f}, open: {open_price:.1f}, target: {gap_fill_target:.1f})"
             )
+
+    def _calculate_adr(self, market_data: Dict[str, Any]) -> float:
+        """Calculate Average Daily Range from D1 candles (last 5 days)."""
+        d1_candles = market_data.get("d1_candles", [])
+
+        if not d1_candles or len(d1_candles) < 5:
+            # Fallback: estimate from intraday candles
+            candles = market_data.get("candles", [])
+            if candles and len(candles) >= 100:
+                highs = [c.get("high", 0) for c in candles[-100:]]
+                lows = [c.get("low", float("inf")) for c in candles[-100:]]
+                if highs and lows:
+                    # Rough estimate from recent price action
+                    return max(highs) - min(lows)
+            return 200.0  # Default to allow trading if no data
+
+        # Calculate ADR from last 5 complete days
+        ranges = []
+        for candle in d1_candles[-6:-1]:  # Exclude today (last candle)
+            high = candle.get("high", 0)
+            low = candle.get("low", 0)
+            if high > 0 and low > 0:
+                ranges.append(high - low)
+
+        if ranges:
+            return sum(ranges) / len(ranges)
+        return 200.0  # Default
 
     def check_and_trade(self) -> Optional[TradeSignal]:
         """Main scheduler method."""
