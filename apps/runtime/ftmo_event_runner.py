@@ -52,6 +52,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from loguru import logger
 
+# Phase 5: Position Manager for ATR trailing stops
+from libs.hydra.position_manager import get_position_manager, ManagementConfig, ActionType
+from libs.hydra.ftmo_bots.technical_utils import calculate_atr
+
 # Configure logging
 logger.remove()
 logger.add(
@@ -158,6 +162,41 @@ class FTMOEventRunner:
             "majors": ["EURUSD", "GBPUSD"],
         }
 
+        # Conservative Risk Scaling (Phase 5 - 2025-12-11)
+        # Expert insight: "Reduce risk 50% when down 5% or more"
+        self._peak_balance: float = 15000.0  # Track peak for drawdown calculation
+        self._current_balance: float = 15000.0  # Updated from account checks
+        self._base_risk_percent = 0.015  # Normal 1.5% risk
+        self._risk_scale_thresholds = {
+            3.0: 0.50,   # At 3% DD: reduce to 50% of base risk (0.75%)
+            5.0: 0.33,   # At 5% DD: reduce to 33% of base risk (0.5%)
+            7.0: 0.25,   # At 7% DD: reduce to 25% of base risk (0.375%)
+        }
+        self._current_risk_multiplier = 1.0  # Updated based on drawdown
+
+        # Daily Trade Limits (Phase 5 - 2025-12-11)
+        # Expert insight: "Limit to 2-3 A+ trades per day, halt at 5% loss"
+        self._daily_trade_count = 0
+        self._max_daily_trades = 10  # Hard limit: 10 trades/day across all bots
+        self._daily_loss_trade_limit = 3  # Soft limit: after 3% loss, max 3 more trades
+        self._halt_trading_at_loss_percent = 5.0  # Halt all trading at 5% daily loss
+        self._daily_halt_logged = False  # Track if halt was logged
+
+        # ATR Trailing Stops (Phase 5 - 2025-12-11)
+        # Expert insight: "Trail at 1.5x ATR behind price, only after breakeven hit"
+        self._atr_values: Dict[str, float] = {}  # symbol -> current ATR
+        self._atr_trail_multiplier = 1.5  # Trail distance = ATR * 1.5
+        self._last_atr_update: Optional[datetime] = None
+        self._atr_update_interval = 300  # Update ATR every 5 minutes
+        self._position_manager = None  # Initialized in start()
+
+        # Multi-Timeframe Confirmation (Phase 5 - 2025-12-11)
+        # Expert insight: "Start analysis on higher TF, confirm on lower TF"
+        self._h1_trends: Dict[str, str] = {}  # symbol -> "BULLISH", "BEARISH", "NEUTRAL"
+        self._last_h1_update: Optional[datetime] = None
+        self._h1_update_interval = 600  # Update H1 trend every 10 minutes
+        self._mtf_enabled = True  # Enable/disable Multi-TF filter
+
         logger.info(f"[EventRunner] Initialized (paper={paper_mode}, turbo={turbo_mode})")
 
     def start(self) -> bool:
@@ -195,6 +234,10 @@ class FTMOEventRunner:
         # Step 5: Subscribe bots to price events
         print("[5/5] Subscribing bots to price streams...")
         self._subscribe_bots()
+
+        # Phase 5: Initialize Position Manager with ATR-based trailing
+        print("[6/6] Initializing Position Manager for ATR trailing...")
+        self._init_position_manager()
 
         self._running = True
 
@@ -341,6 +384,47 @@ class FTMOEventRunner:
             print(f"  Bot init error: {e}")
             return False
 
+    def _init_position_manager(self) -> bool:
+        """Initialize Position Manager for ATR trailing stops (Phase 5)."""
+        try:
+            # Configure for ATR-based trailing
+            config = ManagementConfig(
+                # Breakeven: trigger at +0.5%, lock 2 pips profit
+                breakeven_enabled=True,
+                breakeven_trigger_percent=0.005,
+                breakeven_buffer_pips=2.0,
+
+                # Trailing: start at 1.5R, trail at 0.3% (will be overridden by ATR)
+                trail_enabled=True,
+                trail_trigger_r=1.5,  # Start trailing only after 1.5R profit
+                trail_distance_percent=0.003,  # 0.3% (fallback if no ATR)
+                trail_step_pips=5.0,
+
+                # Partial profit: take 25% at 1R and 2R
+                partial_enabled=True,
+                partial_levels=[(1.0, 0.25), (2.0, 0.25)],
+
+                # Pyramid disabled (too risky during challenge)
+                pyramid_enabled=False,
+
+                # Time exit: handled separately in existing code
+                time_exit_enabled=False,
+            )
+
+            self._position_manager = get_position_manager(
+                config=config,
+                data_dir="/app/data/hydra" if os.path.exists("/app") else "data/hydra"
+            )
+
+            print(f"  Position Manager: BE=1.5R trigger, Trail=1.5x ATR")
+            logger.info("[EventRunner] Position Manager initialized for ATR trailing")
+            return True
+
+        except Exception as e:
+            logger.warning(f"[EventRunner] Position Manager init failed: {e}")
+            print(f"  Warning: Position Manager unavailable ({e})")
+            return True  # Non-fatal
+
     def _init_event_bus(self) -> bool:
         """Initialize the event bus for price streaming."""
         try:
@@ -469,8 +553,306 @@ class FTMOEventRunner:
             if total_dd >= self._max_total_drawdown_percent:
                 self._trigger_kill_switch(f"Total drawdown limit hit: {total_dd:.2f}%")
 
+            # Phase 5: Update drawdown-based risk scaling
+            self._update_risk_scaling(equity)
+
+            # Phase 5: Check if daily trading should be halted
+            if daily_dd >= self._halt_trading_at_loss_percent:
+                if not hasattr(self, '_daily_halt_logged') or not self._daily_halt_logged:
+                    logger.warning(f"[RiskScale] Daily halt triggered: {daily_dd:.2f}% loss >= {self._halt_trading_at_loss_percent}%")
+                    self._daily_halt_logged = True
+
+            # Phase 5: Update ATR values and trailing stops
+            self._update_atr_values()
+            self._update_trailing_stops()
+
+            # Phase 5: Update H1 trends for multi-timeframe confirmation
+            self._update_h1_trends()
+
         except Exception as e:
             logger.error(f"[EventRunner] Risk check error: {e}")
+
+    def _update_risk_scaling(self, current_equity: float):
+        """
+        Update risk multiplier based on drawdown from peak (Phase 5 - 2025-12-11).
+
+        Expert insight: "Reduce risk 50% when down 5% or more"
+
+        Thresholds:
+        - 0-3% DD: 100% of base risk (1.5%)
+        - 3-5% DD: 50% of base risk (0.75%)
+        - 5-7% DD: 33% of base risk (0.5%)
+        - 7%+ DD: 25% of base risk (0.375%)
+        """
+        # Update peak if we have a new high
+        if current_equity > self._peak_balance:
+            self._peak_balance = current_equity
+            # Reset risk multiplier at new equity high
+            if self._current_risk_multiplier < 1.0:
+                logger.info(f"[RiskScale] New equity high ${current_equity:.2f} - risk reset to 100%")
+            self._current_risk_multiplier = 1.0
+            return
+
+        # Calculate drawdown from peak
+        drawdown_pct = (self._peak_balance - current_equity) / self._peak_balance * 100
+
+        # Determine risk multiplier based on drawdown
+        old_multiplier = self._current_risk_multiplier
+        new_multiplier = 1.0
+
+        for dd_threshold, multiplier in sorted(self._risk_scale_thresholds.items()):
+            if drawdown_pct >= dd_threshold:
+                new_multiplier = multiplier
+
+        self._current_risk_multiplier = new_multiplier
+        self._current_balance = current_equity
+
+        # Log if risk level changed
+        if new_multiplier != old_multiplier:
+            effective_risk = self._base_risk_percent * new_multiplier * 100
+            logger.info(
+                f"[RiskScale] Drawdown {drawdown_pct:.2f}% from peak ${self._peak_balance:.2f} - "
+                f"risk scaled to {new_multiplier*100:.0f}% ({effective_risk:.2f}%)"
+            )
+
+    def get_scaled_risk_percent(self) -> float:
+        """Get current risk percent after drawdown scaling (Phase 5)."""
+        return self._base_risk_percent * self._current_risk_multiplier
+
+    def _update_atr_values(self):
+        """
+        Update ATR values for all symbols (Phase 5 - ATR Trailing Stops).
+
+        ATR is calculated from M1 candles every 5 minutes.
+        Used for:
+        - Dynamic trailing stop distance (1.5x ATR)
+        - Volatility-aware position sizing
+        """
+        now = datetime.now(timezone.utc)
+
+        # Only update every 5 minutes
+        if self._last_atr_update:
+            elapsed = (now - self._last_atr_update).total_seconds()
+            if elapsed < self._atr_update_interval:
+                return
+
+        if not self._zmq_client:
+            return
+
+        for symbol in self.ALL_SYMBOLS:
+            try:
+                # Fetch last 20 candles for ATR calculation
+                candles = self._zmq_client.get_candles(symbol, "M1", count=20)
+                if not candles or len(candles) < 15:
+                    continue
+
+                atr = calculate_atr(candles, period=14)
+                if atr and atr > 0:
+                    old_atr = self._atr_values.get(symbol, 0)
+                    self._atr_values[symbol] = atr
+
+                    # Log significant ATR changes (>20%)
+                    if old_atr > 0 and abs(atr - old_atr) / old_atr > 0.2:
+                        logger.info(f"[ATR] {symbol} ATR changed: {old_atr:.4f} -> {atr:.4f}")
+
+            except Exception as e:
+                logger.debug(f"[ATR] Failed to calculate ATR for {symbol}: {e}")
+
+        self._last_atr_update = now
+        logger.debug(f"[ATR] Updated: {self._atr_values}")
+
+    def _update_h1_trends(self):
+        """
+        Update H1 trend for all symbols (Phase 5 - Multi-TF Confirmation).
+
+        Trend determined by SMA(10) vs SMA(30) on H1 timeframe:
+        - BULLISH: Price > SMA10 > SMA30
+        - BEARISH: Price < SMA10 < SMA30
+        - NEUTRAL: Otherwise
+        """
+        now = datetime.now(timezone.utc)
+
+        # Only update every 10 minutes
+        if self._last_h1_update:
+            elapsed = (now - self._last_h1_update).total_seconds()
+            if elapsed < self._h1_update_interval:
+                return
+
+        if not self._zmq_client:
+            return
+
+        import numpy as np
+
+        for symbol in self.ALL_SYMBOLS:
+            try:
+                # Fetch 50 H1 candles for SMA calculation
+                candles = self._zmq_client.get_candles(symbol, "H1", count=50)
+                if not candles or len(candles) < 35:
+                    continue
+
+                closes = [c.get("close", 0) for c in candles if c.get("close")]
+                if len(closes) < 35:
+                    continue
+
+                # Calculate SMAs
+                sma_10 = np.mean(closes[-10:])
+                sma_30 = np.mean(closes[-30:])
+                current = closes[-1]
+
+                # Determine trend
+                old_trend = self._h1_trends.get(symbol, "NEUTRAL")
+                if current > sma_10 > sma_30:
+                    new_trend = "BULLISH"
+                elif current < sma_10 < sma_30:
+                    new_trend = "BEARISH"
+                else:
+                    new_trend = "NEUTRAL"
+
+                self._h1_trends[symbol] = new_trend
+
+                # Log trend changes
+                if new_trend != old_trend:
+                    logger.info(f"[MTF] {symbol} H1 trend changed: {old_trend} -> {new_trend}")
+
+            except Exception as e:
+                logger.debug(f"[MTF] Failed to calculate H1 trend for {symbol}: {e}")
+
+        self._last_h1_update = now
+        logger.debug(f"[MTF] H1 trends updated: {self._h1_trends}")
+
+    def _check_h1_alignment(self, symbol: str, direction: str) -> tuple[bool, str]:
+        """
+        Check if trade direction aligns with H1 trend (Phase 5).
+
+        Args:
+            symbol: Trading symbol
+            direction: Trade direction ("BUY" or "SELL")
+
+        Returns:
+            Tuple of (is_aligned, reason)
+        """
+        if not self._mtf_enabled:
+            return True, "MTF disabled"
+
+        h1_trend = self._h1_trends.get(symbol, "NEUTRAL")
+
+        # NEUTRAL allows both directions
+        if h1_trend == "NEUTRAL":
+            return True, f"H1 neutral"
+
+        direction_upper = direction.upper()
+
+        # Check alignment
+        if h1_trend == "BULLISH" and direction_upper == "BUY":
+            return True, f"H1 bullish + BUY aligned"
+        elif h1_trend == "BEARISH" and direction_upper == "SELL":
+            return True, f"H1 bearish + SELL aligned"
+        elif h1_trend == "BULLISH" and direction_upper == "SELL":
+            return False, f"SELL blocked: H1 trend is BULLISH"
+        elif h1_trend == "BEARISH" and direction_upper == "BUY":
+            return False, f"BUY blocked: H1 trend is BEARISH"
+
+        return True, f"H1 {h1_trend}"
+
+    def _update_trailing_stops(self):
+        """
+        Update trailing stops for open positions using ATR (Phase 5).
+
+        For each position registered with PositionManager:
+        1. Get current price from latest tick
+        2. Calculate ATR-based trail distance
+        3. Check if stop should be moved
+        4. Modify via ZMQ if needed
+        """
+        if not self._position_manager or not self._zmq_client:
+            return
+
+        if self.paper_mode:
+            return  # Skip trailing in paper mode for now
+
+        try:
+            # Get all open positions from MT5
+            positions_result = self._zmq_client.get_positions()
+            if not positions_result or not positions_result.get("success"):
+                return
+
+            positions = positions_result.get("positions", [])
+            if not positions:
+                return
+
+            for pos in positions:
+                ticket = pos.get("ticket")
+                symbol = pos.get("symbol", "")
+                current_price = pos.get("price_current", 0)
+
+                if not ticket or not current_price:
+                    continue
+
+                # Check if this position is managed
+                state = self._position_manager.get_position_state(str(ticket))
+                if not state:
+                    continue
+
+                # Get ATR for this symbol
+                atr = self._atr_values.get(symbol, 0)
+                if atr > 0:
+                    # Override trail distance with ATR-based distance
+                    trail_distance = atr * self._atr_trail_multiplier
+                    self._position_manager.config.trail_distance_percent = trail_distance / current_price
+
+                # Update position and check for actions
+                action = self._position_manager.update_position(str(ticket), current_price)
+
+                if action:
+                    self._handle_position_action(action, ticket, pos)
+
+        except Exception as e:
+            logger.error(f"[TrailStop] Error updating trailing stops: {e}")
+
+    def _handle_position_action(self, action, ticket: int, position: dict):
+        """
+        Handle position management actions (Phase 5).
+
+        Actions: MODIFY_SL, TRAIL_UPDATE, PARTIAL_CLOSE, TIME_EXIT
+        """
+        try:
+            if action.action_type in (ActionType.MODIFY_SL, ActionType.TRAIL_UPDATE):
+                # Modify stop loss via ZMQ
+                if action.new_sl:
+                    result = self._zmq_client.modify_sl(ticket, action.new_sl)
+                    if result and result.get("success"):
+                        logger.info(
+                            f"[TrailStop] Modified SL for #{ticket}: {action.new_sl:.5f} "
+                            f"({action.reason})"
+                        )
+                    else:
+                        logger.warning(
+                            f"[TrailStop] Failed to modify SL for #{ticket}: "
+                            f"{result.get('error', 'Unknown')}"
+                        )
+
+            elif action.action_type == ActionType.PARTIAL_CLOSE:
+                # Partial close - calculate volume to close
+                if action.partial_percent:
+                    current_vol = position.get("volume", 0)
+                    close_vol = round(current_vol * action.partial_percent, 2)
+                    if close_vol >= 0.01:
+                        result = self._zmq_client.close_partial(ticket, close_vol)
+                        if result and result.get("success"):
+                            logger.info(
+                                f"[TrailStop] Partial close #{ticket}: {close_vol} lots "
+                                f"({action.reason})"
+                            )
+
+            elif action.action_type == ActionType.TIME_EXIT:
+                # Force close entire position
+                result = self._zmq_client.close_position(ticket)
+                if result and result.get("success"):
+                    logger.info(f"[TrailStop] Force closed #{ticket}: {action.reason}")
+                    self._position_manager.unregister_position(str(ticket))
+
+        except Exception as e:
+            logger.error(f"[TrailStop] Error handling action for #{ticket}: {e}")
 
     def _check_time_exits(self):
         """
@@ -661,8 +1043,10 @@ class FTMOEventRunner:
         if self._last_reset_date is None or now.date() != self._last_reset_date.date():
             self._bot_daily_pnl.clear()
             self._bot_disabled.clear()
+            self._daily_trade_count = 0  # Phase 5: reset daily trade count
+            self._daily_halt_logged = False  # Phase 5: reset halt log flag
             self._last_reset_date = now
-            logger.info("[PerBotRisk] Daily P&L reset at midnight UTC")
+            logger.info("[PerBotRisk] Daily P&L and trade count reset at midnight UTC")
 
         # Check if this bot is disabled for the day
         if self._bot_disabled.get(signal.bot_name, False):
@@ -681,6 +1065,34 @@ class FTMOEventRunner:
             )
             return
 
+        # DAILY TRADE LIMITS (Phase 5 - 2025-12-11)
+        # Expert insight: "Limit to 2-3 A+ trades per day, halt at 5% loss"
+
+        # Check if daily trading is halted due to loss
+        daily_dd = (self._daily_starting_balance - self._current_balance) / self._daily_starting_balance * 100
+        if daily_dd >= self._halt_trading_at_loss_percent:
+            logger.warning(
+                f"[TradeLimits] Trade blocked: daily loss {daily_dd:.2f}% >= "
+                f"{self._halt_trading_at_loss_percent}% halt threshold"
+            )
+            return
+
+        # Check hard limit on daily trades
+        if self._daily_trade_count >= self._max_daily_trades:
+            logger.warning(
+                f"[TradeLimits] Trade blocked: {self._daily_trade_count} trades today >= "
+                f"{self._max_daily_trades} daily max"
+            )
+            return
+
+        # Soft limit: after 3% loss, reduce to 3 trades max
+        if daily_dd >= 3.0 and self._daily_trade_count >= self._daily_loss_trade_limit:
+            logger.warning(
+                f"[TradeLimits] Trade blocked: {self._daily_trade_count} trades after "
+                f"{daily_dd:.1f}% loss (soft limit: {self._daily_loss_trade_limit} trades)"
+            )
+            return
+
         # NEWS FILTER: Avoid trading around high-impact news events (Phase 3 - 2025-12-11)
         try:
             from libs.hydra.ftmo_bots.news_filter import should_avoid_news
@@ -690,6 +1102,14 @@ class FTMOEventRunner:
                 return
         except ImportError:
             pass  # News filter not available
+
+        # MULTI-TIMEFRAME FILTER: Only trade in direction of H1 trend (Phase 5 - 2025-12-11)
+        aligned, mtf_reason = self._check_h1_alignment(signal.symbol, signal.direction)
+        if not aligned:
+            logger.warning(
+                f"[MTFFilter] Trade blocked: {signal.bot_name} {signal.direction} {signal.symbol} - {mtf_reason}"
+            )
+            return
 
         # TRADE CLUSTERING PREVENTION: Avoid rapid-fire signals on same symbol (Phase 4 - 2025-12-11)
         now = datetime.now(timezone.utc)
@@ -770,6 +1190,10 @@ class FTMOEventRunner:
             # Update last trade time for clustering prevention (Phase 4 - 2025-12-11)
             self._last_trade_time[signal.symbol] = datetime.now(timezone.utc)
 
+            # Phase 5: Increment daily trade count
+            self._daily_trade_count += 1
+            logger.info(f"[TradeLimits] Trade {self._daily_trade_count}/{self._max_daily_trades} today")
+
             if self._metrics:
                 self._metrics.record_trade_opened(signal.bot_name)
 
@@ -786,6 +1210,12 @@ class FTMOEventRunner:
         import json
         from pathlib import Path
 
+        # Phase 5: Apply risk scaling to lot size for paper trades too
+        scaled_lot = round(signal.lot_size * self._current_risk_multiplier, 2)
+        scaled_lot = max(0.01, scaled_lot)
+        if self._current_risk_multiplier < 1.0:
+            logger.info(f"[RiskScale] Paper lot scaled: {signal.lot_size} -> {scaled_lot} ({self._current_risk_multiplier:.0%})")
+
         trade_record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "bot": signal.bot_name,
@@ -794,7 +1224,9 @@ class FTMOEventRunner:
             "entry": signal.entry_price,
             "sl": signal.stop_loss,
             "tp": signal.take_profit,
-            "lot": signal.lot_size,
+            "lot": scaled_lot,
+            "lot_original": signal.lot_size,
+            "risk_scale": self._current_risk_multiplier,
             "reason": signal.reason,
             "status": "OPEN",
             "mode": "paper"
@@ -813,10 +1245,17 @@ class FTMOEventRunner:
         if not self._zmq_client:
             raise RuntimeError("ZMQ client not connected")
 
+        # Phase 5: Apply risk scaling to lot size
+        scaled_lot = round(signal.lot_size * self._current_risk_multiplier, 2)
+        # Ensure minimum lot size of 0.01
+        scaled_lot = max(0.01, scaled_lot)
+        if self._current_risk_multiplier < 1.0:
+            logger.info(f"[RiskScale] Lot scaled: {signal.lot_size} -> {scaled_lot} ({self._current_risk_multiplier:.0%})")
+
         result = self._zmq_client.trade(
             symbol=signal.symbol,
             direction=signal.direction.upper(),  # ZMQ expects uppercase BUY/SELL
-            volume=signal.lot_size,
+            volume=scaled_lot,
             sl=signal.stop_loss,
             tp=signal.take_profit,
             comment=f"HYDRA_{signal.bot_name}"
@@ -837,6 +1276,19 @@ class FTMOEventRunner:
                 max_hold
             )
             logger.debug(f"[TimeExit] Tracking ticket {ticket} ({signal.bot_name}), max hold: {max_hold}h")
+
+            # Phase 5: Register position with PositionManager for ATR trailing
+            if self._position_manager:
+                self._position_manager.register_position(
+                    trade_id=str(ticket),
+                    symbol=signal.symbol,
+                    direction=signal.direction.upper(),
+                    entry_price=signal.entry_price,
+                    stop_loss=signal.stop_loss,
+                    take_profit=signal.take_profit,
+                    position_size=scaled_lot,
+                )
+                logger.debug(f"[TrailStop] Registered position #{ticket} for ATR trailing")
 
     def _send_trade_alert(self, signal):
         """Send trade alert via Telegram."""
