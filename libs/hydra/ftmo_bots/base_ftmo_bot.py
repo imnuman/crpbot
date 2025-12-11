@@ -42,6 +42,14 @@ except ImportError:
     CERTAINTY_AVAILABLE = False
     logger.info("Certainty Engine not available - trading without certainty scoring")
 
+# Import Technical Utils for RSI/Z-score calculation (Phase 3 - 2025-12-11)
+try:
+    from libs.hydra.ftmo_bots.technical_utils import TechnicalIndicators, get_market_indicators
+    TECHNICAL_UTILS_AVAILABLE = True
+except ImportError:
+    TECHNICAL_UTILS_AVAILABLE = False
+    logger.info("Technical Utils not available - trading without RSI/z-score")
+
 
 @dataclass
 class BotConfig:
@@ -79,6 +87,9 @@ class TradeSignal:
     reason: str
     confidence: float = 0.70
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    # Technical indicators for filtered shorts (Phase 3 - 2025-12-11)
+    rsi: Optional[float] = None  # RSI value (0-100)
+    zscore: Optional[float] = None  # Price z-score (std devs from mean)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -92,6 +103,8 @@ class TradeSignal:
             "reason": self.reason,
             "confidence": self.confidence,
             "timestamp": self.timestamp.isoformat(),
+            "rsi": self.rsi,
+            "zscore": self.zscore,
         }
 
 
@@ -519,6 +532,24 @@ class BaseFTMOBot(ABC):
         signal = self.generate_signal(analysis, current_price)
         if signal is None:
             return None
+
+        # Calculate and attach RSI/Z-score for filtered shorts (Phase 3 - 2025-12-11)
+        if TECHNICAL_UTILS_AVAILABLE:
+            try:
+                candles = market_data.get("candles", [])
+                if candles and len(candles) >= 20:
+                    indicators = get_market_indicators(candles)
+                    signal.rsi = indicators.rsi
+                    signal.zscore = indicators.zscore
+
+                    # Log for SELL signals (helps debug filtered shorts)
+                    if signal.direction.upper() == "SELL":
+                        logger.info(
+                            f"[{self.config.bot_name}] SELL signal indicators: "
+                            f"RSI={signal.rsi}, z-score={signal.zscore}"
+                        )
+            except Exception as e:
+                logger.debug(f"[{self.config.bot_name}] Technical indicator calc failed: {e}")
 
         # Certainty Engine check (added 2025-12-11)
         if self.USE_CERTAINTY_ENGINE and CERTAINTY_AVAILABLE:
