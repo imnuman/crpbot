@@ -1,36 +1,34 @@
 """
-London Breakout Strategy Bot (v2 - With FALSE BREAKOUT FILTER)
+London Breakout Strategy Bot (v3 - Critical Bug Fixes)
 
 Strategy:
 - Track Asian session high/low (22:00-06:00 UTC)
 - Wait for London open (08:00 UTC)
 - CONFIRM breakout with RETEST pattern (break → pullback → continuation)
-- Only trade in daily trend direction (20 SMA filter)
-- Stop: Other side of Asian range
-- Target: 1.0x range size (reduced from 1.5x for faster exits)
+- Only trade in daily trend direction (200 SMA filter)
+- Stop: OPPOSITE side of Asian range
+- Target: 1.0x range size
 - Trade window: 08:00-12:00 UTC
 
 SESSION TIMES (UTC):
 - Asian: 22:00 - 06:00 UTC (marks the range)
 - London: 08:00 - 16:00 UTC (trade the breakout)
 
-FALSE BREAKOUT PREVENTION (v2 fixes):
-1. RETEST confirmation - price must break range, pull back to range, then continue
+v3 BUG FIXES (2025-12-11):
+1. CRITICAL: Stop loss was placed on WRONG SIDE of range
+   - Old (broken): BUY SL below range HIGH (immediate stop on retest)
+   - New (fixed): BUY SL below range LOW (proper breakout protection)
+2. SMA period was too short (20 M1 candles = 20 minutes)
+   - New: 200 M1 candles (~3.3 hours) for meaningful trend
+
+FALSE BREAKOUT PREVENTION:
+1. RETEST confirmation - price must break range, pull back, then continue
 2. CLOSE confirmation - candle must CLOSE beyond range, not just wick
-3. Trend filter - only trade in direction of daily trend (20 SMA)
-4. Minimum range 30 pips (not 20) - more significant levels
-5. Reduced TP to 1.0x range (not 1.5x) - faster exits
+3. Trend filter - only trade in direction of 200-period SMA
 
-Rationale:
-- Asian session establishes consolidation range
-- London open creates "liquidity grabs" that fake breakouts
-- RETEST pattern filters out 70%+ of false breakouts
-- Only confirmed breaks with trend alignment are traded
-
-Expected Performance (post-filter):
-- Win rate: 45-50% (fewer trades but higher quality)
-- Avg win: 1.0x range
-- Avg loss: 0.8x range (tighter stop after retest)
+Expected Performance (v3):
+- Win rate: 50-55% (with proper SL placement)
+- Risk/Reward: ~1:1 (range as target, range as stop)
 - Best pairs: EURUSD, GBPUSD
 """
 
@@ -90,7 +88,9 @@ class LondonBreakoutBot(BaseFTMOBot):
     CONTINUATION_BUFFER_PIPS = 5.0  # Price must move X pips beyond range after retest
 
     # Trend filter parameters
-    SMA_PERIOD = 20  # Daily SMA for trend direction
+    # v3: Use 200 M1 candles (~3.3 hours) for trend direction
+    # Previous bug: 20 candles = 20 minutes, not enough data
+    SMA_PERIOD = 200  # 200 M1 candles for trend direction
 
     # Symbol pip values
     PIP_VALUES = {
@@ -254,17 +254,17 @@ class LondonBreakoutBot(BaseFTMOBot):
         range_high = analysis.get("range_high", current_price)
         range_low = analysis.get("range_low", current_price)
 
-        # v2: Tighter stop loss after retest confirmation
-        # Stop loss is now closer to range boundary (not opposite side)
-        # This gives better R:R since we enter after retest
+        # v3 FIX: Stop loss on OPPOSITE side of range (not near entry!)
+        # Previous bug: SL was placed near entry, causing immediate stops on normal retests
+        # Correct placement: SL beyond the opposite side of the range
         if direction == "BUY":
-            # After bullish retest, stop just below range high
-            stop_loss = range_high - (10 * self._pip_value)  # 10 pip buffer below range high
+            # For BUY breakout: stop below the Asian LOW (opposite side)
+            stop_loss = range_low - (10 * self._pip_value)  # 10 pip buffer below range low
             tp_distance = range_pips * self.TP_MULTIPLIER * self._pip_value
             take_profit = current_price + tp_distance
         else:  # SELL
-            # After bearish retest, stop just above range low
-            stop_loss = range_low + (10 * self._pip_value)  # 10 pip buffer above range low
+            # For SELL breakout: stop above the Asian HIGH (opposite side)
+            stop_loss = range_high + (10 * self._pip_value)  # 10 pip buffer above range high
             tp_distance = range_pips * self.TP_MULTIPLIER * self._pip_value
             take_profit = current_price - tp_distance
 

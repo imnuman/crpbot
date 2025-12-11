@@ -264,22 +264,22 @@ class FTMOEventRunner:
                 }
                 print(f"    - {name}: {symbol}")
 
-            # HF Scalper - DISABLED until proven profitable
+            # HF Scalper - ENABLED IN PAPER MODE FOR TESTING (2025-12-11)
             # Lost $503 on 2025-12-10 due to over-trading without track record
-            # TODO: Re-enable after paper testing shows positive expectancy
-            # hf_bot = get_hf_scalper(self.paper_mode, turbo_mode=self.turbo_mode)
-            # hf_symbols = ["XAUUSD", "EURUSD", "US30.cash", "US100.cash"]
-            # hf_wrapper = MultiSymbolBotWrapper(
-            #     bot=hf_bot,
-            #     symbols=hf_symbols,
-            #     on_signal=self._handle_signal
-            # )
-            # self._bot_wrappers["hf_scalper"] = {
-            #     "wrapper": hf_wrapper,
-            #     "symbol": hf_symbols,
-            #     "multi": True
-            # }
-            print(f"    - hf_scalper: DISABLED (unproven)")
+            # Now running in PAPER MODE to validate strategy before live
+            hf_bot = get_hf_scalper(paper_mode=True, turbo_mode=self.turbo_mode)  # FORCE paper mode
+            hf_symbols = ["XAUUSD", "EURUSD"]  # Start with just 2 symbols for testing
+            hf_wrapper = MultiSymbolBotWrapper(
+                bot=hf_bot,
+                symbols=hf_symbols,
+                on_signal=self._handle_signal
+            )
+            self._bot_wrappers["hf_scalper"] = {
+                "wrapper": hf_wrapper,
+                "symbol": hf_symbols,
+                "multi": True
+            }
+            print(f"    - hf_scalper: PAPER MODE (testing only)")
 
             print(f"  {len(self._bot_wrappers)} bots initialized")
             return True
