@@ -19,6 +19,8 @@ services:
       - .env
     environment:
       - ZMQ_DIRECT=true  # Direct connection to Windows VPS (bypass SSH tunnel in Docker)
+      - ZMQ_HOST=10.10.0.2  # WireGuard VPN IP for Windows VPS
+      - STREAMER_HOST=10.10.0.2  # WireGuard VPN IP for price streamer
     ports:
       - "9101:9100"  # Prometheus metrics for FTMO bots
     volumes:

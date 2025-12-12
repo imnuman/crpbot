@@ -40,24 +40,26 @@ except ImportError:
 @dataclass
 class MT5ZMQConfig:
     """ZMQ client configuration."""
-    # Windows VPS
-    windows_host: str = os.getenv("WINDOWS_VPS_IP", "45.82.167.195")
+    # Windows VPS - use WireGuard IP (10.10.0.2) by default for stable connection
+    # Falls back to public IP if ZMQ_HOST env var is set
+    windows_host: str = os.getenv("ZMQ_HOST", os.getenv("WINDOWS_VPS_IP", "10.10.0.2"))
     windows_user: str = os.getenv("WINDOWS_VPS_USER", "trader")
     windows_pass: str = os.getenv("WINDOWS_VPS_PASS", "80B#^yOr2b5s")
-    
+
     # ZMQ Settings
     zmq_port: int = int(os.getenv("ZMQ_PORT", "5555"))
     local_port: int = int(os.getenv("ZMQ_LOCAL_PORT", "15555"))
-    
+
     # Timeouts
     connect_timeout: int = 10000  # ms
     request_timeout: int = 30000  # ms
-    
-    # Auto SSH tunnel
-    auto_tunnel: bool = True
 
-    # Direct connection (bypass tunnel - for Docker or when tunnel not needed)
-    direct_connect: bool = os.getenv("ZMQ_DIRECT", "false").lower() == "true"
+    # Auto SSH tunnel - disabled by default now that WireGuard is used
+    auto_tunnel: bool = os.getenv("ZMQ_AUTO_TUNNEL", "false").lower() == "true"
+
+    # Direct connection - enabled by default for WireGuard VPN
+    # Set ZMQ_DIRECT=false to use SSH tunnel instead
+    direct_connect: bool = os.getenv("ZMQ_DIRECT", "true").lower() == "true"
 
 
 class SSHTunnel:
@@ -355,7 +357,44 @@ class MT5ZMQClient:
         """Force MT5 reconnection on Windows side."""
         result = self._send_command({"cmd": "RECONNECT"})
         return result.get("success", False)
-    
+
+    def get_history(self, days: int = 7, ticket: Optional[int] = None) -> list:
+        """
+        Get closed trade history from MT5.
+
+        Args:
+            days: Number of days to look back (default 7)
+            ticket: Optional specific ticket to find
+
+        Returns:
+            List of closed trades with entry/exit details
+        """
+        cmd = {"cmd": "HISTORY", "days": days}
+        if ticket:
+            cmd["ticket"] = ticket
+
+        result = self._send_command(cmd)
+        if result.get("success"):
+            return result.get("trades", [])
+        logger.error(f"[ZMQ] get_history failed: {result.get('error')}")
+        return []
+
+    def get_deal_info(self, ticket: int) -> Optional[Dict]:
+        """
+        Get details of a specific closed trade by ticket.
+
+        Args:
+            ticket: MT5 position ticket number
+
+        Returns:
+            Trade details dict or None if not found
+        """
+        result = self._send_command({"cmd": "DEAL_INFO", "ticket": ticket})
+        if result.get("success"):
+            return result
+        logger.error(f"[ZMQ] get_deal_info failed: {result.get('error')}")
+        return None
+
     @property
     def is_connected(self) -> bool:
         """Check if connected."""

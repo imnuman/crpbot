@@ -105,7 +105,7 @@ class LondonBreakoutBot(BaseFTMOBot):
         config = BotConfig(
             bot_name="LondonBreakout",
             symbol=symbol,
-            risk_percent=0.015,  # 1.5% risk
+            risk_percent=0.0075,  # 1.5% risk
             max_daily_trades=1,  # One trade per day
             stop_loss_pips=50.0,  # Will be adjusted based on range
             take_profit_pips=75.0,  # Will be adjusted based on range

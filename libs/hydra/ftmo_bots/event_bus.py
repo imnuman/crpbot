@@ -189,15 +189,15 @@ class FTMOEventBus:
     Subscribes to ZMQ PUB socket and dispatches events to registered handlers.
     """
 
-    # Default Windows VPS configuration
-    DEFAULT_HOST = os.getenv("STREAMER_HOST", "45.82.167.195")
+    # Default Windows VPS configuration - use WireGuard IP by default
+    DEFAULT_HOST = os.getenv("STREAMER_HOST", "10.10.0.2")
     DEFAULT_PUB_PORT = int(os.getenv("STREAMER_PUB_PORT", "5556"))
 
     def __init__(
         self,
         host: Optional[str] = None,
         port: Optional[int] = None,
-        use_ssh_tunnel: bool = True
+        use_ssh_tunnel: bool = False  # Disabled by default - WireGuard replaces SSH tunnel
     ):
         self.host = host or self.DEFAULT_HOST
         self.port = port or self.DEFAULT_PUB_PORT

@@ -59,7 +59,7 @@ class EURUSDBreakoutBot(BaseFTMOBot):
         config = BotConfig(
             bot_name="EURUSDBreakout",
             symbol="EURUSD",
-            risk_percent=0.015,  # 1.5% risk per trade
+            risk_percent=0.0075,  # 1.5% risk per trade
             max_daily_trades=2,
             stop_loss_pips=self.STOP_LOSS_PIPS,
             take_profit_pips=self.TAKE_PROFIT_PIPS,

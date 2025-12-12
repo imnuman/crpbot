@@ -91,7 +91,7 @@ class US30ORBBot(BaseFTMOBot):
         config = BotConfig(
             bot_name="US30ORB",
             symbol="US30.cash",  # Dow Jones (FTMO broker symbol)
-            risk_percent=0.015,
+            risk_percent=0.0075,
             max_daily_trades=1,
             stop_loss_pips=self.STOP_LOSS_POINTS,
             take_profit_pips=self.TAKE_PROFIT_POINTS,

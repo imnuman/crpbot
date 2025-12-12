@@ -211,7 +211,7 @@ python apps/runtime/ftmo_event_runner.py --turbo --metrics-port 9100
 @echo off
 cd /d C:\HYDRA
 set FTMO_LOGIN=531025383
-set FTMO_PASS=h9$K$FpY*1as
+set FTMO_PASS=c*B@lWp41b784c
 set FTMO_SERVER=FTMO-Server3
 "C:\Program Files\Python311\python.exe" mt5_zmq_server.py
 
@@ -219,7 +219,7 @@ set FTMO_SERVER=FTMO-Server3
 @echo off
 cd /d C:\HYDRA
 set FTMO_LOGIN=531025383
-set FTMO_PASS=h9$K$FpY*1as
+set FTMO_PASS=c*B@lWp41b784c
 set FTMO_SERVER=FTMO-Server3
 "C:\Program Files\Python311\python.exe" mt5_price_streamer.py
 ```
@@ -423,7 +423,7 @@ KILL_SWITCH=false
 ```bash
 # FTMO Account
 FTMO_LOGIN=531025383
-FTMO_PASS=h9$K$FpY*1as
+FTMO_PASS=c*B@lWp41b784c
 FTMO_SERVER=FTMO-Server3
 
 # Windows VPS

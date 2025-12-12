@@ -91,7 +91,7 @@ class GoldNYReversionBot(BaseFTMOBot):
         config = BotConfig(
             bot_name="GoldNYReversion",
             symbol="XAUUSD",
-            risk_percent=0.015,
+            risk_percent=0.0075,
             max_daily_trades=1,
             stop_loss_pips=self.STOP_LOSS_PIPS,
             take_profit_pips=80.0,  # Variable based on VWAP distance
@@ -198,16 +198,35 @@ class GoldNYReversionBot(BaseFTMOBot):
         if direction is None or vwap is None:
             return None
 
-        # TP is VWAP (full reversion)
-        # SL is fixed 50 pips
+        # Phase 8 FIX (2025-12-11): TP was just VWAP which often resulted in
+        # TP being closer than SL (75 pips) → negative R:R ratio.
+        # New approach: TP = VWAP + 50% of distance to VWAP (overshoot target)
+        # This ensures minimum 1.5:1 R:R when entering at 2+ std dev.
         pip_value = 0.10  # Gold pip = $0.10
+
+        # Calculate distance to VWAP
+        distance_to_vwap = abs(current_price - vwap)
+
+        # Add 50% buffer beyond VWAP (mean reversion often overshoots)
+        tp_buffer = distance_to_vwap * 0.5
+
+        # Ensure minimum TP distance matches 1.5x the SL for good R:R
+        min_tp_distance = self.STOP_LOSS_PIPS * pip_value * 1.5  # 112.5 pips for 75 pip SL
 
         if direction == "SELL":
             stop_loss = current_price + (self.STOP_LOSS_PIPS * pip_value)
-            take_profit = vwap  # Target VWAP
+            # For SELL: TP below entry, target VWAP - buffer (overshoot)
+            raw_tp = vwap - tp_buffer
+            # Ensure minimum R:R
+            max_allowed_tp = current_price - min_tp_distance
+            take_profit = min(raw_tp, max_allowed_tp)
         else:  # BUY
             stop_loss = current_price - (self.STOP_LOSS_PIPS * pip_value)
-            take_profit = vwap
+            # For BUY: TP above entry, target VWAP + buffer (overshoot)
+            raw_tp = vwap + tp_buffer
+            # Ensure minimum R:R
+            min_allowed_tp = current_price + min_tp_distance
+            take_profit = max(raw_tp, min_allowed_tp)
 
         account_info = self.get_account_info()
         if not account_info:

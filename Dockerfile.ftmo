@@ -47,6 +47,14 @@ COPY libs/hydra/ftmo_bots/ ./libs/hydra/ftmo_bots/
 # Copy position manager for ATR trailing stops (Phase 5)
 COPY libs/hydra/position_manager.py ./libs/hydra/
 
+# Copy AGI advisor for pre-trade intelligence (Phase 6)
+COPY libs/hydra/agi_advisor.py ./libs/hydra/
+
+# Phase 8: Copy profit improvement systems (2025-12-11)
+COPY libs/hydra/counter_trade_intelligence.py ./libs/hydra/
+COPY libs/hydra/certainty_engine.py ./libs/hydra/
+COPY libs/hydra/edge_monitor.py ./libs/hydra/
+
 # Copy broker client
 COPY libs/brokers/mt5_zmq_client.py ./libs/brokers/
 

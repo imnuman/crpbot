@@ -66,7 +66,9 @@ class GoldLondonReversalBot(BaseFTMOBot):
     ENTRY_MINUTE = 58  # 07:58 UTC
     MAX_HOLD_HOUR = 10  # Exit by 10:00 UTC latest
 
-    MIN_ASIAN_MOVE_PERCENT = 0.15  # Minimum 0.15% move to trigger
+    # Phase 8 FIX: Increased from 0.15% → 0.35% (2025-12-11)
+    # 0.15% was detecting noise, not real trends. Requires meaningful move now.
+    MIN_ASIAN_MOVE_PERCENT = 0.35  # Minimum 0.35% move to trigger (was 0.15%)
     STOP_LOSS_PIPS = 75.0  # Increased from 50 (backtest showed 40-48 pip losses hitting SL)
     TAKE_PROFIT_PIPS = 120.0  # Fallback TP if Asian range too small
 
@@ -78,7 +80,7 @@ class GoldLondonReversalBot(BaseFTMOBot):
         config = BotConfig(
             bot_name="GoldLondonReversal",
             symbol="XAUUSD",  # Gold vs USD on MT5
-            risk_percent=0.015,  # 1.5% risk per trade
+            risk_percent=0.0075,  # 1.5% risk per trade
             max_daily_trades=1,  # Only 1 trade per day (3 in turbo)
             stop_loss_pips=self.STOP_LOSS_PIPS,
             take_profit_pips=self.TAKE_PROFIT_PIPS,

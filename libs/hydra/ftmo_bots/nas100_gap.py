@@ -72,7 +72,7 @@ class NAS100GapBot(BaseFTMOBot):
         config = BotConfig(
             bot_name="NAS100Gap",
             symbol="US100.cash",  # NASDAQ 100 (FTMO broker symbol)
-            risk_percent=0.015,
+            risk_percent=0.0075,
             max_daily_trades=1,
             stop_loss_pips=self.STOP_LOSS_POINTS,
             take_profit_pips=50.0,  # Variable based on gap

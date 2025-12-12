@@ -56,7 +56,9 @@ class BotConfig:
     """Configuration for FTMO bot."""
     bot_name: str
     symbol: str  # MT5 symbol (e.g., "XAUUSD", "EURUSD")
-    risk_percent: float = 0.015  # 1.5% risk per trade
+    # Phase 9 (2025-12-11): Reduced from 1.5% to 0.75% per research
+    # Source: Prop firm research shows 0.5-1% risk = 75% pass rate improvement
+    risk_percent: float = 0.0075  # 0.75% risk per trade (was 1.5%)
     max_daily_trades: int = 3
     stop_loss_pips: float = 50.0
     take_profit_pips: float = 90.0
@@ -143,6 +145,11 @@ class BaseFTMOBot(ABC):
         "off_hours": 0.5,    # Off hours (21:00-22:00 UTC) - avoid if possible
     }
 
+    # Phase 8: R:R Validation (2025-12-11)
+    # Reject trades with risk/reward ratio < 1.5:1
+    USE_RR_VALIDATION = True
+    MIN_RR_RATIO = 1.5  # Minimum acceptable risk-reward ratio
+
     def __init__(self, config: BotConfig):
         self.config = config
         self._lock = threading.Lock()
@@ -151,6 +158,54 @@ class BaseFTMOBot(ABC):
         self._last_trade_time: Optional[datetime] = None
 
         logger.info(f"[{config.bot_name}] Bot initialized (symbol: {config.symbol}, risk: {config.risk_percent*100:.1f}%)")
+
+    def validate_rr_ratio(
+        self,
+        direction: str,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float
+    ) -> Tuple[bool, float, str]:
+        """
+        Validate risk/reward ratio for a potential trade.
+
+        Phase 8 (2025-12-11): Ensures minimum 1.5:1 R:R ratio to improve expectancy.
+
+        Args:
+            direction: Trade direction ("BUY" or "SELL")
+            entry_price: Entry price
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+
+        Returns:
+            Tuple of (is_valid, rr_ratio, reason)
+        """
+        if not self.USE_RR_VALIDATION:
+            return True, 0.0, "R:R validation disabled"
+
+        direction = direction.upper()
+
+        # Calculate risk and reward based on direction
+        if direction == "BUY":
+            risk = entry_price - stop_loss
+            reward = take_profit - entry_price
+        else:  # SELL
+            risk = stop_loss - entry_price
+            reward = entry_price - take_profit
+
+        # Sanity checks
+        if risk <= 0:
+            return False, 0.0, f"Invalid risk: {risk:.5f} (SL on wrong side)"
+
+        if reward <= 0:
+            return False, 0.0, f"Invalid reward: {reward:.5f} (TP on wrong side)"
+
+        rr_ratio = reward / risk
+
+        if rr_ratio < self.MIN_RR_RATIO:
+            return False, rr_ratio, f"R:R {rr_ratio:.2f} < {self.MIN_RR_RATIO} minimum"
+
+        return True, rr_ratio, f"R:R {rr_ratio:.2f} >= {self.MIN_RR_RATIO} OK"
 
     @classmethod
     def get_zmq_client(cls) -> Optional['MT5ZMQClient']:

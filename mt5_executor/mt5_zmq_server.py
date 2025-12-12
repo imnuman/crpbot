@@ -16,6 +16,7 @@ Commands:
 - CLOSE: Close position
 - POSITIONS: List open positions
 - MODIFY: Modify SL/TP
+- CANDLES: Get historical candles (symbol, timeframe, count)
 """
 
 import os
@@ -24,8 +25,8 @@ import json
 import time
 import signal
 import threading
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
@@ -41,7 +42,7 @@ import MetaTrader5 as mt5
 class Config:
     # MT5 Settings
     mt5_login: int = int(os.getenv("FTMO_LOGIN", "531025383"))
-    mt5_password: str = os.getenv("FTMO_PASS", "h9$K$FpY*1as")
+    mt5_password: str = os.getenv("FTMO_PASS", "c*B@lWp41b784c")
     mt5_server: str = os.getenv("FTMO_SERVER", "FTMO-Server3")
     
     # ZMQ Settings
@@ -90,35 +91,31 @@ class MT5Manager:
                 return False
     
     def _do_connect(self) -> bool:
-        """Internal connect logic."""
-        # Shutdown any existing connection
-        try:
-            mt5.shutdown()
-        except:
-            pass
-        
-        # Initialize MT5
+        """Internal connect logic - simplified like price_streamer."""
+        # Initialize MT5 (don't shutdown first - let MT5 handle reconnection)
         if not mt5.initialize():
             error = mt5.last_error()
             print(f"[MT5] Initialize failed: {error}")
             return False
-        
-        # Login
-        if not mt5.login(
-            login=self.config.mt5_login,
-            password=self.config.mt5_password,
-            server=self.config.mt5_server
-        ):
-            error = mt5.last_error()
-            print(f"[MT5] Login failed: {error}")
-            return False
-        
+
+        # Login only if credentials are provided
+        if self.config.mt5_login and self.config.mt5_password:
+            if not mt5.login(
+                login=self.config.mt5_login,
+                password=self.config.mt5_password,
+                server=self.config.mt5_server
+            ):
+                error = mt5.last_error()
+                print(f"[MT5] Login failed: {error}")
+                # Don't shutdown - terminal might still be usable
+                return False
+
         account = mt5.account_info()
         if account:
             print(f"[MT5] Connected: {account.login} @ {account.server}")
             print(f"[MT5] Balance: ${account.balance:.2f}")
             return True
-        
+
         return False
     
     def ensure_connected(self) -> bool:
@@ -196,7 +193,51 @@ class MT5Manager:
                 "visible": s.visible
             })
         return result
-    
+
+    def get_candles(self, symbol: str, timeframe: str = "H1", count: int = 100) -> Optional[List[Dict]]:
+        """Get historical candles for a symbol."""
+        if not self.ensure_connected():
+            return None
+
+        # Map timeframe string to MT5 constant
+        tf_map = {
+            "M1": mt5.TIMEFRAME_M1,
+            "M5": mt5.TIMEFRAME_M5,
+            "M15": mt5.TIMEFRAME_M15,
+            "M30": mt5.TIMEFRAME_M30,
+            "H1": mt5.TIMEFRAME_H1,
+            "H4": mt5.TIMEFRAME_H4,
+            "D1": mt5.TIMEFRAME_D1,
+            "W1": mt5.TIMEFRAME_W1,
+            "MN1": mt5.TIMEFRAME_MN1,
+        }
+        tf = tf_map.get(timeframe.upper(), mt5.TIMEFRAME_H1)
+
+        # Ensure symbol is visible
+        symbol_info = mt5.symbol_info(symbol)
+        if symbol_info is None:
+            return None
+        if not symbol_info.visible:
+            if not mt5.symbol_select(symbol, True):
+                return None
+
+        # Get candles
+        rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
+        if rates is None or len(rates) == 0:
+            return None
+
+        candles = []
+        for r in rates:
+            candles.append({
+                "time": int(r["time"]),
+                "open": float(r["open"]),
+                "high": float(r["high"]),
+                "low": float(r["low"]),
+                "close": float(r["close"]),
+                "volume": int(r["tick_volume"]),
+            })
+        return candles
+
     def execute_trade(
         self,
         symbol: str,
@@ -332,11 +373,11 @@ class MT5Manager:
         """Get all open positions."""
         if not self.ensure_connected():
             return []
-        
+
         positions = mt5.positions_get()
         if not positions:
             return []
-        
+
         result = []
         for p in positions:
             result.append({
@@ -351,8 +392,113 @@ class MT5Manager:
                 "profit": p.profit,
                 "comment": p.comment
             })
-        
+
         return result
+
+    def get_history(self, days: int = 7, ticket: Optional[int] = None) -> List[Dict]:
+        """
+        Get trade history (closed positions) from MT5.
+
+        Args:
+            days: Number of days to look back
+            ticket: Optional specific ticket to find
+
+        Returns:
+            List of closed trade records with entry/exit details
+        """
+        if not self.ensure_connected():
+            return []
+
+        from_date = datetime.now() - timedelta(days=days)
+        to_date = datetime.now() + timedelta(days=1)
+
+        # Get deals from history
+        deals = mt5.history_deals_get(from_date, to_date)
+        if not deals:
+            return []
+
+        # Group deals by position ticket (entry + exit deals)
+        positions = {}
+        for d in deals:
+            # Skip balance operations, deposits, etc.
+            if d.type > 1:  # 0=BUY, 1=SELL, 2+=other
+                continue
+
+            pos_id = d.position_id
+            if pos_id not in positions:
+                positions[pos_id] = {
+                    "ticket": pos_id,
+                    "symbol": d.symbol,
+                    "deals": []
+                }
+            positions[pos_id]["deals"].append({
+                "deal_id": d.ticket,
+                "order": d.order,
+                "time": datetime.fromtimestamp(d.time, tz=timezone.utc).isoformat(),
+                "type": "BUY" if d.type == 0 else "SELL",
+                "entry": d.entry,  # 0=IN, 1=OUT, 2=INOUT, 3=OUT_BY
+                "volume": d.volume,
+                "price": d.price,
+                "profit": d.profit,
+                "commission": d.commission,
+                "swap": d.swap,
+                "comment": d.comment
+            })
+
+        # Build complete trade records
+        result = []
+        for pos_id, pos in positions.items():
+            # If looking for specific ticket
+            if ticket and pos_id != ticket:
+                continue
+
+            deals_list = pos["deals"]
+            if len(deals_list) < 2:
+                continue  # Need at least entry + exit
+
+            # Find entry deal (entry=0) and exit deal (entry=1)
+            entry_deal = None
+            exit_deal = None
+            for d in deals_list:
+                if d["entry"] == 0:  # IN
+                    entry_deal = d
+                elif d["entry"] == 1:  # OUT
+                    exit_deal = d
+
+            if not entry_deal or not exit_deal:
+                continue
+
+            # Determine exit reason
+            exit_reason = "MANUAL"
+            comment = exit_deal.get("comment", "")
+            if "tp" in comment.lower() or exit_deal["profit"] > 0:
+                exit_reason = "TP_HIT"
+            elif "sl" in comment.lower() or exit_deal["profit"] < 0:
+                exit_reason = "SL_HIT"
+
+            trade = {
+                "ticket": pos_id,
+                "symbol": pos["symbol"],
+                "direction": entry_deal["type"],
+                "volume": entry_deal["volume"],
+                "entry_price": entry_deal["price"],
+                "entry_time": entry_deal["time"],
+                "exit_price": exit_deal["price"],
+                "exit_time": exit_deal["time"],
+                "exit_reason": exit_reason,
+                "profit": exit_deal["profit"],
+                "commission": entry_deal["commission"] + exit_deal["commission"],
+                "swap": exit_deal["swap"],
+                "comment": entry_deal.get("comment", "")
+            }
+            result.append(trade)
+
+        return result
+
+    def get_deal_by_ticket(self, ticket: int) -> Optional[Dict]:
+        """Get details of a specific closed trade by ticket."""
+        trades = self.get_history(days=30, ticket=ticket)
+        return trades[0] if trades else None
 
 
 # ============================================================================
@@ -375,7 +521,7 @@ class ZMQServer:
         self.running = True
         
         print(f"[ZMQ] Server listening on {bind_addr}")
-        print("[ZMQ] Commands: PING, ACCOUNT, PRICE, TRADE, CLOSE, POSITIONS")
+        print("[ZMQ] Commands: PING, ACCOUNT, PRICE, TRADE, CLOSE, POSITIONS, HISTORY, DEAL_INFO")
         
         while self.running:
             try:
@@ -456,6 +602,35 @@ class ZMQServer:
             pattern = msg.get("pattern", "*XAU*,*GOLD*,*EUR*,*US30*,*NAS*")
             symbols = self.mt5.get_symbols(pattern)
             return {"success": True, "count": len(symbols), "symbols": symbols}
+
+        elif cmd == "HISTORY":
+            # Get closed trade history
+            days = msg.get("days", 7)
+            ticket = msg.get("ticket")  # Optional specific ticket
+            trades = self.mt5.get_history(days=days, ticket=ticket)
+            return {"success": True, "count": len(trades), "trades": trades}
+
+        elif cmd == "DEAL_INFO":
+            # Get specific trade details
+            ticket = msg.get("ticket")
+            if not ticket:
+                return {"success": False, "error": "Ticket required"}
+            trade = self.mt5.get_deal_by_ticket(int(ticket))
+            if trade:
+                return {"success": True, **trade}
+            return {"success": False, "error": f"Trade {ticket} not found in history"}
+
+        elif cmd == "CANDLES":
+            # Get historical candles
+            symbol = msg.get("symbol")
+            if not symbol:
+                return {"success": False, "error": "Symbol required"}
+            timeframe = msg.get("timeframe", "H1")
+            count = min(msg.get("count", 100), 500)  # Limit to 500 candles
+            candles = self.mt5.get_candles(symbol, timeframe, count)
+            if candles:
+                return {"success": True, "symbol": symbol, "timeframe": timeframe, "count": len(candles), "candles": candles}
+            return {"success": False, "error": f"Failed to get candles for {symbol}"}
 
         else:
             return {"success": False, "error": f"Unknown command: {cmd}"}

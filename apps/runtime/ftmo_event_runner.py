@@ -56,6 +56,43 @@ from loguru import logger
 from libs.hydra.position_manager import get_position_manager, ManagementConfig, ActionType
 from libs.hydra.ftmo_bots.technical_utils import calculate_atr
 
+# Phase 6: AGI Advisor for pre-trade intelligence
+try:
+    from libs.hydra.agi_advisor import get_agi_advisor, should_agi_approve, get_agi_size_multiplier
+    AGI_AVAILABLE = True
+except ImportError:
+    AGI_AVAILABLE = False
+
+# Phase 7: Trade Ledger for persistent trade tracking (2025-12-11)
+from libs.hydra.ftmo_bots.trade_ledger import TradeLedger, get_ledger
+from libs.hydra.ftmo_bots.reconciliation import PositionCloseMonitor, TradeReconciler, backfill_from_mt5
+from libs.hydra.ftmo_bots.performance_gate import PerformanceGate, get_performance_gate
+from libs.hydra.ftmo_bots.time_filter import check_trading_time, should_trade_now, get_time_size_multiplier
+
+# Phase 8: Counter-Trade Intelligence + Certainty Engine (2025-12-11)
+# CTI: Inverts signals when historical win rate < 40% (27% SELL → 73% BUY)
+# CE: Blocks trades with < 80% confidence score
+try:
+    from libs.hydra.counter_trade_intelligence import get_counter_trade_intelligence
+    CTI_AVAILABLE = True
+except ImportError:
+    CTI_AVAILABLE = False
+    logger.warning("[Import] Counter-Trade Intelligence not available")
+
+try:
+    from libs.hydra.certainty_engine import get_certainty_engine
+    CE_AVAILABLE = True
+except ImportError:
+    CE_AVAILABLE = False
+    logger.warning("[Import] Certainty Engine not available")
+
+try:
+    from libs.hydra.edge_monitor import EdgeMonitor, EdgeAction, TradeContext
+    EDGE_MONITOR_AVAILABLE = True
+except ImportError:
+    EDGE_MONITOR_AVAILABLE = False
+    logger.warning("[Import] Edge Monitor not available")
+
 # Configure logging
 logger.remove()
 logger.add(
@@ -166,7 +203,8 @@ class FTMOEventRunner:
         # Expert insight: "Reduce risk 50% when down 5% or more"
         self._peak_balance: float = 15000.0  # Track peak for drawdown calculation
         self._current_balance: float = 15000.0  # Updated from account checks
-        self._base_risk_percent = 0.015  # Normal 1.5% risk
+        # Phase 9 (2025-12-11): Reduced from 1.5% to 0.75% per research
+        self._base_risk_percent = 0.0075  # 0.75% risk per trade (was 1.5%)
         self._risk_scale_thresholds = {
             3.0: 0.50,   # At 3% DD: reduce to 50% of base risk (0.75%)
             5.0: 0.33,   # At 5% DD: reduce to 33% of base risk (0.5%)
@@ -196,6 +234,48 @@ class FTMOEventRunner:
         self._last_h1_update: Optional[datetime] = None
         self._h1_update_interval = 600  # Update H1 trend every 10 minutes
         self._mtf_enabled = True  # Enable/disable Multi-TF filter
+
+        # AGI Advisor Integration (Phase 6 - 2025-12-11)
+        # Uses Claude-AGI learned patterns for pre-trade validation
+        self._agi_advisor = None
+        self._agi_enabled = True  # Enable/disable AGI advisor
+        self._agi_size_scaling = True  # Apply AGI size multipliers
+
+        # Phase 7: Trade Ledger for persistent trade tracking (2025-12-11)
+        # Ensures all trades are recorded in SQLite for reconciliation
+        self._trade_ledger: Optional[TradeLedger] = None
+        self._close_monitor: Optional[PositionCloseMonitor] = None
+        self._reconciler: Optional[TradeReconciler] = None
+        self._performance_gate: Optional[PerformanceGate] = None
+
+        # Phase 8: Counter-Trade Intelligence + Certainty Engine + Edge Monitor (2025-12-11)
+        # CTI: Inverts signals when historical WR < 40% (converts 27% losing to 73% winning)
+        # CE: Requires 80% confidence score to take trades
+        # EM: Exits trades when edge factors deteriorate
+        self._counter_trade = None
+        self._certainty_engine = None
+        self._edge_monitor = None
+        self._cti_enabled = True  # Enable Counter-Trade Intelligence
+        self._ce_enabled = True   # Enable Certainty Engine (80% threshold)
+        self._ce_threshold = 0.80  # Minimum confidence to trade
+        self._edge_monitor_enabled = True  # Enable Edge Monitor for early exits
+
+        # Track CTI fingerprints for outcome recording
+        self._trade_fingerprints: Dict[int, str] = {}  # ticket -> CTI fingerprint
+
+        # Phase 9: Losing Streak Detector (2025-12-11)
+        # Source: GitHub GOLD_ORB - auto-pause after consecutive losses
+        # When 3 consecutive losses hit, enter virtual mode (track but don't trade)
+        # Resume when virtual trade would have been profitable
+        self._consecutive_losses = 0  # Track consecutive losing trades
+        self._virtual_mode = False  # When True, track signals but don't execute
+        self._losing_streak_threshold = 3  # Pause after this many losses
+        self._virtual_wins_to_resume = 1  # Virtual wins needed to resume live trading
+        self._virtual_win_count = 0  # Track wins while in virtual mode
+
+        # Phase 9: Daily Loss Auto-Stop (research-based)
+        # FTMO allows 5% daily - we stop at 3% for safety buffer
+        self._internal_daily_loss_limit = 3.0  # 3% daily loss = STOP trading
 
         logger.info(f"[EventRunner] Initialized (paper={paper_mode}, turbo={turbo_mode})")
 
@@ -236,8 +316,20 @@ class FTMOEventRunner:
         self._subscribe_bots()
 
         # Phase 5: Initialize Position Manager with ATR-based trailing
-        print("[6/6] Initializing Position Manager for ATR trailing...")
+        print("[6/7] Initializing Position Manager for ATR trailing...")
         self._init_position_manager()
+
+        # Phase 6: Initialize AGI Advisor for pre-trade intelligence
+        print("[7/8] Initializing AGI Advisor...")
+        self._init_agi_advisor()
+
+        # Phase 7: Initialize Trade Ledger for persistent tracking (2025-12-11)
+        print("[8/9] Initializing Trade Ledger...")
+        self._init_trade_ledger()
+
+        # Phase 8: Initialize Profit Improvement Systems (2025-12-11)
+        print("[9/9] Initializing Profit Systems (CTI, CE, EdgeMonitor)...")
+        self._init_profit_systems()
 
         self._running = True
 
@@ -332,19 +424,25 @@ class FTMOEventRunner:
             )
 
             # Create bots with event wrappers
-            # Re-enabled gold_ny on 2025-12-10 after data analysis showed $8.79/trade expectancy
+            # PERFORMANCE-BASED BOT CONFIGURATION (2025-12-11)
+            # Based on 46-trade backfill analysis:
+            # - EURUSD: 0% win rate, -$941 -> DISABLED (all EURUSD bots forced to paper)
+            # - XAUUSD: 20% WR, -$239 -> ENABLED with reduced size
+            # - US30/NAS100: Limited data -> PAPER MODE
             bots_config = [
                 ("gold_london", get_gold_london_bot(self.paper_mode, turbo_mode=self.turbo_mode), "XAUUSD"),
-                ("eurusd", get_eurusd_bot(self.paper_mode), "EURUSD"),
+                # EURUSD DISABLED: 0% win rate across 6 trades, -$941 loss
+                ("eurusd", get_eurusd_bot(paper_mode=True), "EURUSD"),  # FORCED PAPER: 0% WR
                 ("us30", get_us30_bot(self.paper_mode), "US30.cash"),
                 ("gold_ny", get_gold_ny_bot(self.paper_mode), "XAUUSD"),  # RE-ENABLED: $8.79/trade expectancy
                 # PAPER MODE TESTING (2025-12-11):
                 # - London Breakout v3: Bug fixes for SL placement + SMA filter
                 # - NAS100 Gap v2: Stricter 0.6% threshold + ADR filter
-                ("london_eur", get_london_breakout_bot("EURUSD", paper_mode=True), "EURUSD"),  # PAPER: v3 bug fixes
+                ("london_eur", get_london_breakout_bot("EURUSD", paper_mode=True), "EURUSD"),  # PAPER: 0% WR on EURUSD
                 ("nas100", get_nas100_bot(paper_mode=True), "US100.cash"),  # PAPER: v2 improvements
             ]
-            print("    - london_eur: PAPER MODE (v3 bug fixes)")
+            print("    - eurusd: PAPER MODE (0% WR, -$941 loss)")
+            print("    - london_eur: PAPER MODE (0% WR on EURUSD)")
             print("    - nas100: PAPER MODE (v2 improvements)")
 
             for name, bot, symbol in bots_config:
@@ -425,12 +523,137 @@ class FTMOEventRunner:
             print(f"  Warning: Position Manager unavailable ({e})")
             return True  # Non-fatal
 
+    def _init_agi_advisor(self) -> bool:
+        """Initialize AGI Advisor for pre-trade intelligence (Phase 6)."""
+        try:
+            if not AGI_AVAILABLE:
+                print("  AGI Advisor: Not available (module not found)")
+                logger.info("[EventRunner] AGI Advisor not available - running without AI guidance")
+                return True
+
+            self._agi_advisor = get_agi_advisor()
+
+            if self._agi_advisor.is_active():
+                print(f"  AGI Advisor: ACTIVE (recommendations loaded)")
+                print(f"    Market: {self._agi_advisor.get_overall_market()}")
+                alerts = self._agi_advisor.get_alerts()
+                if alerts:
+                    for alert in alerts[:2]:  # Show first 2 alerts
+                        print(f"    Alert: {alert}")
+            else:
+                print("  AGI Advisor: STANDBY (no recommendations yet)")
+
+            logger.info(f"[EventRunner] AGI Advisor initialized (active={self._agi_advisor.is_active()})")
+            return True
+
+        except Exception as e:
+            logger.warning(f"[EventRunner] AGI Advisor init failed: {e}")
+            print(f"  Warning: AGI Advisor unavailable ({e})")
+            self._agi_enabled = False
+            return True  # Non-fatal
+
+    def _init_trade_ledger(self) -> bool:
+        """Initialize Trade Ledger for persistent trade tracking (Phase 7 - 2025-12-11)."""
+        try:
+            from pathlib import Path
+
+            # Use same data directory as other FTMO files
+            db_path = Path("/app/data/hydra/ftmo/trade_ledger.db")
+            self._trade_ledger = get_ledger(db_path)
+
+            # Get stats for display
+            stats = self._trade_ledger.get_stats(days=7)
+            open_trades = len(self._trade_ledger.get_open_trades())
+
+            print(f"  Trade Ledger: ACTIVE (DB at {db_path})")
+            print(f"    Last 7 days: {stats['total_trades']} trades, ${stats['total_pnl']:.2f} P&L")
+            print(f"    Open positions in ledger: {open_trades}")
+
+            logger.info(f"[TradeLedger] Initialized: {stats['total_trades']} trades in last 7 days")
+
+            # Start position close monitor (detects when MT5 positions close)
+            if self._zmq_client and self._trade_ledger:
+                self._close_monitor = PositionCloseMonitor(
+                    ledger=self._trade_ledger,
+                    zmq_client=self._zmq_client
+                )
+                self._close_monitor.start()
+                print(f"  Close Monitor: ACTIVE (30s polling)")
+
+            # Initialize performance gate (auto-disables underperforming bots)
+            if self._trade_ledger:
+                self._performance_gate = get_performance_gate(self._trade_ledger)
+                disabled = self._performance_gate.get_disabled_bots()
+                if disabled:
+                    print(f"  Performance Gate: {len(disabled)} bots auto-disabled")
+                    for bot in disabled:
+                        print(f"    - {bot}: BLOCKED (poor performance)")
+                else:
+                    print(f"  Performance Gate: ACTIVE (no bots blocked)")
+                logger.info(f"[PerformanceGate] Initialized, disabled={disabled}")
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"[EventRunner] Trade Ledger init failed: {e}")
+            print(f"  Warning: Trade Ledger unavailable ({e})")
+            return True  # Non-fatal, but trade tracking won't work
+
+    def _init_profit_systems(self) -> bool:
+        """
+        Initialize Phase 8 profit improvement systems (2025-12-11):
+        - Counter-Trade Intelligence: Inverts signals with < 40% historical WR
+        - Certainty Engine: Requires 80% confidence score
+        - Edge Monitor: Exits trades when edge deteriorates
+        """
+        try:
+            systems_active = []
+
+            # Initialize Counter-Trade Intelligence
+            if CTI_AVAILABLE and self._cti_enabled:
+                self._counter_trade = get_counter_trade_intelligence()
+                conditions_tracked = len(self._counter_trade._condition_stats)
+                systems_active.append(f"CTI ({conditions_tracked} conditions)")
+                logger.info(f"[CTI] Initialized with {conditions_tracked} historical conditions")
+            else:
+                print(f"  Counter-Trade Intelligence: DISABLED")
+
+            # Initialize Certainty Engine
+            if CE_AVAILABLE and self._ce_enabled:
+                self._certainty_engine = get_certainty_engine()
+                systems_active.append(f"CE ({self._ce_threshold:.0%} threshold)")
+                logger.info(f"[CertaintyEngine] Initialized with {self._ce_threshold:.0%} threshold")
+            else:
+                print(f"  Certainty Engine: DISABLED")
+
+            # Initialize Edge Monitor
+            if EDGE_MONITOR_AVAILABLE and self._edge_monitor_enabled:
+                self._edge_monitor = EdgeMonitor()
+                systems_active.append("EdgeMonitor")
+                logger.info(f"[EdgeMonitor] Initialized for early exit on edge loss")
+            else:
+                print(f"  Edge Monitor: DISABLED")
+
+            if systems_active:
+                print(f"  Profit Systems: {', '.join(systems_active)}")
+            else:
+                print(f"  Profit Systems: NONE ACTIVE (check imports)")
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"[EventRunner] Profit systems init failed: {e}")
+            print(f"  Warning: Profit systems unavailable ({e})")
+            return True  # Non-fatal
+
     def _init_event_bus(self) -> bool:
         """Initialize the event bus for price streaming."""
         try:
             from libs.hydra.ftmo_bots.event_bus import FTMOEventBus
 
-            self._event_bus = FTMOEventBus(use_ssh_tunnel=True)
+            # Use direct WireGuard connection (no SSH tunnel needed)
+            use_tunnel = os.getenv("USE_SSH_TUNNEL", "false").lower() == "true"
+            self._event_bus = FTMOEventBus(use_ssh_tunnel=use_tunnel)
 
             # Subscribe to heartbeats for monitoring
             self._event_bus.subscribe_heartbeat(self._handle_heartbeat)
@@ -498,14 +721,291 @@ class FTMOEventRunner:
             logger.warning(f"[EventRunner] Signal blocked - kill switch active: {signal}")
             return
 
+        # Phase 9: Losing Streak Detector - enter virtual mode after 3 losses
+        if self._virtual_mode:
+            logger.info(
+                f"[LosingStreak] VIRTUAL MODE: {signal.bot_name} {signal.direction} {signal.symbol} "
+                f"(tracking only, {self._consecutive_losses} consecutive losses)"
+            )
+            # Record as virtual trade for later analysis
+            self._record_virtual_trade(signal)
+            return
+
+        # Phase 9: Daily Loss Auto-Stop at 3% (FTMO allows 5%)
+        if self._current_balance < self._daily_starting_balance:
+            daily_loss_pct = (self._daily_starting_balance - self._current_balance) / self._daily_starting_balance * 100
+            if daily_loss_pct >= self._internal_daily_loss_limit:
+                logger.warning(
+                    f"[DailyLoss] Signal BLOCKED: daily loss {daily_loss_pct:.2f}% >= "
+                    f"{self._internal_daily_loss_limit}% internal limit"
+                )
+                return
+
+        # Time filter check - block signals during historically bad hours
+        time_allowed, time_multiplier, time_reason = check_trading_time()
+        if not time_allowed:
+            logger.warning(f"[TimeFilter] Signal BLOCKED: {time_reason}")
+            return
+
+        # Performance gate check - block signals from underperforming bots
+        if self._performance_gate:
+            allowed, reason = self._performance_gate.is_bot_allowed(signal.bot_name)
+            if not allowed:
+                logger.warning(f"[PerformanceGate] Signal BLOCKED from {signal.bot_name}: {reason}")
+                return
+
+        # Phase 8: Counter-Trade Intelligence - invert signals with < 40% historical WR
+        # Example: SELL has 27% WR → invert to BUY → 73% WR
+        cti_fingerprint = None
+        if self._counter_trade and self._cti_enabled:
+            try:
+                # Get current session and RSI for fingerprinting
+                current_session = self._get_current_session()
+                current_rsi = self._get_rsi(signal.symbol) or 50.0
+                current_regime = self._get_market_regime(signal.symbol) or "NEUTRAL"
+
+                final_direction, cti_meta = self._counter_trade.get_smart_direction(
+                    original_direction=signal.direction,
+                    engine=signal.bot_name,
+                    symbol=signal.symbol,
+                    regime=current_regime,
+                    rsi=current_rsi,
+                    session=current_session,
+                )
+
+                if cti_meta.get("inverted"):
+                    logger.info(f"[CTI] INVERTED {signal.direction} → {final_direction} for {signal.symbol} ({cti_meta.get('reason')})")
+                    signal.direction = final_direction
+                    cti_fingerprint = cti_meta.get("fingerprint")
+                else:
+                    cti_fingerprint = cti_meta.get("fingerprint")
+                    logger.debug(f"[CTI] Signal unchanged: {signal.direction} (WR={cti_meta.get('historical_wr', 'N/A')})")
+
+            except Exception as e:
+                logger.warning(f"[CTI] Error processing signal: {e}")
+
+        # Phase 8: Certainty Engine - require 80% confidence
+        if self._certainty_engine and self._ce_enabled:
+            try:
+                # Get recent candles for certainty calculation
+                candles = self._get_recent_candles(signal.symbol, 100)
+
+                if candles and len(candles) >= 20:
+                    certainty = self._certainty_engine.calculate_certainty(
+                        symbol=signal.symbol,
+                        direction=signal.direction,
+                        candles=candles,
+                        current_price=signal.entry_price or 0.0,
+                    )
+
+                    if not certainty.should_trade:
+                        logger.warning(
+                            f"[Certainty] Signal BLOCKED: {certainty.total_score:.0%} < {self._ce_threshold:.0%} "
+                            f"(Tech={certainty.factors.technical_confluence:.0%}, "
+                            f"Struct={certainty.factors.market_structure:.0%}, "
+                            f"Sent={certainty.factors.sentiment_order_flow:.0%})"
+                        )
+                        return
+
+                    logger.info(f"[Certainty] APPROVED: {certainty.total_score:.0%} confidence for {signal.direction} {signal.symbol}")
+                else:
+                    logger.debug(f"[Certainty] Skipped: insufficient candle data ({len(candles) if candles else 0})")
+
+            except Exception as e:
+                logger.warning(f"[Certainty] Error calculating: {e}")
+
+        # Store CTI fingerprint for outcome recording when trade closes
+        if cti_fingerprint:
+            signal.cti_fingerprint = cti_fingerprint
+
+        # Phase 8: R:R Validation - require minimum 1.5:1 risk/reward
+        if hasattr(signal, 'stop_loss') and hasattr(signal, 'take_profit') and signal.entry_price:
+            try:
+                from libs.hydra.ftmo_bots.base_ftmo_bot import BaseFTMOBot
+                # Use class-level constants
+                min_rr = BaseFTMOBot.MIN_RR_RATIO
+
+                if signal.direction.upper() == "BUY":
+                    risk = signal.entry_price - signal.stop_loss
+                    reward = signal.take_profit - signal.entry_price
+                else:
+                    risk = signal.stop_loss - signal.entry_price
+                    reward = signal.entry_price - signal.take_profit
+
+                if risk > 0:
+                    rr_ratio = reward / risk
+                    if rr_ratio < min_rr:
+                        logger.warning(
+                            f"[R:R] Signal BLOCKED: {rr_ratio:.2f} < {min_rr} min "
+                            f"(Entry={signal.entry_price}, SL={signal.stop_loss}, TP={signal.take_profit})"
+                        )
+                        return
+                    logger.debug(f"[R:R] APPROVED: {rr_ratio:.2f} >= {min_rr}")
+            except Exception as e:
+                logger.debug(f"[R:R] Validation skipped: {e}")
+
+        # Store time multiplier for position sizing
+        signal.time_size_multiplier = time_multiplier
+
         with self._signal_lock:
             self._signal_queue.append(signal)
-            logger.info(f"[EventRunner] Signal queued: {signal.bot_name} {signal.direction} {signal.symbol}")
+            size_note = f" (size x{time_multiplier:.0%})" if time_multiplier != 1.0 else ""
+            logger.info(f"[EventRunner] Signal queued: {signal.bot_name} {signal.direction} {signal.symbol}{size_note}")
 
     def _handle_heartbeat(self, heartbeat):
         """Handle heartbeat from price streamer."""
         if self._metrics:
             self._metrics.set_connection_status("price_stream", heartbeat.mt5_connected)
+
+    # ==================== Phase 8 Helper Methods ====================
+
+    def _get_current_session(self) -> str:
+        """Get current trading session based on UTC time."""
+        now = datetime.now(timezone.utc)
+        hour = now.hour
+
+        # Session definitions (UTC times)
+        # Tokyo/Asia: 00:00-08:00 UTC
+        # London: 08:00-16:00 UTC
+        # New York: 13:00-21:00 UTC
+        # Overlap (London+NY): 13:00-16:00 UTC
+
+        if 0 <= hour < 8:
+            return "asia"
+        elif 8 <= hour < 13:
+            return "london"
+        elif 13 <= hour < 16:
+            return "overlap"
+        elif 16 <= hour < 21:
+            return "new_york"
+        else:
+            return "off_hours"
+
+    def _get_rsi(self, symbol: str, period: int = 14) -> Optional[float]:
+        """Calculate RSI from recent candle data."""
+        try:
+            candles = self._get_recent_candles(symbol, period + 10)
+            if not candles or len(candles) < period + 1:
+                return None
+
+            closes = [c.get("close", c.get("c", 0)) for c in candles]
+            if len(closes) < period + 1:
+                return None
+
+            # Calculate price changes
+            gains = []
+            losses = []
+            for i in range(1, len(closes)):
+                change = closes[i] - closes[i-1]
+                if change > 0:
+                    gains.append(change)
+                    losses.append(0)
+                else:
+                    gains.append(0)
+                    losses.append(abs(change))
+
+            if len(gains) < period:
+                return None
+
+            # Simple moving average for initial RSI
+            avg_gain = sum(gains[-period:]) / period
+            avg_loss = sum(losses[-period:]) / period
+
+            if avg_loss == 0:
+                return 100.0
+
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            return rsi
+
+        except Exception as e:
+            logger.debug(f"[RSI] Calculation error for {symbol}: {e}")
+            return None
+
+    def _get_market_regime(self, symbol: str) -> str:
+        """Determine market regime from H1 trend data."""
+        # Use H1 trends if available
+        if symbol in self._h1_trends:
+            trend = self._h1_trends[symbol]
+            if trend == "BULLISH":
+                return "TRENDING_UP"
+            elif trend == "BEARISH":
+                return "TRENDING_DOWN"
+            else:
+                return "RANGING"
+
+        # Default to neutral if no data
+        return "NEUTRAL"
+
+    def _get_tick_trend(self, symbol: str, lookback: int = 100) -> str:
+        """
+        Calculate trend from tick buffer (no candles needed).
+
+        This is a FALLBACK trend detection when H1 candles are unavailable.
+        Uses price change over recent ticks to determine short-term direction.
+
+        Args:
+            symbol: Trading symbol
+            lookback: Number of ticks to analyze
+
+        Returns:
+            "BULLISH", "BEARISH", or "NEUTRAL"
+        """
+        # Get tick buffer from event bus
+        ticks = []
+        if hasattr(self, "_event_bus") and self._event_bus:
+            ticks = self._event_bus.get_tick_buffer(symbol)
+
+        if not ticks or len(ticks) < lookback:
+            return "NEUTRAL"
+
+        recent = ticks[-lookback:]
+        first_price = recent[0].bid if hasattr(recent[0], "bid") else recent[0].get("bid", 0)
+        last_price = recent[-1].bid if hasattr(recent[-1], "bid") else recent[-1].get("bid", 0)
+
+        if first_price <= 0 or last_price <= 0:
+            return "NEUTRAL"
+
+        change_pct = ((last_price - first_price) / first_price) * 100
+
+        # Trend thresholds - require meaningful move
+        # For XAUUSD at ~$2700, 0.1% = ~$2.70 move
+        if change_pct > 0.10:  # Up 0.1%+ in lookback period
+            return "BULLISH"
+        elif change_pct < -0.10:  # Down 0.1%+
+            return "BEARISH"
+
+        return "NEUTRAL"
+
+    def _get_recent_candles(self, symbol: str, count: int = 100) -> Optional[list]:
+        """Get recent candles from ZMQ client or tick aggregator fallback."""
+        try:
+            # First try ZMQ client for proper candle data
+            if self._zmq_client:
+                try:
+                    candles = self._zmq_client.get_candles(symbol, "M1", count)
+                    if candles and len(candles) >= 10:
+                        return candles
+                except Exception:
+                    pass  # Fall through to tick aggregator
+
+            # Fallback: get candles from bot wrapper's tick aggregator
+            # This uses real-time tick data aggregated into candles
+            for name, config in self._bot_wrappers.items():
+                wrapper = config.get("wrapper")
+                if wrapper and hasattr(wrapper, "_tick_aggregator"):
+                    # Check if this wrapper handles this symbol
+                    wrapper_symbol = getattr(wrapper.bot.config, "symbol", None) if hasattr(wrapper, "bot") else None
+                    if wrapper_symbol == symbol:
+                        candles = wrapper._tick_aggregator.get_candles(count)
+                        if candles and len(candles) >= 10:
+                            return candles
+
+            return None  # If no candle data available, return None
+
+        except Exception as e:
+            logger.debug(f"[Candles] Error getting candles for {symbol}: {e}")
+            return None
 
     def _risk_monitor_loop(self):
         """Monitor risk limits and trigger kill switch if needed."""
@@ -722,7 +1222,10 @@ class FTMOEventRunner:
 
     def _check_h1_alignment(self, symbol: str, direction: str) -> tuple[bool, str]:
         """
-        Check if trade direction aligns with H1 trend (Phase 5).
+        Check if trade direction aligns with trend (Phase 5 + Tick Fallback).
+
+        Uses H1 candle trend if available, falls back to tick-based trend detection.
+        This ensures trend filtering even when CANDLES command is unavailable.
 
         Args:
             symbol: Trading symbol
@@ -735,24 +1238,35 @@ class FTMOEventRunner:
             return True, "MTF disabled"
 
         h1_trend = self._h1_trends.get(symbol, "NEUTRAL")
+        trend_source = "H1"
 
-        # NEUTRAL allows both directions
+        # FALLBACK: If H1 trend is NEUTRAL (likely because CANDLES failed),
+        # use tick-based trend detection
         if h1_trend == "NEUTRAL":
-            return True, f"H1 neutral"
+            tick_trend = self._get_tick_trend(symbol, lookback=100)
+            if tick_trend != "NEUTRAL":
+                h1_trend = tick_trend
+                trend_source = "TICK"
+                logger.debug(f"[TrendFilter] Using tick-based trend for {symbol}: {tick_trend}")
+
+        # NEUTRAL allows both directions (no clear trend)
+        if h1_trend == "NEUTRAL":
+            return True, f"Trend neutral (no clear direction)"
 
         direction_upper = direction.upper()
 
-        # Check alignment
+        # Check alignment - CRITICAL: Block trades against trend
         if h1_trend == "BULLISH" and direction_upper == "BUY":
-            return True, f"H1 bullish + BUY aligned"
+            return True, f"{trend_source} bullish + BUY aligned"
         elif h1_trend == "BEARISH" and direction_upper == "SELL":
-            return True, f"H1 bearish + SELL aligned"
+            return True, f"{trend_source} bearish + SELL aligned"
         elif h1_trend == "BULLISH" and direction_upper == "SELL":
-            return False, f"SELL blocked: H1 trend is BULLISH"
+            return False, f"SELL blocked: {trend_source} trend is BULLISH"
         elif h1_trend == "BEARISH" and direction_upper == "BUY":
-            return False, f"BUY blocked: H1 trend is BEARISH"
+            logger.warning(f"[TrendFilter] BUY BLOCKED for {symbol} - {trend_source} trend is BEARISH")
+            return False, f"BUY blocked: {trend_source} trend is BEARISH"
 
-        return True, f"H1 {h1_trend}"
+        return True, f"{trend_source} {h1_trend}"
 
     def _update_trailing_stops(self):
         """
@@ -1168,6 +1682,62 @@ class FTMOEventRunner:
         except Exception as e:
             logger.debug(f"[CorrelationFilter] Check failed (non-blocking): {e}")
 
+        # AGI ADVISOR FILTER: Check if AGI recommends this trade (Phase 6 - 2025-12-11)
+        if self._agi_enabled and self._agi_advisor:
+            # Determine current session for AGI check
+            hour = datetime.now(timezone.utc).hour
+            if 22 <= hour or hour < 6:
+                current_session = "asian"
+            elif 6 <= hour < 14:
+                current_session = "london"
+            else:
+                current_session = "new_york"
+
+            agi_approved, agi_reason = self._agi_advisor.should_trade(
+                signal.bot_name, signal.symbol, current_session
+            )
+            if not agi_approved:
+                logger.warning(f"[AGIFilter] Trade blocked: {signal.bot_name} {signal.symbol} - {agi_reason}")
+                if self._metrics:
+                    self._metrics.record_handler_error("agi_blocked", signal.bot_name)
+                return
+
+            # Log AGI approval
+            if "risk_off" in agi_reason.lower():
+                logger.info(f"[AGIFilter] Trade approved with caution: {agi_reason}")
+
+        # MARKET INTELLIGENCE FILTER: Use contrarian signals from retail positioning
+        # If retail is 70%+ long on a symbol, block BUY trades (fade the crowd)
+        if self._agi_enabled and self._agi_advisor:
+            try:
+                contrarian_signal = self._agi_advisor.get_contrarian_signal(signal.symbol)
+                if contrarian_signal:
+                    direction_upper = signal.direction.upper()
+
+                    # Block BUY when retail is heavily long (contrarian says SHORT)
+                    if contrarian_signal == "CONTRARIAN_SHORT" and direction_upper == "BUY":
+                        logger.warning(
+                            f"[MarketIntel] BUY BLOCKED for {signal.symbol} - "
+                            f"retail 70%+ long, contrarian signal is SHORT"
+                        )
+                        return
+
+                    # Block SELL when retail is heavily short (contrarian says LONG)
+                    if contrarian_signal == "CONTRARIAN_LONG" and direction_upper == "SELL":
+                        logger.warning(
+                            f"[MarketIntel] SELL BLOCKED for {signal.symbol} - "
+                            f"retail 70%+ short, contrarian signal is LONG"
+                        )
+                        return
+
+                    # Log when trading WITH contrarian signal
+                    if contrarian_signal == "CONTRARIAN_SHORT" and direction_upper == "SELL":
+                        logger.info(f"[MarketIntel] SELL aligned with contrarian signal for {signal.symbol}")
+                    elif contrarian_signal == "CONTRARIAN_LONG" and direction_upper == "BUY":
+                        logger.info(f"[MarketIntel] BUY aligned with contrarian signal for {signal.symbol}")
+            except Exception as e:
+                logger.debug(f"[MarketIntel] Check failed (non-blocking): {e}")
+
         # SELL FILTER: Block SELL for most bots, but allow proven performers
         # gold_london has 71% WR on SELL (7 trades) - allow it
         SELL_WHITELIST = ["GoldLondonReversal", "gold_london"]
@@ -1212,6 +1782,15 @@ class FTMOEventRunner:
 
         # Phase 5: Apply risk scaling to lot size for paper trades too
         scaled_lot = round(signal.lot_size * self._current_risk_multiplier, 2)
+
+        # Phase 6: Apply AGI size multiplier on top of risk scaling
+        agi_multiplier = 1.0
+        if self._agi_size_scaling and self._agi_advisor:
+            agi_multiplier = self._agi_advisor.get_size_multiplier(signal.bot_name)
+            if agi_multiplier != 1.0:
+                scaled_lot = round(scaled_lot * agi_multiplier, 2)
+                logger.info(f"[AGIScale] Paper lot adjusted: {signal.lot_size} -> {scaled_lot} (AGI x{agi_multiplier})")
+
         scaled_lot = max(0.01, scaled_lot)
         if self._current_risk_multiplier < 1.0:
             logger.info(f"[RiskScale] Paper lot scaled: {signal.lot_size} -> {scaled_lot} ({self._current_risk_multiplier:.0%})")
@@ -1247,6 +1826,15 @@ class FTMOEventRunner:
 
         # Phase 5: Apply risk scaling to lot size
         scaled_lot = round(signal.lot_size * self._current_risk_multiplier, 2)
+
+        # Phase 6: Apply AGI size multiplier on top of risk scaling
+        agi_multiplier = 1.0
+        if self._agi_size_scaling and self._agi_advisor:
+            agi_multiplier = self._agi_advisor.get_size_multiplier(signal.bot_name)
+            if agi_multiplier != 1.0:
+                scaled_lot = round(scaled_lot * agi_multiplier, 2)
+                logger.info(f"[AGIScale] Lot adjusted: {signal.lot_size} -> {scaled_lot} (AGI x{agi_multiplier})")
+
         # Ensure minimum lot size of 0.01
         scaled_lot = max(0.01, scaled_lot)
         if self._current_risk_multiplier < 1.0:
@@ -1290,6 +1878,24 @@ class FTMOEventRunner:
                 )
                 logger.debug(f"[TrailStop] Registered position #{ticket} for ATR trailing")
 
+            # Phase 7: Record trade open in persistent ledger (2025-12-11)
+            if self._trade_ledger:
+                try:
+                    self._trade_ledger.record_open(
+                        mt5_ticket=ticket,
+                        bot_name=signal.bot_name,
+                        symbol=signal.symbol,
+                        direction=signal.direction.upper(),
+                        volume=scaled_lot,
+                        entry_price=signal.entry_price,
+                        entry_sl=signal.stop_loss,
+                        entry_tp=signal.take_profit,
+                        mode="LIVE" if not self.paper_mode else "PAPER"
+                    )
+                    logger.info(f"[TradeLedger] Recorded OPEN: #{ticket} {signal.direction} {scaled_lot} {signal.symbol}")
+                except Exception as e:
+                    logger.warning(f"[TradeLedger] Failed to record trade open: {e}")
+
     def _send_trade_alert(self, signal):
         """Send trade alert via Telegram."""
         try:
@@ -1328,6 +1934,98 @@ class FTMOEventRunner:
             self._bot_disabled[bot_name] = True
             logger.warning(f"[PerBotRisk] Bot {bot_name} DISABLED: daily loss ${-self._bot_daily_pnl[bot_name]:.2f} >= limit ${max_loss:.2f}")
 
+        # Phase 9: Losing Streak Detector - track consecutive losses
+        if pnl < 0:
+            # Loss - increment streak counter
+            self._consecutive_losses += 1
+            logger.info(f"[LosingStreak] Loss recorded. Consecutive losses: {self._consecutive_losses}")
+
+            # Enter virtual mode after threshold
+            if self._consecutive_losses >= self._losing_streak_threshold and not self._virtual_mode:
+                self._virtual_mode = True
+                self._virtual_win_count = 0
+                logger.warning(
+                    f"[LosingStreak] ENTERING VIRTUAL MODE after {self._consecutive_losses} consecutive losses. "
+                    f"Trading paused until {self._virtual_wins_to_resume} virtual win(s)."
+                )
+                # Send notification
+                try:
+                    from libs.notifications.telegram_bot import send_telegram_message
+                    send_telegram_message(
+                        f"⚠️ [LosingStreak] Entered VIRTUAL MODE after {self._consecutive_losses} losses. "
+                        f"Signals will be tracked but not executed."
+                    )
+                except Exception:
+                    pass
+        else:
+            # Win - reset streak counter
+            if self._consecutive_losses > 0:
+                logger.info(f"[LosingStreak] Win recorded. Resetting streak from {self._consecutive_losses} to 0")
+            self._consecutive_losses = 0
+
+    def _record_virtual_trade(self, signal):
+        """
+        Record a virtual trade during losing streak pause (Phase 9).
+
+        Used to track what trades WOULD have been taken.
+        If virtual trades are profitable, resume live trading.
+        """
+        import json
+        from pathlib import Path
+
+        virtual_record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bot": signal.bot_name,
+            "symbol": signal.symbol,
+            "direction": signal.direction,
+            "entry": signal.entry_price,
+            "sl": signal.stop_loss,
+            "tp": signal.take_profit,
+            "reason": signal.reason,
+            "mode": "VIRTUAL",
+            "consecutive_losses": self._consecutive_losses,
+        }
+
+        virtual_file = Path("/app/data/hydra/ftmo/virtual_trades.jsonl")
+        virtual_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(virtual_file, "a") as f:
+            f.write(json.dumps(virtual_record) + "\n")
+
+        logger.debug(f"[LosingStreak] Virtual trade recorded: {signal.symbol} {signal.direction}")
+
+    def record_virtual_outcome(self, pnl: float):
+        """
+        Record outcome of a virtual trade (Phase 9).
+
+        Called by close monitor when tracking virtual trades.
+        If virtual trade would have been profitable, increment win counter.
+        Resume live trading after enough virtual wins.
+        """
+        if not self._virtual_mode:
+            return
+
+        if pnl > 0:
+            self._virtual_win_count += 1
+            logger.info(f"[LosingStreak] Virtual WIN (${pnl:.2f}). Win count: {self._virtual_win_count}/{self._virtual_wins_to_resume}")
+
+            if self._virtual_win_count >= self._virtual_wins_to_resume:
+                self._virtual_mode = False
+                self._consecutive_losses = 0
+                self._virtual_win_count = 0
+                logger.warning(
+                    f"[LosingStreak] RESUMING LIVE TRADING after {self._virtual_wins_to_resume} virtual win(s)"
+                )
+                try:
+                    from libs.notifications.telegram_bot import send_telegram_message
+                    send_telegram_message(
+                        f"✅ [LosingStreak] Resuming LIVE TRADING after successful virtual trades"
+                    )
+                except Exception:
+                    pass
+        else:
+            logger.info(f"[LosingStreak] Virtual LOSS (${pnl:.2f}). Still in virtual mode.")
+
     def _status_reporter_loop(self):
         """Print periodic status updates."""
         while self._running:
@@ -1351,6 +2049,8 @@ class FTMOEventRunner:
             f"  Total ticks: {bus_stats.get('ticks_received', 0):,}",
             f"  Heartbeat age: {bus_stats.get('last_heartbeat_age', 'N/A')}s",
             f"  Kill switch: {'ACTIVE' if self._kill_switch else 'inactive'}",
+            f"  Virtual mode: {'ACTIVE' if self._virtual_mode else 'inactive'} (losses: {self._consecutive_losses})",
+            f"  Daily trades: {self._daily_trade_count}/{self._max_daily_trades}",
         ]
 
         # Bot statuses
@@ -1387,6 +2087,11 @@ class FTMOEventRunner:
     def stop(self):
         """Stop the system."""
         self._running = False
+
+        # Stop close monitor
+        if self._close_monitor:
+            self._close_monitor.stop()
+            logger.info("[EventRunner] Close monitor stopped")
 
         # Stop bots
         for config in self._bot_wrappers.values():

@@ -77,15 +77,17 @@ class HFScalperBot(BaseFTMOBot):
     OVERLAP_COOLDOWN_MULTIPLIER = 1.5  # 50% longer cooldown during overlap
 
     def __init__(self, paper_mode: bool = True, turbo_mode: bool = False):
+        # DISABLED 2025-12-11: 20% WR today (-$227) - buying in downtrend
+        # TODO: Add trend filter before re-enabling
         config = BotConfig(
             bot_name="HFScalper",
             symbol="MULTI",  # Multi-symbol bot
-            risk_percent=0.01,  # 1% risk per trade (smaller for scalping)
+            risk_percent=0.005,  # 0.5% risk per trade (Phase 9: halved from 1%)
             max_daily_trades=10,  # High frequency (30 in turbo)
             stop_loss_pips=self.STOP_LOSS_PIPS,
             take_profit_pips=self.TAKE_PROFIT_PIPS,
             max_hold_hours=1.0,  # Quick scalps
-            enabled=True,
+            enabled=False,  # DISABLED - bleeding money
             paper_mode=paper_mode,
             turbo_mode=turbo_mode,
         )
